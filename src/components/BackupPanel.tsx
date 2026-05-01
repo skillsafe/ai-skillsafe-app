@@ -217,10 +217,12 @@ export function BackupPanel({ onToast }: Props) {
       const { plistPath } = await ensureLocalGenerated();
       const sourcePlistContents = await tauriFs.readTextFile(plistPath);
       const home = await tauriPaths.homeDir();
+      const launchAgentsDir = await tauriJoiner.join(home, "Library", "LaunchAgents");
+      // Fresh macOS user accounts don't have ~/Library/LaunchAgents until
+      // something installs into it. Create it ourselves so writeFile can land.
+      await tauriFs.mkdir(launchAgentsDir, { recursive: true });
       const installedPlistPath = await tauriJoiner.join(
-        home,
-        "Library",
-        "LaunchAgents",
+        launchAgentsDir,
         `${SERVICE_LABEL}.plist`,
       );
       await installSchedule({
@@ -308,10 +310,10 @@ export function BackupPanel({ onToast }: Props) {
       const { plistPath } = await ensureLocalGenerated(draftSchedule);
       const sourcePlistContents = await tauriFs.readTextFile(plistPath);
       const home = await tauriPaths.homeDir();
+      const launchAgentsDir = await tauriJoiner.join(home, "Library", "LaunchAgents");
+      await tauriFs.mkdir(launchAgentsDir, { recursive: true });
       const installedPlistPath = await tauriJoiner.join(
-        home,
-        "Library",
-        "LaunchAgents",
+        launchAgentsDir,
         `${SERVICE_LABEL}.plist`,
       );
       await installSchedule({
