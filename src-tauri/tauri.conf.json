@@ -1,0 +1,72 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "AI SkillSafe",
+  "version": "0.1.0",
+  "identifier": "app.skillsafe.ai",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "AI SkillSafe",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost https://cdn.jsdelivr.net https://api.skillsafe.ai; img-src 'self' asset: https://asset.localhost data: blob: https://avatars.githubusercontent.com https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' data: https://cdn.jsdelivr.net; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; worker-src 'self' blob:",
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$HOME/.claude/**",
+          "$HOME/.codex/**",
+          "$HOME/.cursor/**",
+          "$HOME/**/.agents/**"
+        ]
+      }
+    }
+  },
+  "plugins": {
+    "shell": {
+      "open": "^((mailto:\\w+.*)|(tel:\\w+.*)|(https?://\\S+)|((/|[A-Za-z]:[\\\\/]).+))$"
+    },
+    "fs": {
+      "requireLiteralLeadingDot": false
+    },
+    "updater": {
+      "endpoints": ["https://app.skillsafe.ai/version.json"],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQzOTc1NDQ1RDZBMzEzM0MKUldROEU2UFdSVlNYUTlQVkZ2Nk9uUjZaekQxZC95UC9PUG5wK0o4Rjd2dSt3TEtFOE1uTzlUUDcK"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "createUpdaterArtifacts": true,
+    "targets": ["app", "dmg", "deb", "appimage", "msi", "nsis"],
+    "category": "DeveloperTool",
+    "shortDescription": "Manage Claude / Codex / Cursor skills, agents, and commands",
+    "longDescription": "A cross-platform desktop app for browsing, editing, and converting markdown-frontmatter artifacts (skills, agents, commands, rules) across Claude Code, OpenAI Codex CLI, and Cursor IDE.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "dmg": {
+        "background": "icons/dmg-background.tiff",
+        "windowSize": { "width": 660, "height": 580 },
+        "appPosition": { "x": 180, "y": 200 },
+        "applicationFolderPosition": { "x": 480, "y": 200 }
+      }
+    }
+  }
+}

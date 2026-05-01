@@ -1,0 +1,29 @@
+[package]
+name = "skillsafe"
+version = "0.1.0"
+description = "Cross-platform UI for Claude / Codex / Cursor skills, agents, and commands"
+authors = ["skillsafe.ai"]
+edition = "2021"
+
+[[bin]]
+name = "skillsafe"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.1", features = ["protocol-asset", "devtools"] }
+tauri-plugin-fs = "2.0"
+tauri-plugin-dialog = "2.0"
+tauri-plugin-shell = "2.0"
+tauri-plugin-os = "2.0"
+tauri-plugin-http = "2.0"
+tauri-plugin-updater = "2.0"
+tauri-plugin-process = "2.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

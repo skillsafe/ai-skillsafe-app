@@ -1,0 +1,113 @@
+name: build
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  build:
+    needs: test
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Add macOS Rust targets (universal binary)
+        if: matrix.platform == 'macos-latest'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - name: Install Linux deps
+        if: matrix.platform == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - run: npm ci
+      - name: Tauri build (macOS universal)
+        if: matrix.platform == 'macos-latest'
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          # Forks without signing secrets: build unsigned (auto-updater
+          # signatures will be skipped, manual installers still work).
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+          fi
+          npm run tauri build -- --target universal-apple-darwin
+      - name: Tauri build (Linux/Windows)
+        if: matrix.platform != 'macos-latest'
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+          fi
+          npm run tauri build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: skillsafe-${{ matrix.platform }}
+          path: |
+            src-tauri/target/**/release/bundle/**/*.dmg
+            src-tauri/target/**/release/bundle/**/*.AppImage
+            src-tauri/target/**/release/bundle/**/*.deb
+            src-tauri/target/**/release/bundle/**/*.msi
+            src-tauri/target/**/release/bundle/**/*.exe
+            src-tauri/target/**/release/bundle/**/*.app.tar.gz
+            src-tauri/target/**/release/bundle/**/*.AppImage.tar.gz
+            src-tauri/target/**/release/bundle/**/*.msi.zip
+            src-tauri/target/**/release/bundle/**/*.nsis.zip
+            src-tauri/target/**/release/bundle/**/*.sig
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          body: |
+            ## Install
+
+            ### macOS (Apple Silicon + Intel, universal)
+            Download `*_universal.dmg`, open, drag **AI SkillSafe** to Applications.
+            On first launch macOS may say "unidentified developer" — right-click the app and choose **Open** once to bypass.
+
+            ### Windows
+            - `*_x64-setup.exe` — recommended (NSIS installer)
+            - `*_x64_en-US.msi` — alternative (MSI for IT-managed installs)
+
+            ### Linux
+            - `*_amd64.AppImage` — `chmod +x` and run, no install needed
+            - `*_amd64.deb` — `sudo apt install ./*.deb`
+
+            ### Auto-updates
+            The app checks `https://app.skillsafe.ai/version.json` on launch and offers in-app updates verified against this release's `.sig` files. The `*.app.tar.gz`, `*.AppImage.tar.gz`, `*.msi.zip`, `*.nsis.zip` bundles plus their `.sig` files are for the updater — you do not need to download them manually.
+          files: |
+            src-tauri/target/**/release/bundle/**/*.dmg
+            src-tauri/target/**/release/bundle/**/*.AppImage
+            src-tauri/target/**/release/bundle/**/*.deb
+            src-tauri/target/**/release/bundle/**/*.msi
+            src-tauri/target/**/release/bundle/**/*.exe
+            src-tauri/target/**/release/bundle/**/*.app.tar.gz
+            src-tauri/target/**/release/bundle/**/*.AppImage.tar.gz
+            src-tauri/target/**/release/bundle/**/*.msi.zip
+            src-tauri/target/**/release/bundle/**/*.nsis.zip
+            src-tauri/target/**/release/bundle/**/*.sig
+          fail_on_unmatched_files: false

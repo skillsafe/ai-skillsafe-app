@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="660" height="510" viewBox="0 0 660 510">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#f4f6fb"/>
+    </linearGradient>
+    <linearGradient id="brandGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3d8eff"/>
+      <stop offset="100%" stop-color="#1a5fd4"/>
+    </linearGradient>
+    <radialGradient id="topGlow" cx="50%" cy="0%" r="55%" fx="50%" fy="0%">
+      <stop offset="0" stop-color="#1558c9" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#1558c9" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background. Canvas keeps a ~65-unit buffer below the card because
+       Finder's bottom status bar overlays the lowest portion of the
+       window's content area; without that buffer the card's bottom
+       border gets clipped behind the "AI SkillSafe" volume label. -->
+  <rect width="660" height="510" fill="url(#bg)"/>
+  <rect width="660" height="280" fill="url(#topGlow)"/>
+
+  <!-- Title -->
+  <text x="330" y="68" text-anchor="middle"
+        font-family="-apple-system, 'SF Pro Display', 'DM Sans', sans-serif"
+        font-size="24" font-weight="600" fill="#0f1623" letter-spacing="-0.6">AI SkillSafe</text>
+  <text x="330" y="94" text-anchor="middle"
+        font-family="-apple-system, 'SF Pro Text', 'DM Sans', sans-serif"
+        font-size="13" fill="#5f6680">Drag the icon into Applications to install</text>
+
+  <!-- Arrow between app and Applications icons. Tauri places the .app at
+       (180, 200) and the Applications symlink at (480, 200). The arrow
+       passes between them at icon midline so the visual flow reads
+       left → right cleanly. -->
+  <g transform="translate(330, 200)">
+    <line x1="-72" y1="0" x2="72" y2="0" stroke="#bcc6dc" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="5 7"/>
+    <polyline points="56,-10 72,0 56,10" stroke="#1558c9" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Instructions card. Positioned to clear the icon labels (which Finder
+       draws below the icons centered at y=200). -->
+  <g transform="translate(40, 320)">
+    <rect width="580" height="160" rx="12" fill="#ffffff" stroke="#dde3ee" stroke-width="1"/>
+
+    <!-- Mini shield emblem matching the app icon -->
+    <g transform="translate(24, 26)">
+      <path d="M14 2 L24 6 C24 6 25 14 20 18 C17 21 14 23 14 23 C14 23 11 21 8 18 C3 14 4 6 4 6 Z" fill="url(#brandGrad)"/>
+      <path d="M9 13 L12 16 L19 9" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+
+    <text x="64" y="46" font-family="-apple-system, 'SF Pro Text', sans-serif"
+          font-size="16" font-weight="600" fill="#0f1623">First time opening?</text>
+    <text x="64" y="70" font-family="-apple-system, 'SF Pro Text', sans-serif"
+          font-size="14" fill="#5f6680">If macOS says “Apple cannot verify this app”, you can still open it safely.</text>
+
+    <text x="24" y="102" font-family="-apple-system, 'SF Pro Text', sans-serif"
+          font-size="14" fill="#3a4258">
+      <tspan fill="#1558c9" font-weight="700">1.</tspan> Try to open AI SkillSafe once and dismiss the warning.
+    </text>
+    <text x="24" y="132" font-family="-apple-system, 'SF Pro Text', sans-serif"
+          font-size="14" fill="#3a4258">
+      <tspan fill="#1558c9" font-weight="700">2.</tspan> Open <tspan fill="#0f1623" font-weight="600">System Settings → Privacy &amp; Security</tspan>, scroll to Security, click <tspan fill="#0f1623" font-weight="600">Open Anyway</tspan>.
+    </text>
+  </g>
+</svg>
