@@ -64,6 +64,34 @@ jobs:
             unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
           fi
           npm run tauri build
+      - name: Inject pre-baked DMG .DS_Store (macOS)
+        if: matrix.platform == 'macos-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # GitHub Actions macOS runners are headless — bundle_dmg.sh's
+          # AppleScript step that writes .DS_Store (window size, background,
+          # icon positions) silently fails. We commit a Finder-blessed
+          # .DS_Store harvested via bake-dmg-dsstore.sh in the private
+          # infra repo; this step injects it into each freshly-built DMG.
+          DSSTORE="src-tauri/icons/dmg-DS_Store"
+          if [[ ! -f "$DSSTORE" ]]; then
+            echo "::warning::No pre-baked $DSSTORE — DMG ships unstyled."
+            exit 0
+          fi
+          while IFS= read -r DMG; do
+            echo "==> Injecting .DS_Store into $DMG"
+            RW="${DMG%.dmg}.rw.dmg"
+            hdiutil convert "$DMG" -format UDRW -o "$RW"
+            DEV=$(hdiutil attach "$RW" -nobrowse -readwrite -noverify | tail -1 | awk '{print $1}')
+            MOUNT=$(hdiutil info | awk -v d="$DEV" '$1==d {for (i=3;i<=NF;i++) printf "%s ",$i; print ""}' | sed 's/ *$//')
+            cp "$DSSTORE" "$MOUNT/.DS_Store"
+            sync
+            hdiutil detach "$DEV"
+            rm "$DMG"
+            hdiutil convert "$RW" -format UDZO -imagekey zlib-level=9 -o "$DMG"
+            rm "$RW"
+          done < <(find src-tauri/target -path '*/bundle/dmg/*.dmg' -type f)
       - uses: actions/upload-artifact@v4
         with:
           name: skillsafe-${{ matrix.platform }}
