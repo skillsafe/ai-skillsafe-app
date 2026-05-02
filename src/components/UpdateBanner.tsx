@@ -5,63 +5,47 @@ interface Props {
   onRestartNow: () => void;
 }
 
-// Small banner shown above the sidebar when the auto-update flow has either
-// downloaded an update (ready) or is downloading one (progress). Hidden in
-// the prompt flow (those use UpdateDialog instead).
+// Floating bottom-left pill, shown only when an update has finished
+// downloading and is ready to install. 1-click "Install vX" + a × that
+// persists the dismiss against that specific update version (so it stays
+// hidden across sessions until a newer version arrives). Download progress
+// is intentionally surfaced in Settings → About instead, to keep the main
+// window quiet while a background download is in flight.
 export function UpdateBanner({ onRestartNow }: Props) {
   const {
     autoUpdate,
     availableUpdate,
-    updateProgress,
     updateReadyToInstall,
+    dismissedUpdateVersion,
     setUpdateReadyToInstall,
+    setDismissedUpdateVersion,
   } = useApp();
 
   if (!autoUpdate) return null;
-
-  const downloading =
-    updateProgress?.phase === "downloading" || updateProgress?.phase === "installing";
-
-  if (!downloading && !updateReadyToInstall) return null;
-
-  if (downloading && updateProgress) {
-    const total = updateProgress.totalBytes;
-    const pct =
-      total && total > 0
-        ? Math.min(100, Math.round((updateProgress.downloadedBytes / total) * 100))
-        : null;
-    return (
-      <div className="update-banner update-banner-downloading" role="status">
-        <DownloadIcon size={14} />
-        <span className="update-banner-text">
-          Downloading update
-          {availableUpdate ? ` v${availableUpdate.version}` : ""}
-          {pct !== null ? ` — ${pct}%` : "…"}
-        </span>
-        {pct !== null && (
-          <div className="update-progress" aria-hidden="true">
-            <div className="update-progress-bar" style={{ width: `${pct}%` }} />
-          </div>
-        )}
-      </div>
-    );
+  if (!updateReadyToInstall) return null;
+  if (availableUpdate && dismissedUpdateVersion === availableUpdate.version) {
+    return null;
   }
 
-  // Ready
+  const version = availableUpdate?.version ?? "";
   return (
-    <div className="update-banner update-banner-ready" role="status">
-      <DownloadIcon size={14} />
-      <span className="update-banner-text">
-        AI SkillSafe v{availableUpdate?.version ?? ""} is ready — installs on next launch.
-      </span>
-      <button className="update-banner-action primary" onClick={onRestartNow}>
-        Restart now
+    <div className="update-pill update-pill-ready" role="status">
+      <button
+        className="update-pill-action"
+        onClick={onRestartNow}
+        title={`Install v${version} and restart now`}
+      >
+        <DownloadIcon size={14} />
+        <span className="update-pill-text">Install v{version}</span>
       </button>
       <button
-        className="update-banner-dismiss icon-btn"
-        aria-label="Dismiss update banner"
-        onClick={() => setUpdateReadyToInstall(false)}
-        title="Hide this banner — install still happens on next quit"
+        className="update-pill-dismiss icon-btn"
+        aria-label="Dismiss update notification for this version"
+        onClick={() => {
+          if (version) setDismissedUpdateVersion(version);
+          setUpdateReadyToInstall(false);
+        }}
+        title="Hide — won't show again for this version"
       >
         <CloseIcon size={12} />
       </button>

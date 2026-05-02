@@ -30,6 +30,7 @@ export function SettingsDialog({ onClose, onToast }: Props) {
     currentVersion,
     availableUpdate,
     updateReadyToInstall,
+    updateProgress,
     setUpdateProgress,
     setUpdateError,
     setUpdateReadyToInstall,
@@ -324,6 +325,32 @@ export function SettingsDialog({ onClose, onToast }: Props) {
                 </button>
               </div>
             </div>
+            {(() => {
+              const downloading =
+                updateProgress?.phase === "downloading" || updateProgress?.phase === "installing";
+              if (!downloading) return null;
+              const total = updateProgress?.totalBytes ?? 0;
+              const pct =
+                total > 0 && updateProgress
+                  ? Math.min(100, Math.round((updateProgress.downloadedBytes / total) * 100))
+                  : null;
+              const label =
+                updateProgress?.phase === "installing"
+                  ? "Installing…"
+                  : `Downloading${availableUpdate ? ` v${availableUpdate.version}` : ""}${
+                      pct !== null ? ` — ${pct}%` : "…"
+                    }`;
+              return (
+                <div className="layout-reset-row" style={{ marginTop: 8, flexDirection: "column", alignItems: "stretch", gap: 6 }}>
+                  <div className="layout-reset-text">{label}</div>
+                  {pct !== null && updateProgress?.phase === "downloading" && (
+                    <div className="update-progress" aria-hidden="true">
+                      <div className="update-progress-bar" style={{ width: `${pct}%` }} />
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
             {updateReadyToInstall && availableUpdate && (
               <div className="layout-reset-row" style={{ marginTop: 8 }}>
                 <div className="layout-reset-text">
