@@ -116,10 +116,6 @@ export function RemoteList({ onToast, onAfterInstall, onLoadMore, onAfterMutatio
   }
 
   function startInstall(id: string) {
-    if (!cloudApiKey) {
-      onToast("error", "Sign in to install skills.");
-      return;
-    }
     setPendingInstallId(id);
   }
 
@@ -363,7 +359,7 @@ export function RemoteList({ onToast, onAfterInstall, onLoadMore, onAfterMutatio
                   <button
                     className="primary"
                     onClick={(e) => { e.stopPropagation(); startInstall(a.id); }}
-                    disabled={installing === a.id || isInstalled || !cloudApiKey}
+                    disabled={installing === a.id || isInstalled}
                   >
                     {installing === a.id ? "Installing…" : isInstalled ? "Installed ✓" : "Install"}
                   </button>

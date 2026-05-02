@@ -44,11 +44,7 @@ export function AccountPanel({ onToast }: Props) {
   if (!cloudApiKey) {
     return (
       <div className="cloud-panel cloud-account">
-        <p>Sign in to install, save, and share skills via skillsafe.ai.</p>
-        <p className="cloud-hint">
-          Clicking "Sign in" opens skillsafe.ai in your browser. Approve the
-          device-flow request to return an API key.
-        </p>
+        <p>Sign in to save, share, and install private skills via skillsafe.ai. Public skills can be installed without signing in.</p>
         <div className="dialog-row">
           <button className="primary" onClick={handleSignIn} disabled={signingIn}>
             {signingIn ? "Waiting for browser approval…" : "Sign in with skillsafe.ai"}

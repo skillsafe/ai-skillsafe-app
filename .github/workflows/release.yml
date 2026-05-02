@@ -92,42 +92,11 @@ jobs:
             hdiutil convert "$RW" -format UDZO -imagekey zlib-level=9 -o "$DMG"
             rm "$RW"
           done < <(find src-tauri/target -path '*/bundle/dmg/*.dmg' -type f)
-      - name: Build .pkg installer (macOS)
-        if: matrix.platform == 'macos-latest'
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Tauri's bundler doesn't ship a .pkg target. We wrap the universal
-          # .app with pkgbuild so /Applications drops are scriptable (postinstall
-          # strips com.apple.quarantine so unsigned dev builds skip the
-          # "unidentified developer" first-launch prompt).
-          SCRIPTS=$(mktemp -d)
-          cat > "$SCRIPTS/postinstall" <<'EOS'
-          #!/bin/bash
-          /usr/bin/xattr -dr com.apple.quarantine "/Applications/AI SkillSafe.app" 2>/dev/null || true
-          exit 0
-          EOS
-          chmod +x "$SCRIPTS/postinstall"
-
-          while IFS= read -r APP; do
-            VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Contents/Info.plist")
-            OUT_DIR="$(dirname "$APP")"
-            OUT="$OUT_DIR/AI SkillSafe_${VERSION}_universal.pkg"
-            echo "==> pkgbuild → $OUT"
-            pkgbuild \
-              --component "$APP" \
-              --install-location /Applications \
-              --identifier app.skillsafe.ai.installer \
-              --version "$VERSION" \
-              --scripts "$SCRIPTS" \
-              "$OUT"
-          done < <(find src-tauri/target -path '*/bundle/macos/*.app' -prune -type d)
       - uses: actions/upload-artifact@v4
         with:
           name: skillsafe-${{ matrix.platform }}
           path: |
             src-tauri/target/**/release/bundle/**/*.dmg
-            src-tauri/target/**/release/bundle/**/*.pkg
             src-tauri/target/**/release/bundle/**/*.AppImage
             src-tauri/target/**/release/bundle/**/*.deb
             src-tauri/target/**/release/bundle/**/*.msi
@@ -145,8 +114,8 @@ jobs:
             ## Install
 
             ### macOS (Apple Silicon + Intel, universal)
-            - `*_universal.pkg` — recommended (double-click installer; lays down `/Applications/AI SkillSafe.app` and clears the Gatekeeper quarantine flag).
-            - `*_universal.dmg` — alternative (drag `AI SkillSafe` to Applications). On first launch macOS may say "unidentified developer" — right-click the app and choose **Open** once to bypass.
+            Download `*_universal.dmg`, open, drag **AI SkillSafe** to Applications.
+            On first launch macOS may say "unidentified developer" — right-click the app and choose **Open** once to bypass.
 
             ### Windows
             - `*_x64-setup.exe` — recommended (NSIS installer)
@@ -160,7 +129,6 @@ jobs:
             The app checks `https://app.skillsafe.ai/version.json` on launch and offers in-app updates verified against this release's `.sig` files. The `*.app.tar.gz`, `*.AppImage.tar.gz`, `*.msi.zip`, `*.nsis.zip` bundles plus their `.sig` files are for the updater — you do not need to download them manually.
           files: |
             src-tauri/target/**/release/bundle/**/*.dmg
-            src-tauri/target/**/release/bundle/**/*.pkg
             src-tauri/target/**/release/bundle/**/*.AppImage
             src-tauri/target/**/release/bundle/**/*.deb
             src-tauri/target/**/release/bundle/**/*.msi
