@@ -56,16 +56,19 @@ describe("backupOneArtifact", () => {
     });
 
     expect(
-      await fs.readFile(path.join(dest, "claude", "global", "skill", "foo", "SKILL.md"), "utf8"),
+      await fs.readFile(path.join(dest, "claude_backup", "global", "skill", "foo", "SKILL.md"), "utf8"),
     ).toContain("name: foo");
     expect(
-      await fs.readFile(path.join(dest, "claude", "global", "skill", "foo", "asset.bin")),
+      await fs.readFile(path.join(dest, "claude_backup", "global", "skill", "foo", "asset.bin")),
     ).toEqual(Buffer.from([1, 2, 3, 4]));
     // The unrelated "bar" bundle must not have been touched.
-    const skillDir = await fs.readdir(path.join(dest, "claude", "global", "skill"));
+    const skillDir = await fs.readdir(path.join(dest, "claude_backup", "global", "skill"));
     expect(skillDir).toEqual(["foo"]);
 
-    const manifestText = await fs.readFile(path.join(dest, MANIFEST_FILENAME), "utf8");
+    const manifestText = await fs.readFile(
+      path.join(dest, "claude_backup", MANIFEST_FILENAME),
+      "utf8",
+    );
     const manifest = parseManifest(manifestText);
     expect(manifest).not.toBeNull();
     expect(manifest!.entries.every((e) => e.relPath.startsWith("artifacts/claude/global/skill/foo/"))).toBe(true);
@@ -89,7 +92,9 @@ describe("backupOneArtifact", () => {
       fs: nodeFs, paths: pathDeps(home), joiner: nodeJoiner,
       destination: dest, artifact: fooArtifact,
     });
-    const manifest = parseManifest(await fs.readFile(path.join(dest, MANIFEST_FILENAME), "utf8"))!;
+    const manifest = parseManifest(
+      await fs.readFile(path.join(dest, "claude_backup", MANIFEST_FILENAME), "utf8"),
+    )!;
     const fooEntries = manifest.entries.filter((e) =>
       e.relPath.startsWith("artifacts/claude/global/skill/foo/"),
     );
@@ -150,11 +155,11 @@ describe("restoreFromBackup", () => {
       bundleName: "foo",
       files: [
         {
-          source: path.join(dest, "claude", "global", "skill", "foo", "SKILL.md"),
+          source: path.join(dest, "claude_backup", "global", "skill", "foo", "SKILL.md"),
           relInItem: "SKILL.md",
         },
         {
-          source: path.join(dest, "claude", "global", "skill", "foo", "asset.bin"),
+          source: path.join(dest, "claude_backup", "global", "skill", "foo", "asset.bin"),
           relInItem: "asset.bin",
         },
       ],

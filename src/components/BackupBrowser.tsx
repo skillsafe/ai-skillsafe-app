@@ -9,8 +9,10 @@ import { restoreFromBackup } from "../lib/backup/single";
 import {
   BACKUP_SUBDIR,
   MANIFEST_FILENAME,
+  MANIFEST_VERSION,
   parseManifest,
   summarize,
+  toolBackupSubdir,
   type BackupEntry,
   type BackupManifest,
 } from "../lib/backup/manifest";
@@ -120,22 +122,51 @@ export function BackupBrowser({ onToast }: Props) {
       setLoading(true);
       setLoadError(null);
       try {
-        // Read from the new layout first; fall back to the legacy
-        // <dest>/skillsafe-backup/<MANIFEST> for users who haven't re-run
-        // backup since the wrapper subdir was dropped.
-        let path = await tauriJoiner.join(backupDestination, MANIFEST_FILENAME);
-        if (!(await tauriFs.exists(path))) {
-          path = await tauriJoiner.join(
+        // Per-tool layout: read each <dest>/<tool>_backup/LAST_BACKUP.json
+        // and merge into one in-memory manifest for the existing UI. Fall
+        // back to the older single-manifest layouts when no per-tool
+        // manifests are present.
+        const partials: BackupManifest[] = [];
+        for (const t of ALL_TOOLS) {
+          const path = await tauriJoiner.join(
+            backupDestination,
+            toolBackupSubdir(t.id),
+            MANIFEST_FILENAME,
+          );
+          if (!(await tauriFs.exists(path))) continue;
+          try {
+            const text = await tauriFs.readTextFile(path);
+            const m = parseManifest(text);
+            if (m) partials.push(m);
+          } catch {
+            // Skip unreadable per-tool manifests; surface a generic error
+            // below if NONE could be loaded.
+          }
+        }
+        if (cancelled) return;
+        if (partials.length > 0) {
+          setManifest(mergeToolManifests(partials, backupDestination));
+          return;
+        }
+        // Legacy fallback: pre-per-tool layouts had a single manifest at
+        // <dest>/LAST_BACKUP.json or <dest>/skillsafe-backup/LAST_BACKUP.json.
+        let legacyPath = await tauriJoiner.join(backupDestination, MANIFEST_FILENAME);
+        if (!(await tauriFs.exists(legacyPath))) {
+          legacyPath = await tauriJoiner.join(
             backupDestination,
             BACKUP_SUBDIR,
             MANIFEST_FILENAME,
           );
         }
-        const text = await tauriFs.readTextFile(path);
-        if (cancelled) return;
-        const m = parseManifest(text);
-        setManifest(m);
-        if (!m) setLoadError("Manifest file is unreadable.");
+        if (await tauriFs.exists(legacyPath)) {
+          const text = await tauriFs.readTextFile(legacyPath);
+          if (cancelled) return;
+          const m = parseManifest(text);
+          setManifest(m);
+          if (!m) setLoadError("Manifest file is unreadable.");
+          return;
+        }
+        setManifest(null);
       } catch (e) {
         if (cancelled) return;
         setManifest(null);
@@ -847,6 +878,33 @@ export function BackupBrowser({ onToast }: Props) {
 
 function BackupEmpty({ children }: { children: React.ReactNode }) {
   return <div className="backup-browser-empty">{children}</div>;
+}
+
+// Combine per-tool manifests into one manifest the existing browser UI can
+// render. Counts sum, entries concatenate, errors concatenate; generatedAt is
+// the most recent tool's run.
+function mergeToolManifests(parts: BackupManifest[], destination: string): BackupManifest {
+  const counts = { added: 0, changed: 0, removed: 0, unchanged: 0 };
+  const entries: BackupEntry[] = [];
+  const errors: string[] = [];
+  let generatedAt = 0;
+  for (const m of parts) {
+    counts.added += m.counts.added;
+    counts.changed += m.counts.changed;
+    counts.removed += m.counts.removed;
+    counts.unchanged += m.counts.unchanged;
+    entries.push(...m.entries);
+    errors.push(...m.errors);
+    if (m.generatedAt > generatedAt) generatedAt = m.generatedAt;
+  }
+  return {
+    version: MANIFEST_VERSION,
+    generatedAt,
+    destination,
+    counts,
+    entries,
+    errors,
+  };
 }
 
 function countArtifactsByTool(m: BackupManifest | null): Partial<Record<Tool, number>> {

@@ -116,7 +116,7 @@ describe("CLAUDE.md backup and restore", () => {
     });
 
     const mirrored = await fs.readFile(
-      path.join(dest, "claude", "global", "agent", "CLAUDE.md"),
+      path.join(dest, "claude_backup", "global", "agent", "CLAUDE.md"),
       "utf8",
     );
     expect(mirrored).toBe(original);
@@ -137,10 +137,10 @@ describe("CLAUDE.md backup and restore", () => {
     });
 
     // Find the slugged project directory to read the mirrored file.
-    const projectDirs = await fs.readdir(path.join(dest, "claude", "project"));
+    const projectDirs = await fs.readdir(path.join(dest, "claude_backup", "project"));
     expect(projectDirs.length).toBe(1);
     const mirrored = await fs.readFile(
-      path.join(dest, "claude", "project", projectDirs[0], "agent", "CLAUDE.md"),
+      path.join(dest, "claude_backup", "project", projectDirs[0], "agent", "CLAUDE.md"),
       "utf8",
     );
     expect(mirrored).toBe(original);

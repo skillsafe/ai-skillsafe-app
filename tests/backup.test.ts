@@ -56,11 +56,11 @@ describe("runBackup", () => {
 
     const root = dest;
     expect(
-      await fs.readFile(path.join(root, "claude", "global", "skill", "foo", "SKILL.md"), "utf8"),
+      await fs.readFile(path.join(root, "claude_backup", "global", "skill", "foo", "SKILL.md"), "utf8"),
     ).toContain("name: foo");
-    const asset = await fs.readFile(path.join(root, "claude", "global", "skill", "foo", "asset.bin"));
+    const asset = await fs.readFile(path.join(root, "claude_backup", "global", "skill", "foo", "asset.bin"));
     expect(asset).toEqual(Buffer.from([1, 2, 3, 4]));
-    expect(await fs.readFile(path.join(root, "claude", "history", "proj-1", "MEMORY.md"), "utf8")).toBe(
+    expect(await fs.readFile(path.join(root, "claude_backup", "history", "proj-1", "MEMORY.md"), "utf8")).toBe(
       "# memory\n",
     );
     expect(m.counts.added).toBeGreaterThan(0);
@@ -69,9 +69,13 @@ describe("runBackup", () => {
 
     // Excluded cache dir must NOT be mirrored. (It lives under the artifact
     // skills dir's parent, so confirm it didn't sneak in via history.)
-    const historyContents = await fs.readdir(path.join(root, "claude", "history"));
+    const historyContents = await fs.readdir(path.join(root, "claude_backup", "history"));
     expect(historyContents).not.toContain("cache");
-    const manifestText = await fs.readFile(path.join(root, MANIFEST_FILENAME), "utf8");
+    // Manifest now lives inside the per-tool subdir.
+    const manifestText = await fs.readFile(
+      path.join(root, "claude_backup", MANIFEST_FILENAME),
+      "utf8",
+    );
     const manifest = parseManifest(manifestText);
     expect(manifest?.entries.length).toBe(m.entries.length);
   });
@@ -142,7 +146,7 @@ describe("runBackup", () => {
     expect(m.counts.added).toBe(0);
     expect(
       await fs.readFile(
-        path.join(dest, "claude", "global", "skill", "foo", "SKILL.md"),
+        path.join(dest, "claude_backup", "global", "skill", "foo", "SKILL.md"),
         "utf8",
       ),
     ).toContain("body v2");
@@ -171,7 +175,7 @@ describe("runBackup", () => {
 
     expect(m.counts.removed).toBe(1);
     const stillExists = await fs
-      .access(path.join(dest, "claude", "global", "skill", "foo", "asset.bin"))
+      .access(path.join(dest, "claude_backup", "global", "skill", "foo", "asset.bin"))
       .then(() => true)
       .catch(() => false);
     expect(stillExists).toBe(false);

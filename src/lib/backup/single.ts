@@ -8,6 +8,7 @@ import {
   parseManifest,
   serializeManifest,
   summarize,
+  toolBackupSubdir,
   type BackupCounts,
   type BackupEntry,
   type BackupManifest,
@@ -40,16 +41,23 @@ export async function backupOneArtifact(opts: BackupOneArtifactOptions): Promise
     throw new Error("backupOneArtifact: projectRoot is required for project scope");
   }
 
-  const layoutSegments: string[] = [tool];
+  // Logical path inside the manifest still uses just the tool name (no
+  // _backup suffix) — that's an identifier for the BackupBrowser, not a
+  // filesystem location. The on-disk layout uses <tool>_backup/.
+  const relLayout: string[] = [tool];
+  const fsLayout: string[] = [toolBackupSubdir(tool)];
   if (scope === "global") {
-    layoutSegments.push("global");
+    relLayout.push("global");
+    fsLayout.push("global");
   } else {
-    layoutSegments.push("project", slugify(projectRoot!));
+    relLayout.push("project", slugify(projectRoot!));
+    fsLayout.push("project", slugify(projectRoot!));
   }
-  layoutSegments.push(type);
+  relLayout.push(type);
+  fsLayout.push(type);
 
-  const relBaseDir = ["artifacts", ...layoutSegments].join("/");
-  const destBaseDir = await joinAll(joiner, destination, ...layoutSegments);
+  const relBaseDir = ["artifacts", ...relLayout].join("/");
+  const destBaseDir = await joinAll(joiner, destination, ...fsLayout);
 
   const errors: string[] = [];
   const entries: BackupEntry[] = [];
@@ -104,6 +112,7 @@ export async function backupOneArtifact(opts: BackupOneArtifactOptions): Promise
     fs,
     joiner,
     destination,
+    manifestDir: await joiner.join(destination, toolBackupSubdir(tool)),
     dropPrefix,
     isExactPrefix: !artifact.isBundle,
     addEntries: entries,
@@ -236,7 +245,13 @@ async function copyFile(fs: FsAdapter, source: string, dest: string): Promise<vo
 interface MergeManifestArgs {
   fs: FsAdapter;
   joiner: PathJoiner;
+  // User's chosen backup destination — recorded in the manifest's
+  // `destination` field so the BackupBrowser can find sibling tool manifests.
   destination: string;
+  // Directory the manifest file actually lives in (the per-tool subdir,
+  // e.g. <destination>/claude_backup). The mergeManifest call also needs
+  // this dir to exist for atomicWrite to succeed.
+  manifestDir: string;
   // For bundles: trailing-slash prefix of relPaths to drop ("artifacts/.../foo/").
   // For single files: the exact relPath of the file (isExactPrefix=true).
   dropPrefix: string;
@@ -247,8 +262,18 @@ interface MergeManifestArgs {
 }
 
 async function mergeManifest(args: MergeManifestArgs): Promise<BackupManifest> {
-  const { fs, joiner, destination, dropPrefix, isExactPrefix, addEntries, addCounts, addErrors } = args;
-  const manifestPath = await joiner.join(destination, MANIFEST_FILENAME);
+  const {
+    fs,
+    joiner,
+    destination,
+    manifestDir,
+    dropPrefix,
+    isExactPrefix,
+    addEntries,
+    addCounts,
+    addErrors,
+  } = args;
+  const manifestPath = await joiner.join(manifestDir, MANIFEST_FILENAME);
   let existing: BackupManifest | null = null;
   if (await fs.exists(manifestPath)) {
     try {

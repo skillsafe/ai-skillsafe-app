@@ -12,6 +12,8 @@ import {
   MANIFEST_VERSION,
   emptyCounts,
   serializeManifest,
+  toolBackupSubdir,
+  type BackupCounts,
   type BackupEntry,
   type BackupManifest,
 } from "./manifest";
@@ -69,13 +71,34 @@ const PROJECTS_EXCLUDE_DIRS = new Set([
 
 const ARTIFACT_EXCLUDE_DIRS = new Set([".DS_Store"]);
 
+interface ToolAcc {
+  counts: BackupCounts;
+  entries: BackupEntry[];
+  errors: string[];
+}
+
 export async function runBackup(opts: RunBackupOptions): Promise<BackupManifest> {
   const { fs, paths, joiner, destination, tools, recentProjects, onProgress } = opts;
   const includeProjectsHistory = opts.includeProjectsHistory ?? true;
 
-  const errors: string[] = [];
-  const entries: BackupEntry[] = [];
-  const counts = emptyCounts();
+  // Per-tool accumulators so each tool's manifest can be written independently.
+  // History (kind="project") is grouped under "claude" since that's where the
+  // ~/.claude/projects/ tree lives. globalErrors collects errors from steps
+  // that aren't tied to a single tool (e.g. manifest-write failures).
+  const toolAccs = new Map<Tool, ToolAcc>();
+  const globalErrors: string[] = [];
+  function accFor(tool: Tool): ToolAcc {
+    let a = toolAccs.get(tool);
+    if (!a) {
+      a = { counts: emptyCounts(), entries: [], errors: [] };
+      toolAccs.set(tool, a);
+    }
+    return a;
+  }
+  // Pre-create entries for every requested tool so an empty per-tool manifest
+  // still gets written (signals "we ran this tool, found nothing changed").
+  for (const t of tools) accFor(t);
+
   const touched = new Set<string>();
   let filesProcessed = 0;
   let filesCopied = 0;
@@ -100,17 +123,18 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupManifest>
     notify();
   }
 
-  // The destination IS the backup root. We don't wrap with an extra
-  // skillsafe-backup subdirectory anymore — the user's picked folder is
-  // assumed to be dedicated to the backup. Prune is constrained to only
-  // walk the top-level subdirectories WE create (claude/, codex/, etc.) so
-  // sibling files in the destination are never touched.
+  // The destination IS the backup root. Each tool gets its own
+  // <tool>_backup/ subdirectory and its own LAST_BACKUP.json inside it, so
+  // two backup runs for different tools can execute concurrently without
+  // racing on a shared manifest. Prune is constrained to only walk the
+  // top-level subdirectories WE create (claude_backup/, codex_backup/, …)
+  // so sibling files in the destination are never touched.
   // Note: we deliberately do NOT ensureDir(backupRoot) here. The user picked
   // the folder via the system dialog, so it already exists. Tauri's fs scope
-  // only matches our tool-named subdirs (claude/, codex/, …) — the root
-  // itself is intentionally outside scope to keep us from poking at sibling
-  // user files. Subsequent ensureDir(<root>/<tool>/<scope>/<type>) creates
-  // the needed parents recursively within scope.
+  // only matches our tool-named subdirs — the root itself is intentionally
+  // outside scope to keep us from poking at sibling user files. Subsequent
+  // ensureDir(<root>/<tool>_backup/<scope>/<type>) creates the needed
+  // parents recursively within scope.
   const backupRoot = destination;
   // Track only the top-level dirs we touch, so prune knows which to walk.
   const topLevelDirs = new Set<string>();
@@ -120,14 +144,21 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupManifest>
   // write lock). Sweep is also constrained to subtrees we own.
   setPhase("cleaning orphan tmps");
 
+  // toolDir(tool) → "<backupRoot>/<tool>_backup". Single source of truth so a
+  // future rename only touches one line.
+  async function toolDir(tool: Tool): Promise<string> {
+    return joiner.join(backupRoot, toolBackupSubdir(tool));
+  }
+
   // 1) Artifacts: tools × global scope.
   for (const tool of tools) {
+    const acc = accFor(tool);
     for (const type of TYPES) {
       const sourceDir = await resolveArtifactDir(paths, tool, "global", type);
       if (!sourceDir) continue;
       setPhase(`${tool} · global · ${type}`);
-      topLevelDirs.add(await joiner.join(backupRoot, tool));
-      const destDir = await joiner.join(backupRoot, tool, "global", type);
+      topLevelDirs.add(await toolDir(tool));
+      const destDir = await joiner.join(await toolDir(tool), "global", type);
       const relBase = ["artifacts", tool, "global", type].join("/");
       const meta = { tool, scope: "global" as const, type };
       const single = singleFileArtifact(tool, type);
@@ -141,10 +172,10 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupManifest>
           relBase: `${relBase}/${single}`,
           kind: "artifact",
           meta,
-          entries,
-          counts,
+          entries: acc.entries,
+          counts: acc.counts,
           touched,
-          errors,
+          errors: acc.errors,
           recordFile,
         });
       } else {
@@ -157,10 +188,10 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupManifest>
           kind: "artifact",
           meta,
           excludeDirNames: ARTIFACT_EXCLUDE_DIRS,
-          entries,
-          counts,
+          entries: acc.entries,
+          counts: acc.counts,
           touched,
-          errors,
+          errors: acc.errors,
           recordFile,
         });
       }
@@ -172,6 +203,7 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupManifest>
     const projectSlug = slugify(projectRoot);
     setPhase(`project · ${projectSlug}`);
     for (const tool of tools) {
+      const acc = accFor(tool);
       for (const type of TYPES) {
         // Claude reads project artifacts from BOTH <root>/.agents/<sub>/ and
         // <root>/.claude/<sub>/. Mirror both — listClaudeArtifacts merges
@@ -185,8 +217,13 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupManifest>
         );
         for (const sourceDir of sourceDirs) {
           if (!sourceDir) continue;
-          topLevelDirs.add(await joiner.join(backupRoot, tool));
-          const destDir = await joiner.join(backupRoot, tool, "project", projectSlug, type);
+          topLevelDirs.add(await toolDir(tool));
+          const destDir = await joiner.join(
+            await toolDir(tool),
+            "project",
+            projectSlug,
+            type,
+          );
           const relBase = ["artifacts", tool, "project", projectSlug, type].join("/");
           const meta = { tool, scope: "project" as const, type, projectRoot };
           const single = singleFileArtifact(tool, type);
@@ -200,10 +237,10 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupManifest>
               relBase: `${relBase}/${single}`,
               kind: "artifact",
               meta,
-              entries,
-              counts,
+              entries: acc.entries,
+              counts: acc.counts,
               touched,
-              errors,
+              errors: acc.errors,
               recordFile,
             });
           } else {
@@ -216,10 +253,10 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupManifest>
               kind: "artifact",
               meta,
               excludeDirNames: ARTIFACT_EXCLUDE_DIRS,
-              entries,
-              counts,
+              entries: acc.entries,
+              counts: acc.counts,
               touched,
-              errors,
+              errors: acc.errors,
               recordFile,
             });
           }
@@ -233,11 +270,17 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupManifest>
   // inside .claude/agents/ but we group them with the agent backup so the
   // user gets both halves of "Claude's instructions" in one place.
   if (tools.includes("claude")) {
+    const acc = accFor("claude");
     const home = await paths.homeDir();
     const globalMemorySrc = await joiner.join(home, ".claude", "CLAUDE.md");
     setPhase("claude · global · CLAUDE.md");
-    topLevelDirs.add(await joiner.join(backupRoot, "claude"));
-    const globalMemoryDest = await joiner.join(backupRoot, "claude", "global", "agent", "CLAUDE.md");
+    topLevelDirs.add(await toolDir("claude"));
+    const globalMemoryDest = await joiner.join(
+      await toolDir("claude"),
+      "global",
+      "agent",
+      "CLAUDE.md",
+    );
     await mirrorSingleFile({
       fs,
       source: globalMemorySrc,
@@ -245,18 +288,24 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupManifest>
       relBase: "artifacts/claude/global/agent/CLAUDE.md",
       kind: "artifact",
       meta: { tool: "claude", scope: "global", type: "agent" },
-      entries,
-      counts,
+      entries: acc.entries,
+      counts: acc.counts,
       touched,
-      errors,
+      errors: acc.errors,
       recordFile,
     });
     for (const projectRoot of recentProjects) {
       const projectSlug = slugify(projectRoot);
       const src = await joiner.join(projectRoot, "CLAUDE.md");
-      const dest = await joiner.join(backupRoot, "claude", "project", projectSlug, "agent", "CLAUDE.md");
+      const dest = await joiner.join(
+        await toolDir("claude"),
+        "project",
+        projectSlug,
+        "agent",
+        "CLAUDE.md",
+      );
       setPhase(`claude · project · ${projectSlug} · CLAUDE.md`);
-      topLevelDirs.add(await joiner.join(backupRoot, "claude"));
+      topLevelDirs.add(await toolDir("claude"));
       await mirrorSingleFile({
         fs,
         source: src,
@@ -264,25 +313,26 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupManifest>
         relBase: `artifacts/claude/project/${projectSlug}/agent/CLAUDE.md`,
         kind: "artifact",
         meta: { tool: "claude", scope: "project", type: "agent", projectRoot },
-        entries,
-        counts,
+        entries: acc.entries,
+        counts: acc.counts,
         touched,
-        errors,
+        errors: acc.errors,
         recordFile,
       });
     }
   }
 
   // 3) ~/.claude/projects/ — conversation history + MEMORY.md, mirrored to
-  // <dest>/claude/history (folder name renamed from "projects" to
+  // <dest>/claude_backup/history (folder name renamed from "projects" to
   // disambiguate from the user's actual project roots).
-  if (includeProjectsHistory) {
+  if (includeProjectsHistory && tools.includes("claude")) {
+    const acc = accFor("claude");
     const home = await paths.homeDir();
     const projectsSrc = await joiner.join(home, ".claude", "projects");
     if (await fs.exists(projectsSrc)) {
       setPhase("claude · history");
-      topLevelDirs.add(await joiner.join(backupRoot, "claude"));
-      const projectsDest = await joiner.join(backupRoot, "claude", "history");
+      topLevelDirs.add(await toolDir("claude"));
+      const projectsDest = await joiner.join(await toolDir("claude"), "history");
       await mirrorTree({
         fs,
         joiner,
@@ -292,10 +342,10 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupManifest>
         kind: "project",
         meta: {},
         excludeDirNames: PROJECTS_EXCLUDE_DIRS,
-        entries,
-        counts,
+        entries: acc.entries,
+        counts: acc.counts,
         touched,
-        errors,
+        errors: acc.errors,
         recordFile,
       });
     }
@@ -305,34 +355,80 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupManifest>
 
   // 4a) Sweep orphan tmp files only under our own subtrees.
   for (const dir of topLevelDirs) {
-    await sweepOrphanTmps({ fs, joiner, dir, errors });
+    await sweepOrphanTmps({ fs, joiner, dir, errors: globalErrors });
   }
 
   // 4b) Bounded delete pass — walk only the top-level subtrees we created
-  // this run (claude/, codex/, …). Sibling files in the user's destination
-  // folder are never touched.
+  // this run (claude_backup/, codex_backup/, …). Sibling files in the user's
+  // destination folder are never touched. Removed counts attribute to the
+  // tool whose subtree they belonged to.
   setPhase("pruning destination");
-  for (const dir of topLevelDirs) {
-    await pruneUntouched({ fs, joiner, dir, touched, counts, errors });
+  for (const tool of toolAccs.keys()) {
+    const acc = toolAccs.get(tool)!;
+    const dir = await toolDir(tool);
+    if (!topLevelDirs.has(dir)) continue;
+    await pruneUntouched({
+      fs,
+      joiner,
+      dir,
+      touched,
+      counts: acc.counts,
+      errors: acc.errors,
+    });
   }
 
-  // 5) Write manifest.
+  // 5) Write per-tool manifests. Each tool's manifest lives inside its own
+  // <tool>_backup/ subdir, so concurrent runs for different tools never race
+  // on the same file.
   setPhase("writing manifest");
-  const manifest: BackupManifest = {
-    version: MANIFEST_VERSION,
-    generatedAt: Date.now(),
-    destination,
-    counts,
-    entries,
-    errors,
-  };
-  const manifestPath = await joiner.join(backupRoot, MANIFEST_FILENAME);
-  try {
-    await atomicWrite(fs, manifestPath, serializeManifest(manifest));
-  } catch (e) {
-    errors.push(`manifest: ${describeError(e)}`);
+  const generatedAt = Date.now();
+  for (const [tool, acc] of toolAccs) {
+    const dir = await toolDir(tool);
+    // If this tool didn't get touched at all (e.g. requested but every
+    // resolveArtifactDir returned null), skip writing a manifest into a
+    // directory we never created — that would force-create an empty subdir.
+    if (!topLevelDirs.has(dir)) continue;
+    const m: BackupManifest = {
+      version: MANIFEST_VERSION,
+      generatedAt,
+      destination,
+      counts: acc.counts,
+      entries: acc.entries,
+      errors: acc.errors,
+    };
+    const manifestPath = await joiner.join(dir, MANIFEST_FILENAME);
+    try {
+      await atomicWrite(fs, manifestPath, serializeManifest(m));
+    } catch (e) {
+      globalErrors.push(`manifest ${tool}: ${describeError(e)}`);
+    }
   }
-  return manifest;
+
+  // Combined manifest returned to the caller — used by the in-app UI to render
+  // a single unified view across all tools.
+  const combined: BackupManifest = {
+    version: MANIFEST_VERSION,
+    generatedAt,
+    destination,
+    counts: sumCounts(Array.from(toolAccs.values()).map((a) => a.counts)),
+    entries: Array.from(toolAccs.values()).flatMap((a) => a.entries),
+    errors: [
+      ...Array.from(toolAccs.values()).flatMap((a) => a.errors),
+      ...globalErrors,
+    ],
+  };
+  return combined;
+}
+
+function sumCounts(parts: BackupCounts[]): BackupCounts {
+  const out = emptyCounts();
+  for (const c of parts) {
+    out.added += c.added;
+    out.changed += c.changed;
+    out.removed += c.removed;
+    out.unchanged += c.unchanged;
+  }
+  return out;
 }
 
 export interface MirrorContext {

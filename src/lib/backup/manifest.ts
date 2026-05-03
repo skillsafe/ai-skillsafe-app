@@ -2,7 +2,17 @@ import type { ArtifactType, Scope, Tool } from "../artifacts/types";
 
 export const MANIFEST_VERSION = 1;
 export const MANIFEST_FILENAME = "LAST_BACKUP.json";
+// Legacy wrapper subdir from a much earlier layout. Kept only so the
+// BackupBrowser can fall back to reading an old top-level manifest. New
+// backups live one level deeper, in per-tool <tool>_backup/ folders.
 export const BACKUP_SUBDIR = "skillsafe-backup";
+
+// Subdir name used for each tool inside the user's chosen backup destination.
+// Per-tool subdirs let two backup runs (e.g. claude + codex) execute
+// concurrently without racing on a single shared manifest file.
+export function toolBackupSubdir(tool: Tool): string {
+  return `${tool}_backup`;
+}
 
 export type BackupEntryKind = "artifact" | "project";
 export type BackupEntryStatus = "added" | "changed" | "unchanged";
