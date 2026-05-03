@@ -267,7 +267,13 @@ export default function App() {
     return () => { cancelled = true; };
   }, [cloudApiKey, cloudAccount, setCloudAuth]);
 
-  const remoteAbortRef = useRef<AbortController | null>(null);
+  // Generation counter, not AbortController: each reloadRemote bumps the gen
+  // and, after every await, discards results whose gen no longer matches the
+  // latest. Avoids @tauri-apps/plugin-http's leaked unhandledrejection from
+  // its abort path (fetch_cancel against an already-consumed request rid
+  // rejects with "The resource id N is invalid"). The in-flight fetch still
+  // completes server-side; we just ignore its result.
+  const remoteGenRef = useRef(0);
   const reloadRemote = useCallback(async () => {
     if (!cloudOpen) return;
     const isOwnerView =
@@ -275,15 +281,14 @@ export default function App() {
     // If the auth handshake is still resolving, hold off on the owner-view
     // call so the public fallback doesn't overwrite the eventual result.
     if (cloudApiKey && !cloudAccount && isOwnerView) {
-      remoteAbortRef.current?.abort();
+      remoteGenRef.current += 1;
       setRemoteArtifacts([]);
       setRemoteLoading(true);
       return;
     }
     const effectiveFilter = cloudApiKey && cloudAccount ? remoteFilter : "public";
-    remoteAbortRef.current?.abort();
-    const ac = new AbortController();
-    remoteAbortRef.current = ac;
+    const myGen = ++remoteGenRef.current;
+    const isStale = () => myGen !== remoteGenRef.current;
     // Clear the previous filter's results immediately so the user sees a
     // Loading state instead of e.g. public skills bleeding into the Private
     // tab while /v1/account/skills is in flight.
@@ -294,58 +299,64 @@ export default function App() {
     setRemoteNextCursor(null);
     try {
       let data;
-      if (
-        (effectiveFilter === "all" ||
-          effectiveFilter === "private" ||
-          effectiveFilter === "shared") &&
+      const isShared = (s: { visibility?: string; active_share_count?: number | string }) =>
+        s.visibility === "public" ||
+        (typeof s.active_share_count === "number"
+          ? s.active_share_count > 0
+          : Number(s.active_share_count) > 0);
+      const q = remoteQuery.trim().toLowerCase();
+      const matchesQuery = (s: { name: string; description?: string | null }) =>
+        !q ||
+        s.name.toLowerCase().includes(q) ||
+        (s.description ?? "").toLowerCase().includes(q);
+
+      if (effectiveFilter === "all" && cloudApiKey) {
+        // "All" = private + shared (from /v1/account/skills) followed by top
+        // public results (from /v1/skills/search), ordered private → shared →
+        // public. The two endpoints can overlap on the user's own public
+        // skills, so dedupe by skill_id.
+        const [accountRes, publicRes] = await Promise.all([
+          listAccountSkills(cloudApiKey),
+          searchSkills({ q: remoteQuery || undefined, sort: remoteSort, limit: 20 }),
+        ]);
+        if (isStale()) return;
+        const account = accountRes.data.filter(matchesQuery);
+        const privateSkills = account.filter((s) => !isShared(s));
+        const sharedSkills = account.filter(isShared);
+        const seen = new Set(account.map((s) => s.skill_id));
+        const publicSkills = publicRes.data.filter((s) => !seen.has(s.skill_id));
+        data = [...privateSkills, ...sharedSkills, ...publicSkills];
+        const meta = publicRes.meta;
+        setRemoteHasMore(!!meta?.pagination?.has_more);
+        setRemoteNextCursor(meta?.pagination?.next_cursor ?? null);
+      } else if (
+        (effectiveFilter === "private" || effectiveFilter === "shared") &&
         cloudApiKey
       ) {
         // /v1/skills/search hides the user's private skills even when
         // authed; the owner-only listing comes from /v1/account/skills.
-        // "All" returns the unpartitioned response; Private vs Shared
-        // partitions it by visibility + active_share_count, mirroring the
-        // website's dashboard filter.
-        const res = await listAccountSkills(cloudApiKey, { signal: ac.signal });
-        data = res.data;
-        if (effectiveFilter !== "all") {
-          data = data.filter((s) => {
-            const sharedOut =
-              s.visibility === "public" ||
-              (typeof s.active_share_count === "number"
-                ? s.active_share_count > 0
-                : Number(s.active_share_count) > 0);
-            return effectiveFilter === "shared" ? sharedOut : !sharedOut;
-          });
-        }
-        const q = remoteQuery.trim().toLowerCase();
-        if (q) {
-          data = data.filter(
-            (s) =>
-              s.name.toLowerCase().includes(q) ||
-              (s.description ?? "").toLowerCase().includes(q),
-          );
-        }
+        // Private vs Shared partitions it by visibility + active_share_count,
+        // mirroring the website's dashboard filter.
+        const res = await listAccountSkills(cloudApiKey);
+        if (isStale()) return;
+        data = res.data.filter((s) => (effectiveFilter === "shared" ? isShared(s) : !isShared(s)));
+        data = data.filter(matchesQuery);
       } else {
-        const res = await searchSkills(
-          { q: remoteQuery || undefined, sort: remoteSort, limit: 20 },
-          { signal: ac.signal },
-        );
+        const res = await searchSkills({ q: remoteQuery || undefined, sort: remoteSort, limit: 20 });
+        if (isStale()) return;
         data = res.data;
-        if (!ac.signal.aborted) {
-          const meta = res.meta;
-          setRemoteHasMore(!!meta?.pagination?.has_more);
-          setRemoteNextCursor(meta?.pagination?.next_cursor ?? null);
-        }
+        const meta = res.meta;
+        setRemoteHasMore(!!meta?.pagination?.has_more);
+        setRemoteNextCursor(meta?.pagination?.next_cursor ?? null);
       }
-      if (ac.signal.aborted) return;
       setRemoteArtifacts(data.map(cloudSkillToArtifact));
     } catch (e) {
-      if (ac.signal.aborted || (e as Error)?.name === "AbortError") return;
+      if (isStale()) return;
       const msg = e instanceof SkillSafeError ? `${e.code}: ${e.message}` : String(e);
       setRemoteError(msg);
       setRemoteArtifacts([]);
     } finally {
-      if (remoteAbortRef.current === ac) setRemoteLoading(false);
+      if (!isStale()) setRemoteLoading(false);
     }
   }, [
     cloudOpen,
@@ -363,10 +374,11 @@ export default function App() {
 
   // Append the next page of public results when the user scrolls near the
   // bottom of the remote list. Private/Shared come back in one shot from
-  // /v1/account/skills so they have no "more" state.
+  // /v1/account/skills so they have no "more" state. "All" pages the public
+  // tail since the account skills are already fully loaded above it.
   const loadMoreRemote = useCallback(async () => {
     if (!remoteHasMore || !remoteNextCursor || remoteLoadingMore) return;
-    if (remoteFilter !== "public") return;
+    if (remoteFilter !== "public" && remoteFilter !== "all") return;
     setRemoteLoadingMore(true);
     try {
       const res = await searchSkills({
