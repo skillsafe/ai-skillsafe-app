@@ -147,6 +147,17 @@ export default function App() {
   const emitToast = useCallback((kind: "ok" | "error", text: string) => {
     setToast({ kind, text });
     if (kind === "ok") setTimeout(() => setToast(null), 3000);
+    // Mirror error toasts onto a CustomEvent so the dev-only ui-driver can
+    // capture user-visible failures into its error ring buffer. The
+    // listener is registered by inject.js, which is only loaded when
+    // UI_DRIVER=1; in production the event has no listener and is a no-op.
+    if (kind === "error" && import.meta.env.DEV) {
+      window.dispatchEvent(
+        new CustomEvent("skillsafe:driver-error", {
+          detail: { source: "toast", message: text },
+        }),
+      );
+    }
   }, []);
 
   const reload = useCallback(async () => {
