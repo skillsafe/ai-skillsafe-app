@@ -3,6 +3,7 @@ import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import { fetchAccount, runDeviceFlow } from "../lib/skillsafe/auth";
 import { SkillSafeError } from "../lib/skillsafe/client";
 import { useApp } from "../lib/store";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 interface Props {
   onToast: (kind: "ok" | "error", text: string) => void;
@@ -11,6 +12,7 @@ interface Props {
 export function AccountPanel({ onToast }: Props) {
   const { cloudApiKey, cloudAccount, setCloudAuth } = useApp();
   const [signingIn, setSigningIn] = useState(false);
+  const [confirmingSignOut, setConfirmingSignOut] = useState(false);
 
   async function handleSignIn() {
     setSigningIn(true);
@@ -38,6 +40,7 @@ export function AccountPanel({ onToast }: Props) {
 
   function handleLogout() {
     setCloudAuth(null, null);
+    setConfirmingSignOut(false);
     onToast("ok", "Signed out.");
   }
 
@@ -73,8 +76,28 @@ export function AccountPanel({ onToast }: Props) {
         <div className="cloud-static">{cloudAccount?.tier ?? "—"}</div>
       </div>
       <div className="dialog-row">
-        <button onClick={handleLogout}>Sign out</button>
+        <button onClick={() => setConfirmingSignOut(true)}>Sign out</button>
       </div>
+      {confirmingSignOut && (
+        <ConfirmDialog
+          title="Sign out of skillsafe.ai?"
+          message={
+            <>
+              <div>
+                You'll lose access to your private skills, share links, and
+                the ability to upload until you sign back in.
+              </div>
+              <div className="confirm-warning" style={{ marginTop: 8 }}>
+                Local skills on disk are unaffected.
+              </div>
+            </>
+          }
+          confirmLabel="Sign out"
+          danger
+          onConfirm={handleLogout}
+          onCancel={() => setConfirmingSignOut(false)}
+        />
+      )}
     </div>
   );
 }

@@ -270,7 +270,8 @@ export default function App() {
   const remoteAbortRef = useRef<AbortController | null>(null);
   const reloadRemote = useCallback(async () => {
     if (!cloudOpen) return;
-    const isOwnerView = remoteFilter === "private" || remoteFilter === "shared";
+    const isOwnerView =
+      remoteFilter === "all" || remoteFilter === "private" || remoteFilter === "shared";
     // If the auth handshake is still resolving, hold off on the owner-view
     // call so the public fallback doesn't overwrite the eventual result.
     if (cloudApiKey && !cloudAccount && isOwnerView) {
@@ -293,20 +294,29 @@ export default function App() {
     setRemoteNextCursor(null);
     try {
       let data;
-      if ((effectiveFilter === "private" || effectiveFilter === "shared") && cloudApiKey) {
+      if (
+        (effectiveFilter === "all" ||
+          effectiveFilter === "private" ||
+          effectiveFilter === "shared") &&
+        cloudApiKey
+      ) {
         // /v1/skills/search hides the user's private skills even when
         // authed; the owner-only listing comes from /v1/account/skills.
-        // Private vs Shared partitions that response by visibility +
-        // active_share_count, mirroring the website's dashboard filter.
+        // "All" returns the unpartitioned response; Private vs Shared
+        // partitions it by visibility + active_share_count, mirroring the
+        // website's dashboard filter.
         const res = await listAccountSkills(cloudApiKey, { signal: ac.signal });
-        data = res.data.filter((s) => {
-          const sharedOut =
-            s.visibility === "public" ||
-            (typeof s.active_share_count === "number"
-              ? s.active_share_count > 0
-              : Number(s.active_share_count) > 0);
-          return effectiveFilter === "shared" ? sharedOut : !sharedOut;
-        });
+        data = res.data;
+        if (effectiveFilter !== "all") {
+          data = data.filter((s) => {
+            const sharedOut =
+              s.visibility === "public" ||
+              (typeof s.active_share_count === "number"
+                ? s.active_share_count > 0
+                : Number(s.active_share_count) > 0);
+            return effectiveFilter === "shared" ? sharedOut : !sharedOut;
+          });
+        }
         const q = remoteQuery.trim().toLowerCase();
         if (q) {
           data = data.filter(

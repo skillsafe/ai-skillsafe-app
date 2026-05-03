@@ -62,7 +62,8 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
         {onToggleCloud && (
           <button
             className={`theme-toggle icon-btn ${cloudActive ? "active" : ""}`}
-            aria-label={cloudActive ? "Hide skillsafe.ai cloud panel" : "Show skillsafe.ai cloud panel"}
+            aria-label="skillsafe.ai cloud panel"
+            aria-pressed={cloudActive}
             title={cloudActive ? "Hide cloud panel" : "Show cloud panel"}
             onClick={onToggleCloud}
           >
@@ -72,7 +73,8 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
         {onToggleBackup && (
           <button
             className={`theme-toggle icon-btn ${backupActive ? "active" : ""}`}
-            aria-label={backupActive ? "Hide local backup panel" : "Show local backup panel"}
+            aria-label="Local backup panel"
+            aria-pressed={backupActive}
             title={backupActive ? "Hide local backup panel" : "Local Backup"}
             onClick={onToggleBackup}
           >
@@ -103,26 +105,32 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
       </select>
       {recentTools.length > 0 && (
         <>
-          <div className="section-label">Recent</div>
-          <div className="pill-row">
+          <div className="section-label" id="sidebar-recent-label">Recent</div>
+          <div className="pill-row" role="tablist" aria-labelledby="sidebar-recent-label">
             {recentTools.map((id) => (
-              <div
+              <button
                 key={id}
+                type="button"
+                role="tab"
+                aria-selected={tool === id}
                 className={`pill ${tool === id ? "active" : ""}`}
                 onClick={() => setTool(id)}
               >
                 {toolLabel(id)}
-              </div>
+              </button>
             ))}
           </div>
         </>
       )}
 
-      <div className="section-label">Scope</div>
-      <div className="pill-row">
+      <div className="section-label" id="sidebar-scope-label">Scope</div>
+      <div className="pill-row" role="tablist" aria-labelledby="sidebar-scope-label">
         {SCOPES.map((s) => (
-          <div
+          <button
             key={s.id}
+            type="button"
+            role="tab"
+            aria-selected={scope === s.id}
             className={`pill ${scope === s.id ? "active" : ""}`}
             onClick={() => {
               if (s.id === "project" && recentProjects.length === 0) pickProject();
@@ -130,20 +138,23 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
             }}
           >
             {s.label}
-          </div>
+          </button>
         ))}
       </div>
 
-      <div className="section-label">Type</div>
-      <div className="pill-row">
+      <div className="section-label" id="sidebar-type-label">Type</div>
+      <div className="pill-row" role="tablist" aria-labelledby="sidebar-type-label">
         {TYPES.map((t) => (
-          <div
+          <button
             key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={type === t.id}
             className={`pill ${type === t.id ? "active" : ""}`}
             onClick={() => setType(t.id)}
           >
             {t.label}
-          </div>
+          </button>
         ))}
       </div>
 
@@ -171,23 +182,29 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
             <option value="__add__">+ Add project…</option>
           </select>
           {recentProjects.length > 1 && (
-            <div className="pill-row">
-              <div
+            <div className="pill-row" role="tablist" aria-label="Filter by project">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={projectFilter === null}
                 className={`pill ${projectFilter === null ? "active" : ""}`}
                 onClick={() => setProjectFilter(null)}
                 title="Show artifacts from every project"
               >
                 All
-              </div>
+              </button>
               {recentProjects.slice(0, 3).map((p) => (
-                <div
+                <button
                   key={p}
+                  type="button"
+                  role="tab"
+                  aria-selected={projectFilter === p}
                   className={`pill ${projectFilter === p ? "active" : ""}`}
                   onClick={() => setProjectFilter(p)}
                   title={p}
                 >
                   {projectName(p)}
-                </div>
+                </button>
               ))}
             </div>
           )}

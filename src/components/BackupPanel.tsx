@@ -22,6 +22,7 @@ import {
 import type { ScheduleSpec } from "../lib/backup/generateScripts";
 import type { Tool } from "../lib/artifacts/types";
 import { FolderIcon } from "./icons";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 const ALL_TOOLS: ReadonlyArray<{ id: Tool; label: string }> = [
   { id: "claude", label: "Claude" },
@@ -73,6 +74,8 @@ export function BackupPanel({ onToast }: Props) {
   const [logTail, setLogTail] = useState<LogTail | null>(null);
   const [showLog, setShowLog] = useState(false);
   const [diag, setDiag] = useState<DiagnosticResult | null>(null);
+  const [confirmClearDest, setConfirmClearDest] = useState(false);
+  const [confirmUninstall, setConfirmUninstall] = useState(false);
 
   // Keep draft synced when persisted schedule changes (e.g. on first load).
   useEffect(() => {
@@ -436,7 +439,9 @@ export function BackupPanel({ onToast }: Props) {
         );
       }
     } catch (e) {
-      onToast("error", `Backup failed: ${e instanceof Error ? e.message : String(e)}`);
+      const raw = e instanceof Error ? e.message : String(e);
+      const friendly = friendlyBackupError(raw);
+      onToast("error", `Backup failed: ${friendly}`);
     } finally {
       setBackupBusy(false);
       setBackupProgress(null);
@@ -522,7 +527,7 @@ export function BackupPanel({ onToast }: Props) {
               </button>
               <button
                 className="link-btn"
-                onClick={() => setBackupDestination(null)}
+                onClick={() => setConfirmClearDest(true)}
                 title="Forget destination (does not delete files)"
               >
                 Clear
@@ -565,6 +570,13 @@ export function BackupPanel({ onToast }: Props) {
           className="primary"
           onClick={handleBackup}
           disabled={!backupDestination || backupBusy}
+          title={
+            !backupDestination
+              ? "Pick a backup folder above to enable backups"
+              : backupBusy
+                ? "Backup in progress…"
+                : "Run a one-time backup of the selected tools"
+          }
         >
           {backupBusy ? "Backing up…" : "Back up now"}
         </button>
@@ -766,7 +778,7 @@ export function BackupPanel({ onToast }: Props) {
                   </button>
                   <button
                     className="link-btn"
-                    onClick={handleScheduleUninstall}
+                    onClick={() => setConfirmUninstall(true)}
                     disabled={!!scheduleBusy}
                   >
                     {scheduleBusy === "uninstall" ? "Uninstalling…" : "Uninstall"}
@@ -784,7 +796,7 @@ export function BackupPanel({ onToast }: Props) {
                   </button>
                   <button
                     className="link-btn"
-                    onClick={handleScheduleUninstall}
+                    onClick={() => setConfirmUninstall(true)}
                     disabled={!!scheduleBusy}
                   >
                     {scheduleBusy === "uninstall" ? "Uninstalling…" : "Uninstall"}
@@ -1004,6 +1016,61 @@ export function BackupPanel({ onToast }: Props) {
         </>
       )}
 
+      {confirmClearDest && (
+        <ConfirmDialog
+          title="Forget backup folder?"
+          message={
+            <>
+              <div>
+                The path will be removed from settings, but your existing
+                backup files are not deleted:
+              </div>
+              <div className="confirm-target-path">{backupDestination}</div>
+              <div className="confirm-warning" style={{ marginTop: 8 }}>
+                Manual and scheduled backups will stop until you set a new
+                folder.
+              </div>
+            </>
+          }
+          confirmLabel="Forget folder"
+          danger
+          onConfirm={() => {
+            setBackupDestination(null);
+            setConfirmClearDest(false);
+          }}
+          onCancel={() => setConfirmClearDest(false)}
+        />
+      )}
+
+      {confirmUninstall && (
+        <ConfirmDialog
+          title="Uninstall daily backup?"
+          message={
+            <>
+              <div>
+                The launchd job <code>{SERVICE_LABEL}</code> will be stopped
+                and removed. Your backup folder and existing files are not
+                deleted.
+              </div>
+              <div className="confirm-warning" style={{ marginTop: 8 }}>
+                Backups will no longer run automatically until you reinstall
+                the schedule.
+              </div>
+            </>
+          }
+          confirmLabel="Uninstall"
+          danger
+          busy={scheduleBusy === "uninstall"}
+          onConfirm={() => {
+            setConfirmUninstall(false);
+            handleScheduleUninstall();
+          }}
+          onCancel={() => {
+            if (scheduleBusy === "uninstall") return;
+            setConfirmUninstall(false);
+          }}
+        />
+      )}
     </section>
   );
 }
@@ -1085,6 +1152,24 @@ function formatDiagnostics(d: DiagnosticResult): string {
 
 function describeErr(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+// Translate Tauri capability rejections into language a user can act on.
+// The raw form ("forbidden path: …, maybe it is not allowed on the scope
+// for `allow-exists` permission in your capability file") leaks framework
+// internals and offers no remediation.
+function friendlyBackupError(raw: string): string {
+  const m = /forbidden path:\s*([^,]+)/i.exec(raw);
+  if (m) {
+    const path = m[1].trim();
+    return (
+      `The backup folder ${path} is outside the locations the app is ` +
+      `allowed to write to. Move it to a folder under your home directory ` +
+      `or a synced cloud folder (OneDrive, Dropbox, iCloud Drive) and ` +
+      `pick it again via Change…`
+    );
+  }
+  return raw;
 }
 
 function detectPlatform(): BackupPlatform {

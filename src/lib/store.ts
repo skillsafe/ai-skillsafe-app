@@ -12,7 +12,7 @@ declare const __APP_VERSION__: string;
 
 export type Theme = "dark" | "light" | "system";
 export type ResolvedTheme = "dark" | "light";
-export type RemoteFilter = "private" | "shared" | "public";
+export type RemoteFilter = "all" | "private" | "shared" | "public";
 export type BottomPanel = "cloud" | "backup" | null;
 
 export interface ViewedFile {
@@ -218,10 +218,11 @@ function initialBackupTools(): Tool[] {
 
 function initialRemoteFilter(): RemoteFilter {
   const v = browser.localStorage?.getItem(REMOTE_FILTER_KEY);
-  // "mine" was the old label for the private+shared union — migrate it to
-  // private (the more common use of "skills only I can see").
-  if (v === "private" || v === "shared" || v === "public") return v;
-  return "private";
+  // "mine" was the old label for the private+shared union — now resurrected
+  // as "all" so users can see every skill they own in one list.
+  if (v === "mine") return "all";
+  if (v === "all" || v === "private" || v === "shared" || v === "public") return v;
+  return "all";
 }
 
 function initialAutoUpdate(): boolean {

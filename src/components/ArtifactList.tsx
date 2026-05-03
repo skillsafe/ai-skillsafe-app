@@ -73,8 +73,17 @@ export function ArtifactList({
           onChange={(e) => setQuery(e.target.value)}
         />
         <button onClick={onNew} title="Create artifact">+ New</button>
-        <button onClick={onConvert} disabled={!selectedId} title="Convert to other tool">→</button>
-        <button onClick={onReload} title="Reload">↻</button>
+        <button
+          onClick={onConvert}
+          disabled={!selectedId}
+          aria-label="Convert selected artifact to another tool"
+          title="Convert to other tool"
+        >
+          →
+        </button>
+        <button onClick={onReload} aria-label="Reload artifact list" title="Reload">
+          ↻
+        </button>
       </div>
       {filtered.length === 0 ? (
         <div className="empty">

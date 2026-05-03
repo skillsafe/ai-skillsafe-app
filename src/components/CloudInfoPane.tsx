@@ -49,29 +49,48 @@ export function CloudInfoPane({ onToast, onReload, onOpenActions }: Props) {
 
       {cloudApiKey && (
         <>
-          <div className="section-label">Filter</div>
-          <div className="pill-row">
-            <div
+          <div className="section-label" id="cloud-filter-label">Filter</div>
+          <div className="pill-row" role="tablist" aria-labelledby="cloud-filter-label">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={remoteFilter === "all"}
+              className={`pill ${remoteFilter === "all" ? "active" : ""}`}
+              onClick={() => setRemoteFilter("all")}
+              title="All your skills (private + shared)"
+            >
+              All
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={remoteFilter === "private"}
               className={`pill ${remoteFilter === "private" ? "active" : ""}`}
               onClick={() => setRemoteFilter("private")}
               title="Your skills that are not shared"
             >
               Private
-            </div>
-            <div
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={remoteFilter === "shared"}
               className={`pill ${remoteFilter === "shared" ? "active" : ""}`}
               onClick={() => setRemoteFilter("shared")}
               title="Your skills that are public or have active share links"
             >
               Shared
-            </div>
-            <div
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={remoteFilter === "public"}
               className={`pill ${remoteFilter === "public" ? "active" : ""}`}
               onClick={() => setRemoteFilter("public")}
               title="Browse the public catalog"
             >
               Public
-            </div>
+            </button>
           </div>
         </>
       )}
