@@ -1,17 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import Monaco from "@monaco-editor/react";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useApp } from "../lib/store";
 import { tauriFs, tauriJoiner, tauriPaths } from "../lib/tauriAdapters";
-import { runBackup } from "../lib/backup/runBackup";
 import { restoreFromBackup } from "../lib/backup/single";
 import {
   BACKUP_SUBDIR,
   MANIFEST_FILENAME,
   MANIFEST_VERSION,
   parseManifest,
-  summarize,
   toolBackupSubdir,
   type BackupEntry,
   type BackupManifest,
@@ -21,7 +18,7 @@ import { ALL_AGENTS, displayNameOf } from "../lib/agents/registry";
 import { resolveArtifactDir } from "../lib/paths";
 import { renderMarkdown } from "../lib/markdown";
 import { parseFrontmatter } from "../lib/frontmatter";
-import { ArchiveIcon, FolderIcon } from "./icons";
+import { ArchiveIcon } from "./icons";
 import { TreeView } from "./TreeView";
 import type { Attachment } from "../lib/artifacts/types";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -78,14 +75,26 @@ export function BackupBrowser({ onToast }: Props) {
     backupStats,
     backupBusy,
     backupProgress,
-    backupTools,
-    recentProjects,
     resolvedTheme,
-    setBackupDestination,
-    setBackupResult,
-    setBackupBusy,
-    setBackupProgress,
+    setShowSettings,
+    setSettingsScrollTarget,
   } = useApp();
+
+  function openBackupSettings() {
+    setSettingsScrollTarget("settings-backup");
+    setShowSettings(true);
+  }
+
+  // No backup folder configured → take the user straight to Settings →
+  // Local Backup instead of showing a placeholder/empty state. Fires once
+  // per missing-destination state; if the user closes Settings without
+  // picking a folder, they can still click the panel button to retry.
+  useEffect(() => {
+    if (!backupDestination) {
+      setSettingsScrollTarget("settings-backup");
+      setShowSettings(true);
+    }
+  }, [backupDestination, setSettingsScrollTarget, setShowSettings]);
   const [manifest, setManifest] = useState<BackupManifest | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -376,11 +385,6 @@ export function BackupBrowser({ onToast }: Props) {
     }
   }
 
-  async function pickDestination() {
-    const picked = await openDialog({ directory: true, multiple: false });
-    if (typeof picked === "string") setBackupDestination(picked);
-  }
-
   async function startRestore(item: BrowserItem) {
     const firstEntry = item.files[0]?.entry;
     if (!firstEntry || firstEntry.kind !== "artifact") return;
@@ -448,86 +452,10 @@ export function BackupBrowser({ onToast }: Props) {
     }
   }
 
-  async function browseBackupFolder() {
-    if (!backupStats?.backupRoot) {
-      onToast("error", "Run a backup first.");
-      return;
-    }
-    try {
-      await shellOpen(backupStats.backupRoot);
-    } catch (e) {
-      onToast("error", `Open failed: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
-
-  async function handleBackup() {
-    if (!backupDestination) {
-      onToast("error", "Pick a destination folder first.");
-      return;
-    }
-    setBackupBusy(true);
-    setBackupProgress({
-      phase: "starting",
-      filesProcessed: 0,
-      filesCopied: 0,
-      bytesProcessed: 0,
-      bytesCopied: 0,
-    });
-    let lastTick = 0;
-    type ProgressTick = {
-      phase: string;
-      filesProcessed: number;
-      filesCopied: number;
-      bytesProcessed: number;
-      bytesCopied: number;
-    };
-    let pending: ProgressTick | null = null;
-    function onProgress(p: ProgressTick) {
-      pending = p;
-      const now = Date.now();
-      if (now - lastTick < 50) return;
-      lastTick = now;
-      setBackupProgress(pending);
-    }
-    try {
-      const m = await runBackup({
-        fs: tauriFs,
-        paths: tauriPaths,
-        joiner: tauriJoiner,
-        destination: backupDestination,
-        tools: backupTools,
-        recentProjects,
-        onProgress,
-      });
-      if (pending) setBackupProgress(pending);
-      const stats = summarize(m);
-      setBackupResult(stats.generatedAt, stats);
-      const { added, changed, removed } = stats.counts;
-      if (m.errors.length > 0) {
-        onToast("error", `Backup finished with ${m.errors.length} error(s). +${added} ~${changed} -${removed}.`);
-      } else {
-        onToast("ok", `Backup complete: +${added} added, ~${changed} changed, -${removed} removed.`);
-      }
-    } catch (e) {
-      onToast("error", `Backup failed: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setBackupBusy(false);
-      setBackupProgress(null);
-    }
-  }
-
   // Empty states (mirror cloud panel's empty state styling).
-  if (!backupDestination) {
-    return (
-      <BackupEmpty>
-        <div className="backup-empty-title">No backup folder set yet.</div>
-        <div className="backup-empty-action">
-          Open <strong>Settings → Local Backup</strong>, choose a folder, then click{" "}
-          <strong>Back up now</strong>.
-        </div>
-      </BackupEmpty>
-    );
-  }
+  // No destination → useEffect above auto-opens Settings. Render an empty
+  // shell so the panel area isn't a flash of "set things up here" copy.
+  if (!backupDestination) return <BackupEmpty />;
   if (loading && !manifest) return <BackupEmpty>Loading backup manifest…</BackupEmpty>;
   if (!manifest) {
     return (
@@ -553,52 +481,19 @@ export function BackupBrowser({ onToast }: Props) {
           <div className="brand-title">Local Backup</div>
         </div>
 
-        {/* Backup folder card — same component as Settings → Local Backup so
-            the user can run / manage backups without leaving this view. */}
-        <div className={`backup-folder-card ${backupDestination ? "" : "empty"}`}>
-          <div className="backup-folder-icon" aria-hidden="true">
-            <FolderIcon size={18} />
-          </div>
-          <div className="backup-folder-text">
-            <div className="backup-folder-label">Backup folder</div>
-            {backupDestination ? (
-              <div className="backup-folder-path" title={backupDestination}>
-                {backupDestination}
-              </div>
-            ) : (
-              <div className="backup-folder-hint">
-                Pick a folder inside OneDrive / Dropbox / iCloud Drive to back up to.
-              </div>
-            )}
-          </div>
-          <div className="backup-folder-actions">
-            {backupDestination ? (
-              <>
-                <button className="link-btn" onClick={pickDestination} title="Pick a different folder">
-                  Change…
-                </button>
-                <button
-                  className="link-btn"
-                  onClick={browseBackupFolder}
-                  title="Open the backup folder in Finder/Explorer"
-                  disabled={!backupStats?.backupRoot}
-                >
-                  Open folder
-                </button>
-                <button
-                  className="link-btn"
-                  onClick={() => setBackupDestination(null)}
-                  title="Forget destination (does not delete files)"
-                >
-                  Clear
-                </button>
-              </>
-            ) : (
-              <button className="primary" onClick={pickDestination}>
-                Choose folder…
-              </button>
-            )}
-          </div>
+        <div className="settings-row" style={{ paddingLeft: 6 }}>
+          <button
+            className="primary"
+            onClick={openBackupSettings}
+            disabled={backupBusy}
+            title={
+              backupBusy
+                ? "Backup in progress…"
+                : "Pick which tools to back up and run the backup"
+            }
+          >
+            {backupBusy ? "Backing up…" : "Configure & back up…"}
+          </button>
         </div>
 
         <div className="section-label">Tools</div>
@@ -651,16 +546,6 @@ export function BackupBrowser({ onToast }: Props) {
               })}
             </>
           )}
-        </div>
-
-        <div className="settings-row" style={{ paddingLeft: 6 }}>
-          <button
-            className="primary"
-            onClick={handleBackup}
-            disabled={!backupDestination || backupBusy}
-          >
-            {backupBusy ? "Backing up…" : "Back up now"}
-          </button>
         </div>
 
         {backupBusy && backupProgress && (
@@ -927,7 +812,7 @@ export function BackupBrowser({ onToast }: Props) {
   );
 }
 
-function BackupEmpty({ children }: { children: React.ReactNode }) {
+function BackupEmpty({ children }: { children?: React.ReactNode }) {
   return <div className="backup-browser-empty">{children}</div>;
 }
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import { useApp } from "../lib/store";
@@ -35,10 +35,24 @@ export function SettingsDialog({ onClose, onToast }: Props) {
     setUpdateError,
     setUpdateReadyToInstall,
     setAvailableUpdate,
+    settingsScrollTarget,
+    setSettingsScrollTarget,
   } = useApp();
   const [signingIn, setSigningIn] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [restarting, setRestarting] = useState(false);
+
+  // Deep-link: callers can request a section to be scrolled into view
+  // (e.g. clicking "Configure & back up…" in the BackupBrowser).
+  useEffect(() => {
+    if (!settingsScrollTarget) return;
+    const id = settingsScrollTarget;
+    const r = requestAnimationFrame(() => {
+      document.getElementById(id)?.scrollIntoView({ block: "start", behavior: "smooth" });
+      setSettingsScrollTarget(null);
+    });
+    return () => cancelAnimationFrame(r);
+  }, [settingsScrollTarget, setSettingsScrollTarget]);
 
   async function handleCheckForUpdates() {
     setCheckingUpdate(true);
@@ -191,37 +205,14 @@ export function SettingsDialog({ onClose, onToast }: Props) {
             )}
           </section>
 
-          {/* Appearance */}
-          <section className="settings-section">
-            <div className="settings-section-title">Appearance</div>
-            <div className="segmented">
-              <button
-                className={`segmented-btn ${theme === "system" ? "active" : ""}`}
-                onClick={() => setTheme("system")}
-                title="Follow OS preference"
-              >
-                <MonitorIcon size={14} />
-                <span>System</span>
-              </button>
-              <button
-                className={`segmented-btn ${theme === "dark" ? "active" : ""}`}
-                onClick={() => setTheme("dark")}
-              >
-                <MoonIcon size={14} />
-                <span>Dark</span>
-              </button>
-              <button
-                className={`segmented-btn ${theme === "light" ? "active" : ""}`}
-                onClick={() => setTheme("light")}
-              >
-                <SunIcon size={14} />
-                <span>Light</span>
-              </button>
-            </div>
-          </section>
+          {/* Local Backup — surfaced near the top because it protects user data
+              and the bottom-row Backup panel deep-links here. */}
+          <div id="settings-backup">
+            <BackupPanel onToast={onToast} />
+          </div>
 
           {/* Projects */}
-          <section className="settings-section">
+          <section id="settings-projects" className="settings-section">
             <div className="settings-section-title-row">
               <div className="settings-section-title">Projects</div>
               <button className="link-btn" onClick={pickFolder}>+ Add project…</button>
@@ -266,25 +257,6 @@ export function SettingsDialog({ onClose, onToast }: Props) {
                 })}
               </ul>
             )}
-          </section>
-
-          {/* Layout */}
-          <section className="settings-section">
-            <div className="settings-section-title">Layout</div>
-            <div className="layout-reset-row">
-              <div className="layout-reset-text">
-                Reset the sidebar, artifact-list, and bottom-panel sizes to
-                their defaults.
-              </div>
-              <button
-                onClick={() => {
-                  resetLayout();
-                  onToast("ok", "Panel sizes reset to defaults.");
-                }}
-              >
-                Reset panel sizes
-              </button>
-            </div>
           </section>
 
           {/* About / Updates */}
@@ -363,8 +335,53 @@ export function SettingsDialog({ onClose, onToast }: Props) {
             )}
           </section>
 
-          {/* Backup */}
-          <BackupPanel onToast={onToast} />
+          {/* Appearance */}
+          <section className="settings-section">
+            <div className="settings-section-title">Appearance</div>
+            <div className="segmented">
+              <button
+                className={`segmented-btn ${theme === "system" ? "active" : ""}`}
+                onClick={() => setTheme("system")}
+                title="Follow OS preference"
+              >
+                <MonitorIcon size={14} />
+                <span>System</span>
+              </button>
+              <button
+                className={`segmented-btn ${theme === "dark" ? "active" : ""}`}
+                onClick={() => setTheme("dark")}
+              >
+                <MoonIcon size={14} />
+                <span>Dark</span>
+              </button>
+              <button
+                className={`segmented-btn ${theme === "light" ? "active" : ""}`}
+                onClick={() => setTheme("light")}
+              >
+                <SunIcon size={14} />
+                <span>Light</span>
+              </button>
+            </div>
+          </section>
+
+          {/* Layout */}
+          <section className="settings-section">
+            <div className="settings-section-title">Layout</div>
+            <div className="layout-reset-row">
+              <div className="layout-reset-text">
+                Reset the sidebar, artifact-list, and bottom-panel sizes to
+                their defaults.
+              </div>
+              <button
+                onClick={() => {
+                  resetLayout();
+                  onToast("ok", "Panel sizes reset to defaults.");
+                }}
+              >
+                Reset panel sizes
+              </button>
+            </div>
+          </section>
         </div>
       </div>
     </div>

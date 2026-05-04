@@ -38,7 +38,13 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
   const {
     tool, scope, type, recentTools, recentProjects, projectFilter, bottomPanel,
     setTool, setScope, setType, setProjectRoot, setProjectFilter,
+    setSettingsScrollTarget,
   } = useApp();
+
+  function manageProjects() {
+    setSettingsScrollTarget("settings-projects");
+    onOpenSettings?.();
+  }
   const cloudActive = bottomPanel === "cloud";
   const backupActive = bottomPanel === "backup";
   const toolLabel = (id: Tool) => TOOLS.find((t) => t.id === id)?.label ?? id;
@@ -207,7 +213,7 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
               ))}
             </div>
           )}
-          <button className="link-btn" onClick={onOpenSettings} style={{ alignSelf: "flex-start", marginTop: 6, marginLeft: 6 }}>
+          <button className="link-btn" onClick={manageProjects} style={{ alignSelf: "flex-start", marginTop: 6, marginLeft: 6 }}>
             Manage projects…
           </button>
         </>
@@ -218,7 +224,7 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
           <div className="projects-summary-text">
             {recentProjects.length} {recentProjects.length === 1 ? "project" : "projects"} loaded
           </div>
-          <button className="link-btn" onClick={onOpenSettings}>Manage projects…</button>
+          <button className="link-btn" onClick={manageProjects}>Manage projects…</button>
         </div>
       )}
 

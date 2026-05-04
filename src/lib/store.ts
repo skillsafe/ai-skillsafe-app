@@ -304,6 +304,8 @@ interface AppState {
 
   // Settings
   showSettings: boolean;
+  // When set, SettingsDialog scrolls this element id into view on mount and clears it.
+  settingsScrollTarget: string | null;
   defaultTool: Tool;
   defaultScope: Scope;
 
@@ -376,6 +378,7 @@ interface AppState {
   markRemoteInstalled: (id: string) => void;
 
   setShowSettings: (b: boolean) => void;
+  setSettingsScrollTarget: (id: string | null) => void;
   setDefaultTool: (t: Tool) => void;
   setDefaultScope: (s: Scope) => void;
 
@@ -443,6 +446,7 @@ export const useApp = create<AppState>((set) => ({
   installedRemoteIds: [],
 
   showSettings: false,
+  settingsScrollTarget: null,
   defaultTool: initialDefaultTool(),
   defaultScope: initialDefaultScope(),
 
@@ -611,6 +615,7 @@ export const useApp = create<AppState>((set) => ({
     ),
 
   setShowSettings: (showSettings) => set({ showSettings }),
+  setSettingsScrollTarget: (settingsScrollTarget) => set({ settingsScrollTarget }),
   setDefaultTool: (defaultTool) => {
     browser.localStorage?.setItem(DEFAULT_TOOL_KEY, defaultTool);
     set({ defaultTool });
