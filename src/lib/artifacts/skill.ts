@@ -1,5 +1,5 @@
 import type { FsAdapter } from "../fs";
-import { atomicWrite, ensureDir, safeReadDir, sha256Hex } from "../fs";
+import { atomicWrite, ensureDir, safeExists, safeReadDir, sha256Hex } from "../fs";
 import { parseFrontmatter, stringifyFrontmatter } from "../frontmatter";
 import type { Attachment, MarkdownArtifact, Scope, Tool } from "./types";
 
@@ -20,9 +20,16 @@ export async function listSkillBundles(
     if (!entry.isDirectory && !entry.isSymlink) continue;
     const bundleDir = await pj.join(rootDir, entry.name);
     const skillFile = await pj.join(bundleDir, "SKILL.md");
-    if (!(await fs.exists(skillFile))) continue;
-    const artifact = await loadSkillBundle(fs, pj, bundleDir, tool, scope);
-    out.push(artifact);
+    try {
+      if (!(await safeExists(fs, skillFile))) continue;
+      const artifact = await loadSkillBundle(fs, pj, bundleDir, tool, scope);
+      out.push(artifact);
+    } catch (err) {
+      // One bad bundle (frontmatter parse error, scope-blocked read,
+      // unreadable attachment) must not drop every later bundle in the same
+      // directory. Log so regressions are visible in DevTools.
+      console.warn(`[skill] skipped ${bundleDir}:`, err);
+    }
   }
   return out;
 }

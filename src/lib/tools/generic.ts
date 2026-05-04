@@ -1,5 +1,5 @@
 import type { FsAdapter } from "../fs";
-import { safeReadDir } from "../fs";
+import { safeExists, safeReadDir } from "../fs";
 import type { PathJoiner } from "../artifacts/skill";
 import { listSkillBundles } from "../artifacts/skill";
 import type { ListOptions, MarkdownArtifact, Tool } from "../artifacts/types";
@@ -76,7 +76,7 @@ async function scanSkillBundles(
       // hold a SKILL.md. If they don't, fall through to the nested scan
       // (Hermes' `<root>/<category>/<skill>/SKILL.md` layout).
       const childSkill = await pj.join(childDir, "SKILL.md");
-      if (await fs.exists(childSkill)) continue;
+      if (await safeExists(fs, childSkill)) continue;
     }
     for (const b of await listSkillBundles(fs, pj, childDir, tool, scope)) {
       if (b.bundleDir && seen.has(b.bundleDir)) continue;

@@ -19,8 +19,27 @@ export interface DirEntry {
 }
 
 export async function safeReadDir(fs: FsAdapter, dir: string): Promise<DirEntry[]> {
-  if (!(await fs.exists(dir))) return [];
-  return fs.readDir(dir);
+  // Treat any failure as "empty directory". Symlinks pointing outside the
+  // Tauri fs:scope allow list throw "forbidden path"; broken targets, denied
+  // ACLs, and races all throw too — none of which should kill a directory
+  // scan that's iterating other entries.
+  try {
+    if (!(await fs.exists(dir))) return [];
+    return await fs.readDir(dir);
+  } catch {
+    return [];
+  }
+}
+
+export async function safeExists(fs: FsAdapter, path: string): Promise<boolean> {
+  // exists() throws "forbidden path" when the target canonicalizes outside
+  // the fs:scope allow list (Tauri 2 plugin-fs behavior). Treat that as
+  // "doesn't exist" so probe checks don't propagate failures.
+  try {
+    return await fs.exists(path);
+  } catch {
+    return false;
+  }
 }
 
 export async function ensureDir(fs: FsAdapter, dir: string): Promise<void> {

@@ -196,7 +196,7 @@ export default function App() {
                   seen.add(key);
                   aggregated.push({ ...a, id: key });
                 }
-              } catch { /* skip unreadable project */ }
+              } catch (err) { console.warn("[reload] project listArtifacts failed:", err); }
             }
           } else {
             try {
@@ -208,7 +208,7 @@ export default function App() {
                 seen.add(a.id);
                 aggregated.push(a);
               }
-            } catch { /* skip */ }
+            } catch (err) { console.warn("[reload] listArtifacts failed:", { tool, scope: sc, type: ty }, err); }
           }
         }
       }

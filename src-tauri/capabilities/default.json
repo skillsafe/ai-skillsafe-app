@@ -25,6 +25,8 @@
         { "path": "$HOME/.codex/**" },
         { "path": "$HOME/.cursor" },
         { "path": "$HOME/.cursor/**" },
+        { "path": "$HOME/.agents" },
+        { "path": "$HOME/.agents/**" },
         { "path": "$HOME/.clinerules" },
         { "path": "$HOME/.clinerules/**" },
         { "path": "$HOME/Documents/Cline" },
