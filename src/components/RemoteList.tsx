@@ -139,10 +139,9 @@ export function RemoteList({ onToast, onAfterInstall, onLoadMore, onAfterMutatio
         ns,
         name: a.name,
         version,
-        // Inherit the sidebar's selected agent so the skill lands in that
-        // agent's skills dir (~/.cursor/skills, ~/.codex/skills, …) rather
-        // than always under Claude.
-        tool,
+        // The dialog defaults to the sidebar's selected agent but the user
+        // can override it inline before confirming.
+        tool: choice.tool,
         scope: choice.scope,
         projectRoot: choice.scope === "project" ? choice.projectRoot : undefined,
       });

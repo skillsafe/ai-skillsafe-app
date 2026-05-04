@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Tool } from "../lib/artifacts/types";
-import { displayNameOf, getAgentConfig } from "../lib/agents/registry";
+import { ALL_AGENTS, displayNameOf, getAgentConfig } from "../lib/agents/registry";
 import { tauriPaths } from "../lib/tauriAdapters";
 
 export interface InstallScopeChoice {
   scope: "global" | "project";
   projectRoot?: string;
+  tool: Tool;
 }
 
 interface Props {
   artifactName: string;
-  // Selected agent — drives where the skill is installed (e.g. cursor →
-  // ~/.cursor/skills, codex → ~/.codex/skills) and what path hint we show.
+  // Initial agent — defaults to the sidebar selection. The user can change
+  // it inside the dialog, which determines where the skill lands (e.g.
+  // cursor → ~/.cursor/skills, codex → ~/.codex/skills).
   tool: Tool;
   recentProjects: ReadonlyArray<string>;
   defaultScope: "global" | "project";
@@ -23,7 +25,7 @@ interface Props {
 
 export function InstallScopeDialog({
   artifactName,
-  tool,
+  tool: initialTool,
   recentProjects,
   defaultScope,
   defaultProjectRoot,
@@ -43,6 +45,7 @@ export function InstallScopeDialog({
     if (defaultProjectRoot && projects.includes(defaultProjectRoot)) return defaultProjectRoot;
     return projects[0] ?? "";
   });
+  const [tool, setTool] = useState<Tool>(initialTool);
 
   // Resolve the actual global skill dir for the selected tool, so the hint
   // shows e.g. "~/.cursor/skills/<name>" for Cursor or "~/.codex/skills/<name>"
@@ -80,9 +83,9 @@ export function InstallScopeDialog({
   function handleConfirm() {
     if (!canConfirm) return;
     if (scope === "global") {
-      onConfirm({ scope: "global" });
+      onConfirm({ scope: "global", tool });
     } else {
-      onConfirm({ scope: "project", projectRoot });
+      onConfirm({ scope: "project", projectRoot, tool });
     }
   }
 
@@ -90,9 +93,20 @@ export function InstallScopeDialog({
     <div className="dialog-backdrop" onClick={busy ? undefined : onCancel}>
       <div className="dialog" onClick={(e) => e.stopPropagation()}>
         <h3>Install {artifactName}</h3>
-        <p className="install-scope-tool">
-          Target tool: <strong>{displayNameOf(tool)}</strong>
-        </p>
+
+        <div className="fm-field">
+          <label className="fm-label" htmlFor="install-scope-tool-select">target tool</label>
+          <select
+            id="install-scope-tool-select"
+            value={tool}
+            onChange={(e) => setTool(e.target.value)}
+            disabled={busy}
+          >
+            {ALL_AGENTS.map((a) => (
+              <option key={a} value={a}>{displayNameOf(a)}</option>
+            ))}
+          </select>
+        </div>
 
         <div className="fm-field">
           <label className="fm-label">target</label>

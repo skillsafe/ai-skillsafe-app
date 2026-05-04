@@ -24,13 +24,18 @@ import { atomicWrite, ensureDir } from "./lib/fs";
 import { backupOneArtifact } from "./lib/backup/single";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { ResizeHandle } from "./components/ResizeHandle";
-import { searchSkills, listAccountSkills, SkillSafeError } from "./lib/skillsafe/client";
+import { searchSkills, listAccountSkills, getSkill, SkillSafeError } from "./lib/skillsafe/client";
 import { fetchAccount } from "./lib/skillsafe/auth";
 import { cloudSkillToArtifact } from "./lib/skillsafe/asArtifact";
+import { installSkill } from "./lib/skillsafe/install";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { UpdateDialog } from "./components/UpdateDialog";
 import * as updateRunner from "./lib/update/runner";
 import { createOrchestrator } from "./lib/update/orchestrator";
+import { InstallScopeDialog, type InstallScopeChoice } from "./components/InstallScopeDialog";
+import { parseDeepLink, type DeepLinkInstall } from "./lib/deepLink";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrent as getCurrentDeepLinks, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 
 export default function App() {
   const {
@@ -55,6 +60,7 @@ export default function App() {
     bottomPanel,
     toggleCloudOpen,
     setBottomPanel,
+    setTool,
     cloudApiKey,
     cloudAccount,
     setCloudAuth,
@@ -133,11 +139,69 @@ export default function App() {
       clearInterval(interval);
     };
   }, [orchestrator]);
+
+  // Deep-link entry: runtime URLs come via `onOpenUrl` (macOS native, all
+  // platforms), the Rust-side `deep-link://new-url` event (single-instance
+  // re-launch on Linux/Windows), and `getCurrent` (cold-start URL the OS
+  // launched us with). We accept all three so the install dialog opens
+  // regardless of how the user got here.
+  useEffect(() => {
+    let cancelled = false;
+    const handleUrl = (raw: string) => {
+      if (cancelled) return;
+      const parsed = parseDeepLink(raw);
+      if (!parsed) return;
+      if (parsed.tool) setTool(parsed.tool);
+      setBottomPanel("cloud");
+      setDeepLinkInstall(parsed);
+    };
+    const handleUrls = (urls: string[] | null | undefined) => {
+      if (!urls) return;
+      for (const u of urls) handleUrl(u);
+    };
+
+    const unlisteners: Array<() => void> = [];
+    (async () => {
+      try {
+        const current = await getCurrentDeepLinks();
+        handleUrls(current);
+      } catch (e) {
+        console.warn("[deep-link] getCurrent failed:", e);
+      }
+      try {
+        const off = await onOpenUrl((urls: string[]) => handleUrls(urls));
+        unlisteners.push(off);
+      } catch (e) {
+        console.warn("[deep-link] onOpenUrl failed:", e);
+      }
+      try {
+        const off = await listen<string[]>("deep-link://new-url", (e) => handleUrls(e.payload));
+        unlisteners.push(off);
+      } catch (e) {
+        console.warn("[deep-link] listen failed:", e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      for (const off of unlisteners) {
+        try { off(); } catch { /* ignore */ }
+      }
+    };
+  }, [setBottomPanel, setTool]);
   // Per-row action state.
   const [uploadPresetId, setUploadPresetId] = useState<string | undefined>(undefined);
   const [pendingDelete, setPendingDelete] = useState<MarkdownArtifact | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [backingUpId, setBackingUpId] = useState<string | null>(null);
+
+  // Deep-link install: when a `skillsafe://install?ns=…&name=…&version=…&tool=…`
+  // URL fires (cold-start, runtime, or via single-instance forwarding), we
+  // open the scope-picker dialog so the user confirms global vs. project
+  // before any files are written. This is the entry point used by the
+  // "Open in SkillSafe app" button on skillsafe.ai.
+  const [deepLinkInstall, setDeepLinkInstall] = useState<DeepLinkInstall | null>(null);
+  const [deepLinkBusy, setDeepLinkBusy] = useState(false);
 
   // emitToast must be stable across renders — RemoteEditor includes it in a
   // useEffect dep array, so a fresh closure every render would re-trigger
@@ -416,6 +480,53 @@ export default function App() {
     reloadRemote();
   }, [cloudOpen, remoteFilter, remoteSort, cloudAccount, reloadRemote]);
 
+  const confirmDeepLinkInstall = useCallback(
+    async (choice: InstallScopeChoice) => {
+      const intent = deepLinkInstall;
+      if (!intent) return;
+      setDeepLinkBusy(true);
+      try {
+        // Resolve the version: deep link may omit it ("install latest"),
+        // in which case we look it up via /v1/skills/<ns>/<name>.
+        let version = intent.version;
+        if (!version) {
+          const meta = await getSkill(intent.ns, intent.name, cloudApiKey);
+          version = meta.data.latest_version;
+          if (!version) {
+            throw new Error(`Skill ${intent.ns}/${intent.name} has no published version yet.`);
+          }
+        }
+        const result = await installSkill(tauriFs, tauriPaths, tauriJoiner, {
+          apiKey: cloudApiKey,
+          ns: intent.ns,
+          name: intent.name,
+          version,
+          tool: choice.tool,
+          scope: choice.scope,
+          projectRoot: choice.scope === "project" ? choice.projectRoot : undefined,
+        });
+        emitToast(
+          "ok",
+          `Installed ${intent.ns}/${intent.name}@${version} → ${result.targetDir}`,
+        );
+        setDeepLinkInstall(null);
+        await reload();
+        if (cloudOpen) await reloadRemote();
+      } catch (e) {
+        const msg =
+          e instanceof SkillSafeError
+            ? `${e.code}: ${e.message}`
+            : e instanceof Error
+              ? e.message
+              : String(e);
+        emitToast("error", `Install failed: ${msg}`);
+      } finally {
+        setDeepLinkBusy(false);
+      }
+    },
+    [deepLinkInstall, cloudApiKey, tool, emitToast, reload, reloadRemote, cloudOpen],
+  );
+
   useEffect(() => {
     if (!error) return;
     // Errors persist until dismissed so they can be read/copied for debugging.
@@ -679,6 +790,21 @@ export default function App() {
         <SettingsDialog
           onClose={() => setShowSettings(false)}
           onToast={emitToast}
+        />
+      )}
+      {deepLinkInstall && (
+        <InstallScopeDialog
+          artifactName={deepLinkInstall.name}
+          tool={deepLinkInstall.tool ?? tool}
+          recentProjects={recentProjects}
+          defaultScope={projectRoot ? "project" : "global"}
+          defaultProjectRoot={projectRoot ?? undefined}
+          busy={deepLinkBusy}
+          onConfirm={confirmDeepLinkInstall}
+          onCancel={() => {
+            if (deepLinkBusy) return;
+            setDeepLinkInstall(null);
+          }}
         />
       )}
       {toast && (
