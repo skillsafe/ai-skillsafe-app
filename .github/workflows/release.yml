@@ -126,7 +126,7 @@ jobs:
             - `*_amd64.deb` — `sudo apt install ./*.deb`
 
             ### Auto-updates
-            The app checks `https://app.skillsafe.ai/version.json` on launch and offers in-app updates verified against this release's `.sig` files. The `*.app.tar.gz`, `*.AppImage.tar.gz`, `*.msi.zip`, `*.nsis.zip` bundles plus their `.sig` files are for the updater — you do not need to download them manually.
+            The app fetches `latest.json` from this release on launch and verifies the downloaded bundle against the matching `.sig` file. The `*.app.tar.gz`, `*.AppImage.tar.gz`, `*.msi.zip`, `*.nsis.zip` bundles plus their `.sig` files are for the updater — you do not need to download them manually.
           files: |
             src-tauri/target/**/release/bundle/**/*.dmg
             src-tauri/target/**/release/bundle/**/*.AppImage
@@ -139,3 +139,29 @@ jobs:
             src-tauri/target/**/release/bundle/**/*.nsis.zip
             src-tauri/target/**/release/bundle/**/*.sig
           fail_on_unmatched_files: false
+
+  manifest:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate and upload latest.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          SCRIPT="$(pwd)/.github/scripts/make-latest-json.py"
+          WORK="$(mktemp -d)"
+          cp "$SCRIPT" "$WORK/make-latest-json.py"
+          cd "$WORK"
+          gh release download "$TAG" -R "$REPO" -p '*.sig'
+          python3 make-latest-json.py > latest.json
+          echo "--- latest.json ---"
+          cat latest.json
+          gh release upload "$TAG" latest.json -R "$REPO" --clobber

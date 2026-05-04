@@ -42,7 +42,10 @@
       "requireLiteralLeadingDot": false
     },
     "updater": {
-      "endpoints": ["https://app.skillsafe.ai/version.json"],
+      "endpoints": [
+        "https://github.com/skillsafe/ai-skillsafe-app/releases/latest/download/latest.json",
+        "https://app.skillsafe.ai/version.json"
+      ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQzOTc1NDQ1RDZBMzEzM0MKUldROEU2UFdSVlNYUTlQVkZ2Nk9uUjZaekQxZC95UC9PUG5wK0o4Rjd2dSt3TEtFOE1uTzlUUDcK"
     }
   },
