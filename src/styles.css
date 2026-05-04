@@ -60,7 +60,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 button.danger { background: var(--danger-bg); border-color: var(--danger-border); color: var(--warn); }
 
-input, textarea, select {
+input:not([type="radio"]):not([type="checkbox"]), textarea, select {
   background: var(--bg);
   color: var(--text);
   border: 1px solid var(--border);
@@ -69,7 +69,7 @@ input, textarea, select {
   font-size: 12px;
   width: 100%;
 }
-input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
+input:not([type="radio"]):not([type="checkbox"]):focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
 
 .app-root {
   display: flex;
