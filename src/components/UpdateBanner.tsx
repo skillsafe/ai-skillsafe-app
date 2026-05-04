@@ -6,7 +6,7 @@ interface Props {
 }
 
 // Floating bottom-left pill, shown only when an update has finished
-// downloading and is ready to install. 1-click "Install vX" + a × that
+// downloading and is ready to install. 1-click "Restart to update to vX" + a × that
 // persists the dismiss against that specific update version (so it stays
 // hidden across sessions until a newer version arrives). Download progress
 // is intentionally surfaced in Settings → About instead, to keep the main
@@ -33,10 +33,10 @@ export function UpdateBanner({ onRestartNow }: Props) {
       <button
         className="update-pill-action"
         onClick={onRestartNow}
-        title={`Install v${version} and restart now`}
+        title={`Restart to update to v${version}`}
       >
         <DownloadIcon size={14} />
-        <span className="update-pill-text">Install v{version}</span>
+        <span className="update-pill-text">Restart to update to v{version}</span>
       </button>
       <button
         className="update-pill-dismiss icon-btn"

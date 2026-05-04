@@ -908,13 +908,13 @@ function groupArtifactItems(
     let relInItem: string;
     if (e.type === "skill") {
       const bundle = rest[0] ?? "(unnamed)";
-      key = `skill::${e.scope}::${e.projectRoot ?? ""}::${bundle}`;
+      key = `skill::${e.tool ?? ""}::${e.scope}::${e.projectRoot ?? ""}::${bundle}`;
       label = bundle;
       // Path *within* the bundle is everything after the bundle name.
       relInItem = rest.slice(1).join("/") || rest[0] || "";
     } else {
       const fileName = rest.join("/") || "(unnamed)";
-      key = `${e.type}::${e.scope}::${e.projectRoot ?? ""}::${fileName}`;
+      key = `${e.type}::${e.tool ?? ""}::${e.scope}::${e.projectRoot ?? ""}::${fileName}`;
       label = fileName;
       relInItem = fileName; // single file
     }

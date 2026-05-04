@@ -561,7 +561,19 @@ export const useApp = create<AppState>((set) => ({
   },
   setRemoteQuery: (remoteQuery) => set({ remoteQuery }),
   setRemoteSort: (remoteSort) => set({ remoteSort }),
-  setRemoteArtifacts: (remoteArtifacts) => set({ remoteArtifacts }),
+  setRemoteArtifacts: (remoteArtifacts) => {
+    // Dedupe by id. Upstream paths (account+search merge, paged appends) can
+    // overlap when the same skill surfaces from two queries — keep the first
+    // occurrence so React keys stay unique.
+    const seen = new Set<string>();
+    const deduped: typeof remoteArtifacts = [];
+    for (const a of remoteArtifacts) {
+      if (seen.has(a.id)) continue;
+      seen.add(a.id);
+      deduped.push(a);
+    }
+    set({ remoteArtifacts: deduped });
+  },
   setRemoteSelectedId: (remoteSelectedId) => set({ remoteSelectedId, remoteViewedFile: null }),
   setRemoteLoading: (remoteLoading) => set({ remoteLoading }),
   setRemoteError: (remoteError) => set({ remoteError }),

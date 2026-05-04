@@ -115,7 +115,8 @@
       "allow": [
         { "name": "launchctl", "cmd": "launchctl", "args": true },
         { "name": "id", "cmd": "id", "args": true },
-        { "name": "plutil", "cmd": "plutil", "args": true }
+        { "name": "plutil", "cmd": "plutil", "args": true },
+        { "name": "bash", "cmd": "bash", "args": true }
       ]
     },
     {
@@ -123,7 +124,8 @@
       "allow": [
         { "name": "launchctl", "cmd": "launchctl", "args": true },
         { "name": "id", "cmd": "id", "args": true },
-        { "name": "plutil", "cmd": "plutil", "args": true }
+        { "name": "plutil", "cmd": "plutil", "args": true },
+        { "name": "bash", "cmd": "bash", "args": true }
       ]
     },
     "os:default",

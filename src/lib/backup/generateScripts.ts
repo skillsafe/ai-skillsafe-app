@@ -1,4 +1,5 @@
 import { atomicWrite, ensureDir, safeReadDir, type FsAdapter } from "../fs";
+import { agents, displayNameOf } from "../agents/registry";
 import {
   MACOS_PLIST,
   MACOS_SH,
@@ -29,6 +30,10 @@ export interface GenerateScriptsOptions {
   outDir: string;
   label?: string;
   schedule?: ScheduleSpec;
+  // Subset of agent registry keys to back up. Always emits a section per
+  // entry; if "claude" is included, also emits a section for the
+  // Claude Desktop config files.
+  tools?: string[];
 }
 
 export interface GeneratedFile {
@@ -89,6 +94,8 @@ async function generateMac(opts: PreparedOptions): Promise<GenerateScriptsResult
   const plistPath = await opts.joiner.join(opts.outDir, `${opts.label}.plist`);
   const readmePath = await opts.joiner.join(opts.outDir, "README.md");
   const schedule = opts.schedule ?? DEFAULT_SCHEDULE;
+  const tools = normalizeTools(opts.tools);
+  const sources = await resolveToolSources(opts, tools);
 
   const replacements = {
     HOME: opts.home,
@@ -97,6 +104,9 @@ async function generateMac(opts: PreparedOptions): Promise<GenerateScriptsResult
     SCRIPT_PATH: scriptPath,
     PLIST_PATH: plistPath,
     CALENDAR_INTERVAL: renderCalendarInterval(schedule),
+    N: String(sources.length),
+    TOOL_SECTIONS: renderBashSections(sources, opts.home),
+    TOOL_LIST_MD: renderToolListMd(sources, opts.home),
   };
 
   const sh = substitute(MACOS_SH, replacements);
@@ -114,6 +124,8 @@ async function generateWindows(opts: PreparedOptions): Promise<GenerateScriptsRe
   const scriptPath = await opts.joiner.join(opts.outDir, "claude_backup.ps1");
   const registerPath = await opts.joiner.join(opts.outDir, "register-task.ps1");
   const readmePath = await opts.joiner.join(opts.outDir, "README.md");
+  const tools = normalizeTools(opts.tools);
+  const sources = await resolveToolSources(opts, tools);
 
   const replacements = {
     HOME: opts.home,
@@ -121,6 +133,9 @@ async function generateWindows(opts: PreparedOptions): Promise<GenerateScriptsRe
     LABEL: opts.label,
     SCRIPT_PATH: scriptPath,
     REGISTER_SCRIPT_PATH: registerPath,
+    N: String(sources.length),
+    TOOL_SECTIONS: renderPwshSections(sources, opts.home),
+    TOOL_LIST_MD: renderToolListMd(sources, opts.home),
   };
 
   const ps1 = substitute(WINDOWS_PS1, replacements);
@@ -195,3 +210,194 @@ export function renderCalendarInterval(s: ScheduleSpec): string {
 function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, Math.floor(n)));
 }
+
+// Per-tool source spec used by the script renderers. One entry per tool the
+// user selected, plus an implicit "claude_desktop" row when "claude" is on.
+interface ToolSource {
+  // Destination subdir under the user's backup root (e.g. "claude").
+  destSubdir: string;
+  // Display label for the README + log lines.
+  label: string;
+  // Source directory to mirror, native-separator path. For special-cases
+  // (Claude Desktop), an empty source means "use kind-specific logic".
+  source: string;
+  // Tag selecting renderer behavior. "tree" = recursive rsync; "claude" =
+  // tree with the elaborate Claude Code exclude list; "claude_desktop" =
+  // copy a fixed pair of config files only.
+  kind: "tree" | "claude" | "claude_desktop";
+}
+
+function normalizeTools(tools: string[] | undefined): string[] {
+  const list = (tools && tools.length > 0 ? tools : ["claude"]).filter(
+    (t) => agents[t] !== undefined,
+  );
+  // Stable order so the script body is deterministic across runs.
+  return Array.from(new Set(list)).sort();
+}
+
+async function resolveToolSources(
+  opts: PreparedOptions,
+  tools: string[],
+): Promise<ToolSource[]> {
+  const deps = {
+    homeDir: () => Promise.resolve(opts.home),
+    join: (...parts: string[]) => opts.joiner.join(...parts),
+  };
+  const out: ToolSource[] = [];
+  for (const tool of tools) {
+    const cfg = agents[tool];
+    if (!cfg) continue;
+    // Each agent's globalSkillsDir ends in `/skills`. The tool's "config root"
+    // is the parent of that — back up the whole config dir so per-agent state
+    // (history, plugins, settings, …) comes along, not just the skills tree.
+    const skillsDir = await cfg.globalSkillsDir(deps);
+    const source = parentDir(skillsDir);
+    out.push({
+      destSubdir: tool,
+      label: cfg.displayName,
+      source,
+      kind: tool === "claude" ? "claude" : "tree",
+    });
+  }
+  // Claude Desktop config files travel alongside Claude Code — same vendor,
+  // small, trivial to back up. Implicit when "claude" is selected.
+  if (tools.includes("claude")) {
+    out.push({
+      destSubdir: "claude_desktop",
+      label: "Claude Desktop config",
+      source: "",
+      kind: "claude_desktop",
+    });
+  }
+  return out;
+}
+
+function parentDir(path: string): string {
+  const trimmed = path.replace(/[\\/]+$/, "");
+  const idx = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  if (idx < 0) return trimmed;
+  return trimmed.slice(0, idx);
+}
+
+const CLAUDE_RSYNC_EXCLUDES = [
+  ".DS_Store",
+  "cache/",
+  "debug/",
+  "session-env/",
+  "shell-snapshots/",
+  "telemetry/",
+  "usage-data/",
+  "statsig/",
+  "downloads/",
+  "paste-cache/",
+  "ide/",
+  "channels/",
+  "plugins/cache/",
+  "mcp-needs-auth-cache.json",
+  "policy-limits.json",
+  "stats-cache.json",
+  "projects/-Users-*-Library-CloudStorage-*",
+];
+
+function renderBashSections(sources: ToolSource[], home: string): string {
+  if (sources.length === 0) return 'log "No tools selected — nothing to back up."';
+  return sources.map((s) => renderBashSection(s, home)).join("\n\n");
+}
+
+function renderBashSection(s: ToolSource, home: string): string {
+  if (s.kind === "claude_desktop") {
+    const cfg1 = `${home}/Library/Application Support/Claude/claude_desktop_config.json`;
+    const cfg2 = `${home}/Library/Application Support/Claude/config.json`;
+    return [
+      `STEP=$((STEP+1))`,
+      `mkdir -p "$MIRROR/${s.destSubdir}"`,
+      `log "[$STEP/$N] Sync ${s.label} ..."`,
+      `RC=0`,
+      `if [ -f "${cfg1}" ]; then`,
+      `  rsync -a "${cfg1}" "$MIRROR/${s.destSubdir}/" || RC=$?`,
+      `fi`,
+      `if [ -f "${cfg2}" ]; then`,
+      `  rsync -a "${cfg2}" "$MIRROR/${s.destSubdir}/" || RC=$?`,
+      `fi`,
+      `[ $RC -eq 0 ] && log "[$STEP/$N] OK" || { log "[$STEP/$N] FAILED"; FAILURES=$((FAILURES+1)); }`,
+    ].join("\n");
+  }
+  const excludes = s.kind === "claude" ? CLAUDE_RSYNC_EXCLUDES : [".DS_Store"];
+  const excludeFlags = excludes.map((e) => `  --exclude='${e}' \\`).join("\n");
+  return [
+    `STEP=$((STEP+1))`,
+    `mkdir -p "$MIRROR/${s.destSubdir}"`,
+    `log "[$STEP/$N] Sync ${s.label} (${s.source}/) ..."`,
+    `if [ -d "${s.source}" ]; then`,
+    `  rsync -a --delete \\`,
+    excludeFlags,
+    `  "${s.source}/" "$MIRROR/${s.destSubdir}/"`,
+    `  [ $? -eq 0 ] && log "[$STEP/$N] OK ($(du -sh "$MIRROR/${s.destSubdir}" 2>/dev/null | cut -f1))" || { log "[$STEP/$N] FAILED"; FAILURES=$((FAILURES+1)); }`,
+    `else`,
+    `  log "[$STEP/$N] skipped (source missing: ${s.source})"`,
+    `fi`,
+  ].join("\n");
+}
+
+function renderPwshSections(sources: ToolSource[], home: string): string {
+  if (sources.length === 0) return 'Write-Log "No tools selected — nothing to back up."';
+  return sources.map((s) => renderPwshSection(s, home)).join("\n\n");
+}
+
+function renderPwshSection(s: ToolSource, _home: string): string {
+  if (s.kind === "claude_desktop") {
+    return [
+      `$Step++`,
+      `Write-Log "[$Step/$N] Sync ${s.label} ..."`,
+      `New-Item -ItemType Directory -Force -Path "$Mirror\\${s.destSubdir}" | Out-Null`,
+      `$cfg = "$env:APPDATA\\Claude\\claude_desktop_config.json"`,
+      `if (Test-Path $cfg) { Copy-Item $cfg "$Mirror\\${s.destSubdir}\\" -Force; Write-Log "[$Step/$N] OK" }`,
+      `else { Write-Log "[$Step/$N] skipped (no config)" }`,
+    ].join("\n");
+  }
+  const winSrc = toWindowsPath(s.source);
+  const excludeFlag =
+    s.kind === "claude"
+      ? `$excludeDirs = @("cache","debug","session-env","shell-snapshots","telemetry","usage-data","statsig","downloads","paste-cache","ide","channels"); $excludeFiles = @("mcp-needs-auth-cache.json","policy-limits.json","stats-cache.json"); `
+      : `$excludeDirs = @(); $excludeFiles = @(); `;
+  return [
+    `$Step++`,
+    `Write-Log "[$Step/$N] Sync ${s.label} (${winSrc}) ..."`,
+    `New-Item -ItemType Directory -Force -Path "$Mirror\\${s.destSubdir}" | Out-Null`,
+    `$src = "${winSrc}"`,
+    `if (Test-Path $src) {`,
+    `  ${excludeFlag}`,
+    `  & robocopy $src "$Mirror\\${s.destSubdir}" /MIR /R:2 /W:5 /NFL /NDL /NP /XD $excludeDirs /XF $excludeFiles | Out-Null`,
+    `  if ($LASTEXITCODE -lt 8) { Write-Log "[$Step/$N] OK" } else { Write-Log "[$Step/$N] FAILED ($LASTEXITCODE)"; $failures++ }`,
+    `} else { Write-Log "[$Step/$N] skipped (source missing: $src)" }`,
+  ].join("\n");
+}
+
+function toWindowsPath(p: string): string {
+  // Source paths are computed via the renderer's joiner, which on Windows
+  // already produces backslashes. On macOS we generate the .ps1 with our
+  // POSIX joiner — convert here so the script is correct when copied across.
+  return p.replace(/\//g, "\\");
+}
+
+function renderToolListMd(sources: ToolSource[], home: string): string {
+  if (sources.length === 0) return "- (none — pick at least one tool in Settings → Backup)";
+  return sources
+    .map((s) => {
+      if (s.kind === "claude_desktop") {
+        return `- ${s.label} (${home}/Library/Application Support/Claude/{claude_desktop_config,config}.json)`;
+      }
+      return `- ${s.label} (${s.source}/)`;
+    })
+    .join("\n");
+}
+
+// Visible to tests so they can verify per-tool section output without going
+// through the full file-write flow.
+export const __testing = {
+  normalizeTools,
+  resolveToolSources,
+  renderBashSections,
+  renderPwshSections,
+  parentDir,
+};

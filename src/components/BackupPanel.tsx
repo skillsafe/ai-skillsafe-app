@@ -1,12 +1,10 @@
 import { useEffect, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { open as shellOpen } from "@tauri-apps/plugin-shell";
+import { Command, open as shellOpen } from "@tauri-apps/plugin-shell";
 import { type as osType } from "@tauri-apps/plugin-os";
 import { useApp } from "../lib/store";
 import { tauriFs, tauriJoiner, tauriPaths } from "../lib/tauriAdapters";
-import { runBackup } from "../lib/backup/runBackup";
 import { generateScripts, type BackupPlatform } from "../lib/backup/generateScripts";
-import { summarize } from "../lib/backup/manifest";
 import {
   SERVICE_LABEL,
   diagnose as diagnoseSchedule,
@@ -45,7 +43,6 @@ export function BackupPanel({ onToast }: Props) {
     backupProgress,
     backupTools,
     backupSchedule,
-    recentProjects,
     setBackupDestination,
     setBackupResult,
     setBackupBusy,
@@ -57,7 +54,8 @@ export function BackupPanel({ onToast }: Props) {
   function toggleTool(t: Tool) {
     if (backupTools.includes(t)) {
       const next = backupTools.filter((x) => x !== t);
-      setBackupTools(next.length === 0 ? ["claude"] : next);
+      // Allow zero tools — the script will no-op and log "nothing to back up".
+      setBackupTools(next);
     } else {
       setBackupTools([...backupTools, t]);
     }
@@ -84,6 +82,18 @@ export function BackupPanel({ onToast }: Props) {
   useEffect(() => {
     setPlatform(detectPlatform());
   }, []);
+
+  // When the user changes the tool selection (or destination), refresh the
+  // on-disk script so the next scheduled run picks up the new selection
+  // without requiring the user to click "Back up now" or re-install. Best-
+  // effort — silent on error, since the toast for "no destination yet" is
+  // already surfaced when the user tries to actually run a backup.
+  useEffect(() => {
+    if (!backupDestination) return;
+    if (platform !== "macos") return;
+    ensureLocalGenerated().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backupTools, backupDestination, backupSchedule, platform]);
 
   async function probeStatus() {
     const home = await tauriPaths.homeDir();
@@ -204,6 +214,7 @@ export function BackupPanel({ onToast }: Props) {
       destination: backupDestination,
       outDir: localOutDir,
       schedule,
+      tools: backupTools,
     });
     const scriptPath = await tauriJoiner.join(localOutDir, "claude_backup.sh");
     const plistPath = await tauriJoiner.join(localOutDir, `${SERVICE_LABEL}.plist`);
@@ -386,61 +397,42 @@ export function BackupPanel({ onToast }: Props) {
     }
     setBackupBusy(true);
     setBackupProgress({
-      phase: "starting",
+      phase: "running script",
       filesProcessed: 0,
       filesCopied: 0,
       bytesProcessed: 0,
       bytesCopied: 0,
     });
-    // Throttle progress updates: runBackup fires per file, which can be
-    // thousands per second. Re-rendering React that often is wasteful — coalesce
-    // to ~20 fps via a trailing rAF-style microtask.
-    let lastTick = 0;
-    type ProgressTick = {
-      phase: string;
-      filesProcessed: number;
-      filesCopied: number;
-      bytesProcessed: number;
-      bytesCopied: number;
-    };
-    let pending: ProgressTick | null = null;
-    function onProgress(p: ProgressTick) {
-      pending = p;
-      const now = Date.now();
-      if (now - lastTick < 50) return;
-      lastTick = now;
-      setBackupProgress(pending);
-    }
     try {
-      const manifest = await runBackup({
-        fs: tauriFs,
-        paths: tauriPaths,
-        joiner: tauriJoiner,
-        destination: backupDestination,
-        tools: backupTools,
-        recentProjects,
-        onProgress,
+      // Always regenerate first so the script reflects the current destination
+      // and schedule. Then exec the same script launchd would have run, so
+      // manual + scheduled paths share one implementation.
+      const { scriptPath } = await ensureLocalGenerated();
+      const out = await Command.create("bash", [scriptPath]).execute();
+      // Script exit codes: 0 = clean, 2 = ran with non-fatal failures (logged),
+      // anything else = fatal (e.g. destination missing).
+      if (out.code !== 0 && out.code !== 2) {
+        throw new Error(out.stderr || out.stdout || `exit code ${out.code}`);
+      }
+      const generatedAt = Date.now();
+      setBackupResult(generatedAt, {
+        generatedAt,
+        counts: { added: 0, changed: 0, removed: 0, unchanged: 0 },
+        totalBytes: 0,
+        errorCount: 0,
+        errorSamples: [],
+        recentChanges: [],
+        backupRoot: backupDestination,
       });
-      // Flush any final pending state.
-      if (pending) setBackupProgress(pending);
-      const stats = summarize(manifest);
-      setBackupResult(stats.generatedAt, stats);
-      const { added, changed, removed } = stats.counts;
-      if (manifest.errors.length > 0) {
-        onToast(
-          "error",
-          `Backup finished with ${manifest.errors.length} error(s). +${added} ~${changed} -${removed}.`,
-        );
+      refreshLog();
+      if (out.code === 2) {
+        onToast("error", "Backup completed with errors. Check the log.");
       } else {
-        onToast(
-          "ok",
-          `Backup complete: +${added} added, ~${changed} changed, -${removed} removed.`,
-        );
+        onToast("ok", "Backup complete.");
       }
     } catch (e) {
       const raw = e instanceof Error ? e.message : String(e);
-      const friendly = friendlyBackupError(raw);
-      onToast("error", `Backup failed: ${friendly}`);
+      onToast("error", `Backup failed: ${friendlyBackupError(raw)}`);
     } finally {
       setBackupBusy(false);
       setBackupProgress(null);
@@ -476,6 +468,7 @@ export function BackupPanel({ onToast }: Props) {
         home,
         destination: backupDestination,
         outDir,
+        tools: backupTools,
       });
       onToast("ok", `Generated ${result.files.length} files in ${outDir}`);
       shellOpen(outDir).catch(() => {});
