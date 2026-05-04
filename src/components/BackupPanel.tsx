@@ -21,17 +21,16 @@ import {
 } from "../lib/backup/scheduler";
 import type { ScheduleSpec } from "../lib/backup/generateScripts";
 import type { Tool } from "../lib/artifacts/types";
+import { ALL_AGENTS, displayNameOf } from "../lib/agents/registry";
 import { FolderIcon } from "./icons";
 import { ConfirmDialog } from "./ConfirmDialog";
 
-const ALL_TOOLS: ReadonlyArray<{ id: Tool; label: string }> = [
-  { id: "claude", label: "Claude" },
-  { id: "codex", label: "Codex" },
-  { id: "cursor", label: "Cursor" },
-  { id: "openclaw", label: "OpenClaw" },
-  { id: "cline", label: "Cline" },
-  { id: "hermes", label: "Hermes" },
-];
+// Drawn from the registry so a new entry in src/lib/agents/registry.ts
+// appears here automatically. Sorted alphabetically by display name to keep
+// the picker scannable as the list crosses ~50 entries.
+const ALL_TOOLS: ReadonlyArray<{ id: Tool; label: string }> = ALL_AGENTS
+  .map((id) => ({ id, label: displayNameOf(id) }))
+  .sort((a, b) => a.label.localeCompare(b.label));
 
 interface Props {
   onToast: (kind: "ok" | "error", text: string) => void;

@@ -1,4 +1,9 @@
-export type Tool = "claude" | "codex" | "cursor" | "openclaw" | "cline" | "hermes";
+// Tool keys come from the registry in ../agents/registry.ts, which mirrors
+// vercel-labs/skills' agents.ts. `Tool` is therefore "every agent npx skills
+// supports" (plus our custom hermes entry). `string` here, not the strict
+// keyof, because the union is large and the registry is the runtime source
+// of truth — guards live in ../agents/registry.ts (isKnownAgent).
+export type Tool = string;
 // "all" is a UI-only sentinel that aggregates the concrete scopes; the lib
 // itself never receives it (App.tsx fans it out into individual calls).
 export type Scope = "global" | "project" | "lockfile" | "all";

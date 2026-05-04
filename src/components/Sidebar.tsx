@@ -1,16 +1,15 @@
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import type { ArtifactType, Scope, Tool } from "../lib/artifacts/types";
+import { ALL_AGENTS, displayNameOf } from "../lib/agents/registry";
 import { useApp } from "../lib/store";
 import { ArchiveIcon, GearIcon, GlobeIcon, ShieldIcon } from "./icons";
 
-const TOOLS: { id: Tool; label: string }[] = [
-  { id: "claude", label: "Claude" },
-  { id: "codex", label: "Codex" },
-  { id: "cursor", label: "Cursor" },
-  { id: "openclaw", label: "OpenClaw" },
-  { id: "cline", label: "Cline" },
-  { id: "hermes", label: "Hermes" },
-];
+// Sourced from the registry so adding an agent in src/lib/agents/registry.ts
+// (mirroring vercel-labs/skills) automatically shows up here. Sorted by
+// display name for the dropdown's UX.
+const TOOLS: { id: Tool; label: string }[] = ALL_AGENTS
+  .map((id) => ({ id, label: displayNameOf(id) }))
+  .sort((a, b) => a.label.localeCompare(b.label));
 
 // Lockfile scope used to live here — it loaded the same artifacts as
 // `project` but also surfaced drift badges from skills-lock.json. Hidden from

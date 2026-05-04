@@ -719,15 +719,20 @@ async function targetDir(
   type: Exclude<ArtifactType, "all">,
   projectRoot: string | null,
 ): Promise<string> {
+  // Claude is the one tool whose project-scope skill writes still go under
+  // .agents/skills (the cross-tool universal location), not .claude/skills,
+  // to match how `npx skills add claude-code …` lays things out alongside
+  // every other agent that shares the universal location. Everything else
+  // (skill/agent/command) routes through the registry-driven resolver.
   if (tool === "claude" && scope === "project" && projectRoot) {
     const sub = type === "skill" ? "skills" : type === "agent" ? "agents" : "commands";
     return tauriJoiner.join(projectRoot, ".agents", sub);
   }
-  if (tool === "openclaw" && scope === "project" && projectRoot) {
-    return tauriJoiner.join(projectRoot, "skills");
-  }
-  if (tool === "hermes" && scope === "project" && projectRoot) {
-    return tauriJoiner.join(projectRoot, ".hermes", "skills");
-  }
-  return resolveArtifactDir(tauriPaths, tool, scope === "lockfile" ? "project" : scope, type, projectRoot ?? undefined);
+  return resolveArtifactDir(
+    tauriPaths,
+    tool,
+    scope === "lockfile" ? "project" : scope,
+    type,
+    projectRoot ?? undefined,
+  );
 }

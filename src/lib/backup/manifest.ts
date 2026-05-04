@@ -75,7 +75,7 @@ export function emptyCounts(): BackupCounts {
   return { added: 0, changed: 0, removed: 0, unchanged: 0 };
 }
 
-function deriveBackupRoot(destination: string): string {
+export function deriveBackupRoot(destination: string): string {
   // The destination is now the backup root directly (no skillsafe-backup
   // wrapper). Older manifests may have appended the wrapper — strip it for
   // backward-compat so the UI's "Browse backup folder" button still works.

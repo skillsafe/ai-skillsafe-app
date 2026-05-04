@@ -17,6 +17,7 @@ import {
   type BackupManifest,
 } from "../lib/backup/manifest";
 import type { ArtifactType, Scope, Tool } from "../lib/artifacts/types";
+import { ALL_AGENTS, displayNameOf } from "../lib/agents/registry";
 import { resolveArtifactDir } from "../lib/paths";
 import { renderMarkdown } from "../lib/markdown";
 import { parseFrontmatter } from "../lib/frontmatter";
@@ -25,14 +26,9 @@ import { TreeView } from "./TreeView";
 import type { Attachment } from "../lib/artifacts/types";
 import { ConfirmDialog } from "./ConfirmDialog";
 
-const ALL_TOOLS: ReadonlyArray<{ id: Tool; label: string }> = [
-  { id: "claude", label: "Claude" },
-  { id: "codex", label: "Codex" },
-  { id: "cursor", label: "Cursor" },
-  { id: "openclaw", label: "OpenClaw" },
-  { id: "cline", label: "Cline" },
-  { id: "hermes", label: "Hermes" },
-];
+const ALL_TOOLS: ReadonlyArray<{ id: Tool; label: string }> = ALL_AGENTS
+  .map((id) => ({ id, label: displayNameOf(id) }))
+  .sort((a, b) => a.label.localeCompare(b.label));
 
 type Group = "skill" | "agent" | "command" | "history";
 type ScopeFilter = "all" | "global" | "project";
@@ -43,7 +39,6 @@ const GROUP_LABEL: Record<Group, string> = {
   command: "Commands",
   history: "History",
 };
-const SCOPED_GROUPS: ReadonlyArray<Group> = ["skill", "agent", "command"];
 
 interface BrowserFile {
   entry: BackupEntry;
@@ -90,7 +85,6 @@ export function BackupBrowser({ onToast }: Props) {
     setBackupResult,
     setBackupBusy,
     setBackupProgress,
-    setBackupTools,
   } = useApp();
   const [manifest, setManifest] = useState<BackupManifest | null>(null);
   const [loading, setLoading] = useState(false);
@@ -102,8 +96,8 @@ export function BackupBrowser({ onToast }: Props) {
   const [restoreTargetDir, setRestoreTargetDir] = useState<string>("");
   const [restoreTargetExists, setRestoreTargetExists] = useState(false);
   const [restoreBusy, setRestoreBusy] = useState(false);
-  const [selectedTool, setSelectedTool] = useState<Tool>("claude");
-  const [group, setGroup] = useState<Group>("skill");
+  const [selectedTool, setSelectedTool] = useState<Tool | "all">("all");
+  const [group, setGroup] = useState<Group | "all">("all");
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("all");
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<BackupEntry | null>(null);
@@ -185,17 +179,33 @@ export function BackupBrowser({ onToast }: Props) {
 
   const toolCounts = useMemo(() => countArtifactsByTool(manifest), [manifest]);
 
-  // For the currently-selected tool, which groups exist? (skill/agent/command
-  // come from artifact entries; history maps to claude/projects entries.)
+  // Tool pills only render when the user has actually backed something up for
+  // that tool. The "All" pill is always available so the user can browse
+  // across tools.
+  const visibleTools = useMemo(
+    () => ALL_TOOLS.filter((t) => (toolCounts[t.id] ?? 0) > 0),
+    [toolCounts],
+  );
+  const totalToolItems = useMemo(
+    () => visibleTools.reduce((n, t) => n + (toolCounts[t.id] ?? 0), 0),
+    [visibleTools, toolCounts],
+  );
+
+  // For the currently-selected tool (or "all"), which groups exist?
+  // (skill/agent/command come from artifact entries; history maps to
+  // claude/projects entries — included only when the tool filter
+  // includes claude.)
   const groupCounts = useMemo(() => {
     const acc: Partial<Record<Group, number>> = {};
     if (!manifest) return acc;
+    const includeClaude = selectedTool === "all" || selectedTool === "claude";
     for (const e of manifest.entries) {
-      if (e.kind === "project" && selectedTool === "claude") {
-        acc.history = (acc.history ?? 0) + 1;
+      if (e.kind === "project") {
+        if (includeClaude) acc.history = (acc.history ?? 0) + 1;
         continue;
       }
-      if (e.kind !== "artifact" || e.tool !== selectedTool) continue;
+      if (e.kind !== "artifact") continue;
+      if (selectedTool !== "all" && e.tool !== selectedTool) continue;
       const g = e.type as Group | undefined;
       if (g === "skill" || g === "agent" || g === "command") {
         acc[g] = (acc[g] ?? 0) + 1;
@@ -204,12 +214,25 @@ export function BackupBrowser({ onToast }: Props) {
     return acc;
   }, [manifest, selectedTool]);
 
-  // Within the selected tool+group, which scopes are present?
+  const totalGroupItems = useMemo(
+    () =>
+      (groupCounts.skill ?? 0) +
+      (groupCounts.agent ?? 0) +
+      (groupCounts.command ?? 0) +
+      (groupCounts.history ?? 0),
+    [groupCounts],
+  );
+
+  // Within the selected tool+group, which scopes are present? History
+  // entries have no scope, so they're naturally excluded; the Scope row
+  // hides itself when no scoped artifacts are visible.
   const scopeCounts = useMemo(() => {
     const acc: Record<"global" | "project", number> = { global: 0, project: 0 };
-    if (!manifest || group === "history") return acc;
+    if (!manifest) return acc;
     for (const e of manifest.entries) {
-      if (e.kind !== "artifact" || e.tool !== selectedTool || e.type !== group) continue;
+      if (e.kind !== "artifact") continue;
+      if (selectedTool !== "all" && e.tool !== selectedTool) continue;
+      if (group !== "all" && e.type !== group) continue;
       if (e.scope === "global") acc.global += 1;
       else if (e.scope === "project") acc.project += 1;
     }
@@ -220,9 +243,7 @@ export function BackupBrowser({ onToast }: Props) {
 
   const items: BrowserItem[] = useMemo(() => {
     if (!manifest) return [];
-    const base = group === "history"
-      ? groupProjectItems(manifest)
-      : groupArtifactItems(manifest, selectedTool, group, scopeFilter);
+    const base = collectBrowserItems(manifest, selectedTool, group, scopeFilter);
     const q = filter.toLowerCase().trim();
     if (!q) return base;
     return base.filter((i) =>
@@ -231,32 +252,28 @@ export function BackupBrowser({ onToast }: Props) {
     );
   }, [manifest, group, selectedTool, scopeFilter, filter]);
 
-  // Auto-select first tool that has files when the manifest first loads (or
-  // when the current selection has nothing, e.g. the default "claude" but the
-  // user only backed up codex).
+  // Auto-jump only when the user lands on an empty selection. With "All"
+  // available we never need to override their explicit choice — the
+  // fallbacks only fire when a specific tool/group has zero items.
   useEffect(() => {
     if (!manifest) return;
-    const currentCount = toolCounts[selectedTool] ?? 0;
-    if (currentCount > 0) return;
-    const firstWithFiles = ALL_TOOLS.find((t) => (toolCounts[t.id] ?? 0) > 0);
-    if (firstWithFiles) setSelectedTool(firstWithFiles.id);
+    if (selectedTool === "all") return;
+    if ((toolCounts[selectedTool] ?? 0) > 0) return;
+    setSelectedTool("all");
   }, [manifest, toolCounts, selectedTool]);
 
-  // If the current group has no items for this tool, jump to the first that does.
   useEffect(() => {
     if (!manifest) return;
+    if (group === "all") return;
     if ((groupCounts[group] ?? 0) > 0) return;
-    const order: Group[] = ["skill", "agent", "command", "history"];
-    const next = order.find((g) => (groupCounts[g] ?? 0) > 0);
-    if (next) setGroup(next);
+    setGroup("all");
   }, [manifest, groupCounts, group]);
 
   // If the current scope filter has no entries, fall back to "all".
   useEffect(() => {
-    if (group === "history") return;
     if (scopeFilter === "all") return;
     if ((scopeCounts[scopeFilter] ?? 0) === 0) setScopeFilter("all");
-  }, [group, scopeCounts, scopeFilter]);
+  }, [scopeCounts, scopeFilter]);
 
   // Auto-select the first item only when the *filter set* changes (new
   // manifest, view, tool, or query). Re-running on selectedItemId changes
@@ -443,19 +460,6 @@ export function BackupBrowser({ onToast }: Props) {
     }
   }
 
-  function toggleTool(t: Tool) {
-    if (backupTools.includes(t)) {
-      const next = backupTools.filter((x) => x !== t);
-      setBackupTools(next.length === 0 ? ["claude"] : next);
-    } else {
-      setBackupTools([...backupTools, t]);
-    }
-    // Switching backupTools → also switch the browse target so the panel feels
-    // responsive. If the tool has no backed-up content yet, the existing
-    // auto-fallback effect will pick the first tool that does.
-    setSelectedTool(t);
-  }
-
   async function handleBackup() {
     if (!backupDestination) {
       onToast("error", "Pick a destination folder first.");
@@ -599,25 +603,54 @@ export function BackupBrowser({ onToast }: Props) {
 
         <div className="section-label">Tools</div>
         <div className="pill-row" style={{ flexWrap: "wrap" }}>
-          {ALL_TOOLS.map((t) => (
-            <div
-              key={t.id}
-              className={`pill ${backupTools.includes(t.id) ? "active" : ""}`}
-              onClick={() => toggleTool(t.id)}
-              role="checkbox"
-              aria-checked={backupTools.includes(t.id)}
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === " " || e.key === "Enter") {
-                  e.preventDefault();
-                  toggleTool(t.id);
-                }
-              }}
-              title={`${t.label}${(toolCounts[t.id] ?? 0) > 0 ? ` · ${toolCounts[t.id]} backed up` : ""}`}
-            >
-              {t.label}
+          {visibleTools.length === 0 ? (
+            <div className="empty" style={{ padding: 0 }}>
+              Nothing backed up yet — click "Back up now" to start.
             </div>
-          ))}
+          ) : (
+            <>
+              <div
+                className={`pill ${selectedTool === "all" ? "active" : ""}`}
+                onClick={() => setSelectedTool("all")}
+                role="tab"
+                aria-selected={selectedTool === "all"}
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === " " || e.key === "Enter") {
+                    e.preventDefault();
+                    setSelectedTool("all");
+                  }
+                }}
+                title={`Browse content from every tool · ${totalToolItems} backed up`}
+              >
+                All
+                <span className="backup-tool-count">{totalToolItems}</span>
+              </div>
+              {visibleTools.map((t) => {
+                const count = toolCounts[t.id] ?? 0;
+                return (
+                  <div
+                    key={t.id}
+                    className={`pill ${selectedTool === t.id ? "active" : ""}`}
+                    onClick={() => setSelectedTool(t.id)}
+                    role="tab"
+                    aria-selected={selectedTool === t.id}
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === " " || e.key === "Enter") {
+                        e.preventDefault();
+                        setSelectedTool(t.id);
+                      }
+                    }}
+                    title={`${t.label} · ${count} backed up`}
+                  >
+                    {t.label}
+                    <span className="backup-tool-count">{count}</span>
+                  </div>
+                );
+              })}
+            </>
+          )}
         </div>
 
         <div className="settings-row" style={{ paddingLeft: 6 }}>
@@ -656,6 +689,15 @@ export function BackupBrowser({ onToast }: Props) {
 
         <div className="section-label">Group</div>
         <div className="pill-row" style={{ flexWrap: "wrap" }}>
+          <div
+            className={`pill ${group === "all" ? "active" : ""}`}
+            onClick={() => setGroup("all")}
+            role="tab"
+            aria-selected={group === "all"}
+          >
+            All
+            <span className="backup-tool-count">{totalGroupItems}</span>
+          </div>
           {(["skill", "agent", "command", "history"] as Group[]).map((g) => {
             const count = groupCounts[g] ?? 0;
             const enabled = count > 0;
@@ -665,6 +707,7 @@ export function BackupBrowser({ onToast }: Props) {
                 className={`pill ${group === g ? "active" : ""} ${enabled ? "" : "disabled"}`}
                 onClick={() => enabled && setGroup(g)}
                 role="tab"
+                aria-selected={group === g}
               >
                 {GROUP_LABEL[g]}
                 <span className="backup-tool-count">{count}</span>
@@ -673,7 +716,7 @@ export function BackupBrowser({ onToast }: Props) {
           })}
         </div>
 
-        {SCOPED_GROUPS.includes(group) && (
+        {scopeCounts.global + scopeCounts.project > 0 && (
           <>
             <div className="section-label">Scope</div>
             <div className="pill-row">
@@ -711,7 +754,13 @@ export function BackupBrowser({ onToast }: Props) {
         <div className="list-toolbar">
           <input
             className="search"
-            placeholder={group === "history" ? "Filter history…" : `Filter ${GROUP_LABEL[group].toLowerCase()}…`}
+            placeholder={
+              group === "all"
+                ? "Filter…"
+                : group === "history"
+                  ? "Filter history…"
+                  : `Filter ${GROUP_LABEL[group].toLowerCase()}…`
+            }
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
           />
@@ -720,9 +769,11 @@ export function BackupBrowser({ onToast }: Props) {
           <div className="empty">
             {filter
               ? "No matches."
-              : group === "history"
-                ? "No project history in this backup."
-                : `No ${GROUP_LABEL[group].toLowerCase()} backed up for this tool.`}
+              : group === "all"
+                ? "Nothing in this backup."
+                : group === "history"
+                  ? "No project history in this backup."
+                  : `No ${GROUP_LABEL[group].toLowerCase()} backed up for this tool.`}
           </div>
         ) : (
           items.map((item) => {
@@ -905,6 +956,39 @@ function mergeToolManifests(parts: BackupManifest[], destination: string): Backu
     entries,
     errors,
   };
+}
+
+// Glue layer for the Tools/Group "All" pills — fans out to the
+// per-group/per-tool helpers and concatenates. Sorting matches the
+// per-helper behaviour so a single-tool view and the All view list items
+// in the same order.
+function collectBrowserItems(
+  m: BackupManifest,
+  selectedTool: Tool | "all",
+  group: Group | "all",
+  scopeFilter: ScopeFilter,
+): BrowserItem[] {
+  const out: BrowserItem[] = [];
+  const artifactGroups: Group[] =
+    group === "all"
+      ? ["skill", "agent", "command"]
+      : group === "history"
+        ? []
+        : [group];
+  const tools: Tool[] =
+    selectedTool === "all" ? ALL_TOOLS.map((t) => t.id) : [selectedTool];
+  for (const tool of tools) {
+    for (const g of artifactGroups) {
+      out.push(...groupArtifactItems(m, tool, g, scopeFilter));
+    }
+  }
+  // History is claude-only; include when the tool filter covers claude
+  // and the group filter is "all" or "history".
+  const includeHistory =
+    (selectedTool === "all" || selectedTool === "claude") &&
+    (group === "all" || group === "history");
+  if (includeHistory) out.push(...groupProjectItems(m));
+  return out.sort((a, b) => a.label.localeCompare(b.label));
 }
 
 function countArtifactsByTool(m: BackupManifest | null): Partial<Record<Tool, number>> {

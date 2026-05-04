@@ -27,7 +27,7 @@ describe("path resolver", () => {
     expect(dir).toBe("/Users/jane/.codex/prompts");
   });
 
-  it("resolves Cursor project rules → <project>/.cursor/rules", async () => {
+  it("resolves Cursor project skills → <project>/.agents/skills (npx skills layout)", async () => {
     resetHomeCache();
     const dir = await resolveArtifactDir(
       pathDeps("/Users/jane"),
@@ -36,6 +36,27 @@ describe("path resolver", () => {
       "skill",
       "/work/repo",
     );
-    expect(dir).toBe("/work/repo/.cursor/rules");
+    expect(dir).toBe("/work/repo/.agents/skills");
+  });
+
+  it("resolves Cursor global skills → ~/.cursor/skills (npx skills layout)", async () => {
+    resetHomeCache();
+    const dir = await resolveArtifactDir(pathDeps("/Users/jane"), "cursor", "global", "skill");
+    expect(dir).toBe("/Users/jane/.cursor/skills");
+  });
+
+  it("returns empty string for cursor agent/command (npx skills is skill-only)", async () => {
+    resetHomeCache();
+    const cmd = await resolveArtifactDir(pathDeps("/Users/jane"), "cursor", "global", "command");
+    const ag = await resolveArtifactDir(pathDeps("/Users/jane"), "cursor", "global", "agent");
+    expect(cmd).toBe("");
+    expect(ag).toBe("");
+  });
+
+  it("resolves a non-Claude/Codex agent (e.g. Goose) via the registry", async () => {
+    resetHomeCache();
+    const dir = await resolveArtifactDir(pathDeps("/Users/jane"), "goose", "global", "skill");
+    // Mirrors vercel-labs/skills: configHome/goose/skills → ~/.config/goose/skills
+    expect(dir).toBe("/Users/jane/.config/goose/skills");
   });
 });

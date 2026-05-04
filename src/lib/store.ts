@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { Attachment, ArtifactType, MarkdownArtifact, Scope, Tool } from "./artifacts/types";
+import { isKnownAgent } from "./agents/registry";
 import type { CloudAccount } from "./skillsafe/types";
 import type { ScanReport } from "./skillsafe/client";
 import type { BackupStats } from "./backup/manifest";
@@ -42,8 +43,11 @@ const AUTO_UPDATE_KEY = "skill-manager.autoUpdate";
 const DISMISSED_UPDATE_KEY = "skill-manager.dismissedUpdateVersion";
 const MAX_RECENT_TOOLS = 3;
 const MAX_RECENT_PROJECTS = 12;
-const VALID_TOOLS: ReadonlyArray<Tool> = ["claude", "codex", "cursor", "openclaw", "cline", "hermes"];
-const VALID_SCOPES: ReadonlyArray<Scope> = ["global", "project", "lockfile"];
+// Tool validation now defers to the registry — see ./agents/registry.ts.
+// `isValidTool` lets the persisted tool list (recent tools, backup tools,
+// default tool) accept any agent npx skills knows about.
+const isValidTool = (t: unknown): t is Tool => typeof t === "string" && isKnownAgent(t);
+const VALID_SCOPES: ReadonlyArray<Scope> = ["all", "global", "project", "lockfile"];
 
 type LocalStorageLike = {
   getItem(k: string): string | null;
@@ -75,7 +79,7 @@ function initialRecentTools(initial: Tool): Tool[] {
     try {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        const filtered = parsed.filter((t): t is Tool => VALID_TOOLS.includes(t as Tool));
+        const filtered = parsed.filter(isValidTool);
         if (filtered.length > 0) return filtered.slice(0, MAX_RECENT_TOOLS);
       }
     } catch {
@@ -87,7 +91,7 @@ function initialRecentTools(initial: Tool): Tool[] {
 
 function initialDefaultTool(): Tool {
   const v = browser.localStorage?.getItem(DEFAULT_TOOL_KEY);
-  return VALID_TOOLS.includes(v as Tool) ? (v as Tool) : "claude";
+  return isValidTool(v) ? v : "claude";
 }
 
 function initialDefaultScope(): Scope {
@@ -95,7 +99,9 @@ function initialDefaultScope(): Scope {
   // The Lockfile pill was retired (it overlapped with Project); silently
   // upgrade old persisted values so the user isn't stuck on a hidden scope.
   if (v === "lockfile") return "project";
-  return VALID_SCOPES.includes(v as Scope) ? (v as Scope) : "global";
+  // First launch (no persisted value) lands on "All" so the user sees every
+  // installed artifact at once instead of an empty Global view.
+  return VALID_SCOPES.includes(v as Scope) ? (v as Scope) : "all";
 }
 
 function initialBottomPanel(): BottomPanel {
@@ -209,7 +215,7 @@ function initialBackupTools(): Tool[] {
   try {
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
-      const filtered = parsed.filter((t): t is Tool => VALID_TOOLS.includes(t as Tool));
+      const filtered = parsed.filter(isValidTool);
       if (filtered.length > 0) return filtered;
     }
   } catch { /* ignore */ }
@@ -396,7 +402,9 @@ export const useApp = create<AppState>((set) => ({
   tool: initialDefaultTool(),
   // Same upgrade path for the active scope — lockfile is no longer a UI option.
   scope: initialDefaultScope(),
-  type: "skill",
+  // Type isn't persisted, so each launch starts on "All". Matches the
+  // first-launch default for scope above.
+  type: "all",
   projectRoot: initialProjectRoot(),
   recentProjects: initialRecentProjects(),
   projectFilter: initialProjectFilter(),

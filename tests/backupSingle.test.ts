@@ -101,6 +101,42 @@ describe("backupOneArtifact", () => {
     // 2 source files (SKILL.md + asset.bin) → exactly 2 entries, not 4.
     expect(fooEntries.length).toBe(2);
   });
+
+  it("returns this-run counts on a no-op rerun (added=0, unchanged=N)", async () => {
+    const fooArtifact = await loadSkillBundle(
+      nodeFs,
+      nodeJoiner,
+      path.join(home, ".claude", "skills", "foo"),
+      "claude",
+      "global",
+    );
+    const first = await backupOneArtifact({
+      fs: nodeFs, paths: pathDeps(home), joiner: nodeJoiner,
+      destination: dest, artifact: fooArtifact,
+    });
+    expect(first.counts.added).toBe(2);
+    expect(first.counts.unchanged).toBe(0);
+    expect(first.recentChanges.length).toBe(2);
+
+    // Source unchanged, second run should see all files as unchanged.
+    const second = await backupOneArtifact({
+      fs: nodeFs, paths: pathDeps(home), joiner: nodeJoiner,
+      destination: dest, artifact: fooArtifact,
+    });
+    // counts.added must NOT keep growing on no-op reruns (the bug we're guarding).
+    expect(second.counts.added).toBe(0);
+    expect(second.counts.changed).toBe(0);
+    expect(second.counts.unchanged).toBe(2);
+    expect(second.recentChanges.length).toBe(0);
+
+    // The persisted manifest's counts should reflect the entry statuses,
+    // not the lifetime sum of every prior run.
+    const manifest = parseManifest(
+      await fs.readFile(path.join(dest, "claude_backup", MANIFEST_FILENAME), "utf8"),
+    )!;
+    expect(manifest.counts.added).toBe(0);
+    expect(manifest.counts.unchanged).toBe(2);
+  });
 });
 
 describe("restoreFromBackup", () => {

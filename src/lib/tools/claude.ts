@@ -4,6 +4,7 @@ import type { ListOptions, MarkdownArtifact } from "../artifacts/types";
 import { listMarkdownFiles, loadMarkdownFile } from "../artifacts/markdownFile";
 import { listSkillBundles } from "../artifacts/skill";
 import { resolveArtifactDir, type PathResolverDeps } from "../paths";
+import { listGenericSkills } from "./generic";
 
 export async function listClaudeArtifacts(
   fs: FsAdapter,
@@ -11,14 +12,26 @@ export async function listClaudeArtifacts(
   paths: PathResolverDeps,
   opts: ListOptions,
 ): Promise<MarkdownArtifact[]> {
-  const dirs: string[] = [];
-  if (opts.scope === "project" && opts.projectRoot) {
-    const agentsAlt = await pj.join(opts.projectRoot, ".agents", subdir(opts.type));
-    const claudeStd = await pj.join(opts.projectRoot, ".claude", subdir(opts.type));
-    dirs.push(agentsAlt, claudeStd);
-  } else {
-    dirs.push(await resolveArtifactDir(paths, "claude", opts.scope, opts.type, opts.projectRoot));
+  // Skill discovery follows vercel-labs/skills' rules via the registry:
+  //   project → <projectRoot>/.claude/skills
+  //   global  → ~/.claude/skills
+  // In project scope we additionally scan <projectRoot>/.agents/skills to
+  // pick up skills installed via `npx skills add` for tools that share the
+  // universal `.agents/skills` location alongside Claude.
+  if (opts.type === "skill") {
+    const out = await listGenericSkills(fs, pj, paths, opts);
+    if (opts.scope === "project" && opts.projectRoot) {
+      const altDir = await pj.join(opts.projectRoot, ".agents", "skills");
+      const seen = new Set(out.map((a) => a.bundleDir).filter(Boolean) as string[]);
+      for (const b of await listSkillBundles(fs, pj, altDir, "claude", opts.scope)) {
+        if (b.bundleDir && seen.has(b.bundleDir)) continue;
+        if (b.bundleDir) seen.add(b.bundleDir);
+        out.push(b);
+      }
+    }
+    return out;
   }
+
   const out: MarkdownArtifact[] = [];
 
   // CLAUDE.md is the project/user memory file Claude Code reads at startup;
@@ -32,12 +45,9 @@ export async function listClaudeArtifacts(
     }
   }
 
-  for (const dir of dirs) {
-    if (opts.type === "skill") {
-      out.push(...(await listSkillBundles(fs, pj, dir, "claude", opts.scope)));
-    } else {
-      out.push(...(await listMarkdownFiles(fs, pj, dir, "claude", opts.scope, opts.type)));
-    }
+  const dir = await resolveArtifactDir(paths, "claude", opts.scope, opts.type, opts.projectRoot);
+  if (dir) {
+    out.push(...(await listMarkdownFiles(fs, pj, dir, "claude", opts.scope, opts.type)));
   }
   return out;
 }
@@ -56,8 +66,4 @@ async function claudeMemoryPath(
     return pj.join(projectRoot, "CLAUDE.md");
   }
   return null;
-}
-
-function subdir(type: "skill" | "agent" | "command"): string {
-  return type === "skill" ? "skills" : type === "agent" ? "agents" : "commands";
 }

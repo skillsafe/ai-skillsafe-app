@@ -388,6 +388,18 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupManifest>
     // resolveArtifactDir returned null), skip writing a manifest into a
     // directory we never created — that would force-create an empty subdir.
     if (!topLevelDirs.has(dir)) continue;
+    // mirrorTree short-circuits when the source doesn't exist on disk, so
+    // dir may have been added to topLevelDirs without ever being created.
+    // ensureDir guards atomicWrite (which writes to <dir>/LAST_BACKUP.json
+    // .tmp.<n>) from "No such file or directory" on those tools — a common
+    // case now that the registry resolves a path for every supported agent
+    // even when the user hasn't installed it.
+    try {
+      await ensureDir(fs, dir);
+    } catch (e) {
+      globalErrors.push(`manifest ${tool}: ${describeError(e)}`);
+      continue;
+    }
     const m: BackupManifest = {
       version: MANIFEST_VERSION,
       generatedAt,

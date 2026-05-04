@@ -3,6 +3,7 @@ import type { PathJoiner } from "../artifacts/skill";
 import type { ListOptions, MarkdownArtifact } from "../artifacts/types";
 import { listMarkdownFiles, loadMarkdownFile } from "../artifacts/markdownFile";
 import { type PathResolverDeps } from "../paths";
+import { listGenericSkills } from "./generic";
 
 export async function listCodexArtifacts(
   fs: FsAdapter,
@@ -10,6 +11,14 @@ export async function listCodexArtifacts(
   paths: PathResolverDeps,
   opts: ListOptions,
 ): Promise<MarkdownArtifact[]> {
+  // Skill discovery: registry-driven. Codex shares the universal
+  //   project → <projectRoot>/.agents/skills
+  //   global  → ~/.codex/skills
+  // layout used by `npx skills add codex …`.
+  if (opts.type === "skill") {
+    return listGenericSkills(fs, pj, paths, opts);
+  }
+
   const home = await paths.homeDir();
   if (opts.type === "command") {
     const dir =

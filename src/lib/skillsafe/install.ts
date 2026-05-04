@@ -3,7 +3,7 @@ import { ensureDir } from "../fs";
 import type { PathJoiner } from "../artifacts/skill";
 import type { PathResolverDeps } from "../paths";
 import { resolveArtifactDir } from "../paths";
-import type { Scope } from "../artifacts/types";
+import type { Scope, Tool } from "../artifacts/types";
 import {
   downloadBlob,
   downloadShareManifest,
@@ -22,21 +22,34 @@ import type { DownloadManifest } from "./types";
  */
 
 /**
- * Decide where a skill should land on disk for a given (scope, projectRoot).
+ * Decide where a skill should land on disk for a given (tool, scope,
+ * projectRoot). skillsafe.ai distributes tool-agnostic SKILL.md bundles, so
+ * we route through the agent registry: every supported tool lands at its
+ * own canonical location (e.g. ~/.cursor/skills, ~/.codex/skills, …) per
+ * vercel-labs/skills' rules.
  *
- * Skillsafe.ai distributes Claude-format skills, so we always install under
- * the Claude skills tree — users can convert to other tools afterwards via
- * the existing Convert dialog.
+ * Claude project installs use the universal `<projectRoot>/.agents/skills`
+ * location (matching App.tsx::targetDir) so skills installed here line up
+ * with what `npx skills add claude-code` would write.
  */
 export async function resolveInstallDir(
   deps: PathResolverDeps,
   pj: PathJoiner,
+  tool: Tool,
   scope: Scope,
   projectRoot: string | undefined,
   skillName: string,
 ): Promise<string> {
   const targetScope: Scope = scope === "project" && projectRoot ? "project" : "global";
-  const baseDir = await resolveArtifactDir(deps, "claude", targetScope, "skill", projectRoot);
+  let baseDir: string;
+  if (tool === "claude" && targetScope === "project" && projectRoot) {
+    baseDir = await pj.join(projectRoot, ".agents", "skills");
+  } else {
+    baseDir = await resolveArtifactDir(deps, tool, targetScope, "skill", projectRoot);
+  }
+  if (!baseDir) {
+    throw new Error(`No install location for ${tool} (${targetScope}). Is the tool registered?`);
+  }
   return pj.join(baseDir, skillName);
 }
 
@@ -46,6 +59,7 @@ export interface InstallOpts {
   ns?: string;
   name: string;
   version?: string;
+  tool: Tool;
   scope: Scope;
   projectRoot?: string;
 }
@@ -67,7 +81,14 @@ export async function installSkill(
     throw new Error("installSkill: either shareId or (ns + version) required");
   }
 
-  const targetDir = await resolveInstallDir(deps, pj, opts.scope, opts.projectRoot, opts.name);
+  const targetDir = await resolveInstallDir(
+    deps,
+    pj,
+    opts.tool,
+    opts.scope,
+    opts.projectRoot,
+    opts.name,
+  );
   await ensureDir(fs, targetDir);
   const entries: string[] = [];
 

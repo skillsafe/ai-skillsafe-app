@@ -1,6 +1,6 @@
 [package]
 name = "skillsafe"
-version = "0.1.2"
+version = "0.1.3"
 description = "Cross-platform UI for Claude / Codex / Cursor skills, agents, and commands"
 authors = ["skillsafe.ai"]
 edition = "2021"

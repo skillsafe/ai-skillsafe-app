@@ -43,6 +43,7 @@ export function RemoteList({ onToast, onAfterInstall, onLoadMore, onAfterMutatio
     artifacts,
     cloudApiKey,
     cloudAccount,
+    tool,
     scope,
     projectRoot,
     recentProjects,
@@ -138,6 +139,10 @@ export function RemoteList({ onToast, onAfterInstall, onLoadMore, onAfterMutatio
         ns,
         name: a.name,
         version,
+        // Inherit the sidebar's selected agent so the skill lands in that
+        // agent's skills dir (~/.cursor/skills, ~/.codex/skills, …) rather
+        // than always under Claude.
+        tool,
         scope: choice.scope,
         projectRoot: choice.scope === "project" ? choice.projectRoot : undefined,
       });
@@ -406,6 +411,7 @@ export function RemoteList({ onToast, onAfterInstall, onLoadMore, onAfterMutatio
       {pendingArtifact && (
         <InstallScopeDialog
           artifactName={pendingArtifact.name}
+          tool={tool}
           recentProjects={recentProjects}
           defaultScope={defaultDialogScope}
           defaultProjectRoot={projectRoot}

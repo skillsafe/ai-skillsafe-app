@@ -2,17 +2,18 @@ import type { ArtifactType, MarkdownArtifact, Scope, Tool } from "../artifacts/t
 import { atomicWrite, ensureDir, type FsAdapter } from "../fs";
 import { resolveArtifactDir, type PathResolverDeps } from "../paths";
 import {
+  deriveBackupRoot,
   emptyCounts,
   MANIFEST_FILENAME,
   MANIFEST_VERSION,
   parseManifest,
   serializeManifest,
-  summarize,
   toolBackupSubdir,
   type BackupCounts,
   type BackupEntry,
   type BackupManifest,
   type BackupStats,
+  type RecentChange,
 } from "./manifest";
 import {
   mirrorSingleFile,
@@ -116,10 +117,36 @@ export async function backupOneArtifact(opts: BackupOneArtifactOptions): Promise
     dropPrefix,
     isExactPrefix: !artifact.isBundle,
     addEntries: entries,
-    addCounts: counts,
     addErrors: errors,
   });
-  return summarize(manifest);
+  // Stats reflect THIS run only — counts, bytes, recentChanges, and errors
+  // come from `entries`/`counts`/`errors` we just produced. The merged
+  // manifest (which can contain stale entries from prior runs of other
+  // artifacts) is only used for the persisted destination/timestamp.
+  return statsForThisRun({ manifest, entries, counts, errors });
+}
+
+function statsForThisRun(args: {
+  manifest: BackupManifest;
+  entries: ReadonlyArray<BackupEntry>;
+  counts: BackupCounts;
+  errors: ReadonlyArray<string>;
+}): BackupStats {
+  const { manifest, entries, counts, errors } = args;
+  const totalBytes = entries.reduce((sum, e) => sum + e.bytes, 0);
+  const recentChanges: RecentChange[] = entries
+    .filter((e) => e.status !== "unchanged")
+    .slice(0, 30)
+    .map((e) => ({ relPath: e.relPath, destPath: e.destPath, status: e.status, bytes: e.bytes }));
+  return {
+    generatedAt: manifest.generatedAt,
+    counts: { ...counts },
+    errorSamples: errors.slice(0, 10),
+    recentChanges,
+    backupRoot: deriveBackupRoot(manifest.destination),
+    totalBytes,
+    errorCount: errors.length,
+  };
 }
 
 export interface RestoreFile {
@@ -257,7 +284,6 @@ interface MergeManifestArgs {
   dropPrefix: string;
   isExactPrefix: boolean;
   addEntries: BackupEntry[];
-  addCounts: BackupCounts;
   addErrors: string[];
 }
 
@@ -270,7 +296,6 @@ async function mergeManifest(args: MergeManifestArgs): Promise<BackupManifest> {
     dropPrefix,
     isExactPrefix,
     addEntries,
-    addCounts,
     addErrors,
   } = args;
   const manifestPath = await joiner.join(manifestDir, MANIFEST_FILENAME);
@@ -288,27 +313,36 @@ async function mergeManifest(args: MergeManifestArgs): Promise<BackupManifest> {
         isExactPrefix ? e.relPath !== dropPrefix : !e.relPath.startsWith(dropPrefix),
       )
     : [];
+  const mergedEntries = [...surviving, ...addEntries];
+  // Counts must be derived from the surviving entry set so a no-op rerun
+  // reports the actual current state (added=0 if nothing changed) instead
+  // of the lifetime sum of every prior addCounts. Old code merged counts
+  // additively, so the manifest's `counts.added` grew on every per-skill
+  // rerun even when `entries[*].status` correctly showed unchanged.
+  // `removed` isn't tracked by the per-artifact path (no pruning happens
+  // here), so preserve whatever the last full runBackup recorded.
+  const derived = countsFromEntries(mergedEntries);
+  const removed = existing ? existing.counts.removed : 0;
   const merged: BackupManifest = {
     version: MANIFEST_VERSION,
     generatedAt: Date.now(),
     destination,
-    counts: existing
-      ? mergeCounts(existing.counts, addCounts)
-      : { ...addCounts, removed: 0 },
-    entries: [...surviving, ...addEntries],
+    counts: { ...derived, removed },
+    entries: mergedEntries,
     errors: existing ? [...existing.errors, ...addErrors] : addErrors,
   };
   await atomicWrite(fs, manifestPath, serializeManifest(merged));
   return merged;
 }
 
-function mergeCounts(a: BackupCounts, b: BackupCounts): BackupCounts {
-  return {
-    added: a.added + b.added,
-    changed: a.changed + b.changed,
-    removed: a.removed + b.removed,
-    unchanged: a.unchanged + b.unchanged,
-  };
+function countsFromEntries(entries: ReadonlyArray<BackupEntry>): BackupCounts {
+  const out = emptyCounts();
+  for (const e of entries) {
+    if (e.status === "added") out.added += 1;
+    else if (e.status === "changed") out.changed += 1;
+    else if (e.status === "unchanged") out.unchanged += 1;
+  }
+  return out;
 }
 
 function narrowScope(s: Scope): Exclude<Scope, "all" | "lockfile"> {

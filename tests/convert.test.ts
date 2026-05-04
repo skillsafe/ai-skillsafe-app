@@ -25,12 +25,17 @@ function fixture(): MarkdownArtifact {
 }
 
 describe("convert", () => {
-  it("Claude skill → Cursor rule maps paths to globs", () => {
+  it("Claude skill → Cursor skill produces a SKILL.md bundle (npx skills layout)", () => {
+    // Cursor's `.cursor/rules/*.mdc` is a different concept from skills.
+    // After aligning discovery with vercel-labs/skills, every tool's skill
+    // type is a SKILL.md bundle.
     const out = convertArtifact(fixture(), { targetTool: "cursor", targetType: "skill" });
-    expect(out.fileName).toBe("test-skill.mdc");
-    expect(out.isBundle).toBe(false);
+    expect(out.fileName).toBe("SKILL.md");
+    expect(out.isBundle).toBe(true);
+    expect(out.frontmatter.name).toBe("test-skill");
     expect(out.frontmatter.description).toBe("Use when reviewing code");
-    expect(out.frontmatter.globs).toEqual(["src/**/*.ts"]);
+    expect(out.frontmatter["allowed-tools"]).toEqual(["Read", "Grep"]);
+    expect(out.frontmatter.paths).toEqual(["src/**/*.ts"]);
     expect(out.body).toContain("Do the thing.");
   });
 

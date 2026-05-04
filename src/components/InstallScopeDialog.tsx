@@ -1,4 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { Tool } from "../lib/artifacts/types";
+import { displayNameOf, getAgentConfig } from "../lib/agents/registry";
+import { tauriPaths } from "../lib/tauriAdapters";
 
 export interface InstallScopeChoice {
   scope: "global" | "project";
@@ -7,6 +10,9 @@ export interface InstallScopeChoice {
 
 interface Props {
   artifactName: string;
+  // Selected agent — drives where the skill is installed (e.g. cursor →
+  // ~/.cursor/skills, codex → ~/.codex/skills) and what path hint we show.
+  tool: Tool;
   recentProjects: ReadonlyArray<string>;
   defaultScope: "global" | "project";
   defaultProjectRoot?: string | null;
@@ -17,6 +23,7 @@ interface Props {
 
 export function InstallScopeDialog({
   artifactName,
+  tool,
   recentProjects,
   defaultScope,
   defaultProjectRoot,
@@ -37,6 +44,36 @@ export function InstallScopeDialog({
     return projects[0] ?? "";
   });
 
+  // Resolve the actual global skill dir for the selected tool, so the hint
+  // shows e.g. "~/.cursor/skills/<name>" for Cursor or "~/.codex/skills/<name>"
+  // for Codex — not a hardcoded ~/.claude/skills/.
+  const cfg = getAgentConfig(tool);
+  const projectSkillsDir = cfg?.skillsDir ?? "";
+  const [globalDirHint, setGlobalDirHint] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (!cfg) {
+      setGlobalDirHint(null);
+      return;
+    }
+    cfg
+      .globalSkillsDir(tauriPaths)
+      .then((dir) => {
+        if (!cancelled) setGlobalDirHint(homeify(dir));
+      })
+      .catch(() => {
+        if (!cancelled) setGlobalDirHint(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cfg]);
+
+  // Claude is the one outlier: project installs go under .agents/skills, not
+  // .claude/skills, mirroring App.tsx::targetDir's behavior so installs line
+  // up with what `npx skills add claude-code` would have written.
+  const projectDirHint = tool === "claude" ? ".agents/skills" : projectSkillsDir;
+
   const canConfirm =
     !busy && (scope === "global" || (scope === "project" && projectRoot.length > 0));
 
@@ -53,6 +90,9 @@ export function InstallScopeDialog({
     <div className="dialog-backdrop" onClick={busy ? undefined : onCancel}>
       <div className="dialog" onClick={(e) => e.stopPropagation()}>
         <h3>Install {artifactName}</h3>
+        <p className="install-scope-tool">
+          Target tool: <strong>{displayNameOf(tool)}</strong>
+        </p>
 
         <div className="fm-field">
           <label className="fm-label">target</label>
@@ -68,7 +108,11 @@ export function InstallScopeDialog({
               />
               <span>
                 <strong>Global</strong>
-                <span className="install-scope-hint">~/.claude/skills/{artifactName}</span>
+                <span className="install-scope-hint">
+                  {globalDirHint
+                    ? `${globalDirHint}/${artifactName}`
+                    : `(resolving ${displayNameOf(tool)} skills dir…)`}
+                </span>
               </span>
             </label>
 
@@ -91,7 +135,7 @@ export function InstallScopeDialog({
                   </span>
                 ) : (
                   <span className="install-scope-hint">
-                    &lt;projectRoot&gt;/.agents/skills/{artifactName}
+                    &lt;projectRoot&gt;/{projectDirHint}/{artifactName}
                   </span>
                 )}
               </span>
@@ -127,4 +171,13 @@ export function InstallScopeDialog({
       </div>
     </div>
   );
+}
+
+// Render an absolute path with the user's home dir replaced by `~` so the
+// install hint reads as "~/.cursor/skills/foo" instead of the absolute
+// "/Users/jane/.cursor/skills/foo".
+function homeify(absPath: string): string {
+  const m = /^(\/Users\/[^/]+|\/home\/[^/]+|[A-Z]:\\Users\\[^\\]+)(.*)$/.exec(absPath);
+  if (!m) return absPath;
+  return `~${m[2]}`;
 }

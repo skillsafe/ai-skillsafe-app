@@ -1,7 +1,7 @@
-import type { MarkdownArtifact } from "./artifacts/types";
+import type { MarkdownArtifact, Tool } from "./artifacts/types";
 
 export interface ConvertOptions {
-  targetTool: "claude" | "codex" | "cursor" | "openclaw" | "cline" | "hermes";
+  targetTool: Tool;
   targetType: "skill" | "agent" | "command";
 }
 
@@ -12,48 +12,22 @@ export interface Converted {
   body: string;
 }
 
+// Conversion rules:
+//   * targetType === "skill" — emit a SKILL.md bundle for every tool. This
+//     matches vercel-labs/skills' format, which is the only skill format the
+//     app discovers now that the cursor-rules / cline-rules listing was
+//     dropped.
+//   * targetType === "agent" + targetTool === "codex" — emit AGENTS.md.
+//   * targetType === "command" + targetTool === "codex" — emit a flat
+//     <slug>.md prompt under .codex/prompts/.
+//   * Everything else (e.g. claude agent/command files) — emit a flat
+//     <slug>.md with passthrough frontmatter.
 export function convertArtifact(source: MarkdownArtifact, opts: ConvertOptions): Converted {
   const { targetTool, targetType } = opts;
   const sourceFm = source.frontmatter;
   const name = (sourceFm.name as string | undefined) ?? source.name;
   const description = (sourceFm.description as string | undefined) ?? "";
   const body = source.body;
-
-  if (targetTool === "cursor") {
-    const fm: Record<string, unknown> = {};
-    if (description) fm.description = description;
-    const paths = sourceFm.paths ?? sourceFm.globs;
-    if (paths) fm.globs = paths;
-    if (sourceFm.alwaysApply !== undefined) fm.alwaysApply = sourceFm.alwaysApply;
-    return { fileName: `${slug(name)}.mdc`, isBundle: false, frontmatter: fm, body };
-  }
-
-  if (targetTool === "cline") {
-    // Cline uses `paths:` in frontmatter (cursor uses `globs:`); rewrite accordingly.
-    const fm: Record<string, unknown> = {};
-    if (description) fm.description = description;
-    const paths = sourceFm.paths ?? sourceFm.globs;
-    if (paths) fm.paths = paths;
-    return { fileName: `${slug(name)}.md`, isBundle: false, frontmatter: fm, body };
-  }
-
-  if (targetTool === "codex") {
-    if (targetType === "command") {
-      return { fileName: `${slug(name)}.md`, isBundle: false, frontmatter: {}, body: prependTitle(name, body) };
-    }
-    return { fileName: "AGENTS.md", isBundle: false, frontmatter: {}, body: prependTitle(name, body) };
-  }
-
-  if (targetTool === "openclaw" || targetTool === "hermes") {
-    // OpenClaw and Hermes both use the agentskills.io SKILL.md bundle shape,
-    // identical to Claude's; pass frontmatter through.
-    const fm = {
-      name,
-      description,
-      ...passthroughClaudeFields(sourceFm),
-    };
-    return { fileName: "SKILL.md", isBundle: true, frontmatter: fm, body };
-  }
 
   if (targetType === "skill") {
     const fm = {
@@ -63,6 +37,25 @@ export function convertArtifact(source: MarkdownArtifact, opts: ConvertOptions):
     };
     return { fileName: "SKILL.md", isBundle: true, frontmatter: fm, body };
   }
+
+  if (targetTool === "codex") {
+    if (targetType === "command") {
+      return {
+        fileName: `${slug(name)}.md`,
+        isBundle: false,
+        frontmatter: {},
+        body: prependTitle(name, body),
+      };
+    }
+    // agent
+    return {
+      fileName: "AGENTS.md",
+      isBundle: false,
+      frontmatter: {},
+      body: prependTitle(name, body),
+    };
+  }
+
   return {
     fileName: `${slug(name)}.md`,
     isBundle: false,

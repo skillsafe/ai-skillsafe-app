@@ -34,30 +34,15 @@ export const commandFrontmatterSchema = z
   })
   .passthrough();
 
-export const cursorRuleFrontmatterSchema = z
-  .object({
-    description: z.string().optional(),
-    globs: stringOrStringArray.optional(),
-    alwaysApply: z.boolean().optional(),
-  })
-  .passthrough();
-
-export const clineRuleFrontmatterSchema = z
-  .object({
-    description: z.string().optional(),
-    paths: stringOrStringArray.optional(),
-  })
-  .passthrough();
-
 export type SkillFrontmatter = z.infer<typeof skillFrontmatterSchema>;
 export type AgentFrontmatter = z.infer<typeof agentFrontmatterSchema>;
 export type CommandFrontmatter = z.infer<typeof commandFrontmatterSchema>;
-export type CursorRuleFrontmatter = z.infer<typeof cursorRuleFrontmatterSchema>;
-export type ClineRuleFrontmatter = z.infer<typeof clineRuleFrontmatterSchema>;
 
-export function schemaFor(tool: Tool, type: ArtifactType): z.ZodTypeAny {
-  if (tool === "cursor") return cursorRuleFrontmatterSchema;
-  if (tool === "cline") return clineRuleFrontmatterSchema;
+// Discovery is now SKILL.md-only across every supported tool (mirroring
+// vercel-labs/skills). The cursor-rules and cline-rules schemas were
+// retired with that change — every tool's "skill" type uses the standard
+// SKILL.md frontmatter schema.
+export function schemaFor(_tool: Tool, type: ArtifactType): z.ZodTypeAny {
   if (type === "skill") return skillFrontmatterSchema;
   if (type === "agent") return agentFrontmatterSchema;
   return commandFrontmatterSchema;

@@ -1,4 +1,5 @@
 import type { ArtifactType, Scope, Tool } from "./artifacts/types";
+import { getAgentConfig } from "./agents/registry";
 
 export interface PathResolverDeps {
   homeDir: () => Promise<string>;
@@ -17,6 +18,16 @@ export function resetHomeCache(): void {
   homeCache = null;
 }
 
+// Resolves the directory the lister scans for a given (tool, scope, type).
+//
+// Skill discovery is registry-driven and follows vercel-labs/skills' rules:
+//   project scope → <projectRoot>/<agent.skillsDir>
+//   global  scope → <agent.globalSkillsDir(deps)>
+//
+// Agent + Command artifact types are kept for tools that have them today —
+// Claude (CLAUDE.md, .claude/agents, .claude/commands) and Codex (AGENTS.md,
+// .codex/prompts). Every other tool returns "" for those types because the
+// upstream registry is skill-only.
 export async function resolveArtifactDir(
   deps: PathResolverDeps,
   tool: Tool,
@@ -24,68 +35,42 @@ export async function resolveArtifactDir(
   type: ArtifactType,
   projectRoot?: string,
 ): Promise<string> {
+  if (type === "all") {
+    throw new Error("resolveArtifactDir: 'all' is a UI sentinel, narrow first");
+  }
+
+  // Skill discovery — handled identically for every registered agent.
+  if (type === "skill") {
+    const cfg = getAgentConfig(tool);
+    if (!cfg) return "";
+    if (scope === "global") return cfg.globalSkillsDir(deps);
+    // project + lockfile both anchor on a project root.
+    if (!projectRoot) return "";
+    return deps.join(projectRoot, cfg.skillsDir);
+  }
+
+  // Below: agent + command types. Only Claude and Codex carry these.
   const home = await getHome(deps);
-  const root =
-    scope === "global"
-      ? home
-      : scope === "project"
-        ? projectRoot ?? home
-        : projectRoot ?? home;
 
   if (tool === "claude") {
     if (scope === "project" && projectRoot) {
-      const agentsDir = await deps.join(projectRoot, ".agents", subdir(type));
-      return agentsDir;
+      return deps.join(projectRoot, ".agents", subdir(type));
     }
-    return deps.join(root, ".claude", subdir(type));
+    return deps.join(home, ".claude", subdir(type));
   }
 
   if (tool === "codex") {
-    if (type === "command") return deps.join(root, ".codex", "prompts");
-    if (type === "agent") return scope === "global" ? deps.join(root, ".codex") : root;
-    return deps.join(root, ".codex", "skills");
-  }
-
-  if (tool === "cursor") {
-    if (scope === "project" && projectRoot) {
-      return deps.join(projectRoot, ".cursor", "rules");
+    if (type === "command") {
+      return deps.join(scope === "global" ? home : projectRoot ?? home, ".codex", "prompts");
     }
-    return deps.join(root, ".cursor", "rules");
-  }
-
-  if (tool === "openclaw") {
-    if (type !== "skill") return "";
-    if (scope === "project" && projectRoot) {
-      return deps.join(projectRoot, "skills");
+    if (type === "agent") {
+      // Single-file artifacts (AGENTS.md): callers append the filename.
+      return scope === "global" ? deps.join(home, ".codex") : projectRoot ?? home;
     }
-    return deps.join(root, ".openclaw", "skills");
   }
 
-  if (tool === "cline") {
-    if (type !== "skill") return deps.join(root, "Documents", "Cline", "Rules", "_unused");
-    if (scope === "project" && projectRoot) {
-      return deps.join(projectRoot, ".clinerules");
-    }
-    // Per Cline docs (https://docs.cline.bot/features/cline-rules) global
-    // rules live under Documents/Cline/Rules on every platform — i.e.
-    // ~/Documents/Cline/Rules on macOS/Linux/WSL and
-    // %USERPROFILE%\Documents\Cline\Rules on Windows. The lister also
-    // checks ~/Cline/Rules as a documented Linux/WSL fallback.
-    return deps.join(root, "Documents", "Cline", "Rules");
-  }
-
-  if (tool === "hermes") {
-    // Hermes only ships skills (agentskills.io-compatible bundles); other
-    // types map nowhere. Skills live at ~/.hermes/skills, optionally nested
-    // one level under a category directory.
-    if (type !== "skill") return "";
-    if (scope === "project" && projectRoot) {
-      return deps.join(projectRoot, ".hermes", "skills");
-    }
-    return deps.join(root, ".hermes", "skills");
-  }
-
-  throw new Error(`unknown tool: ${tool satisfies never}`);
+  // Anything else: agent/command isn't a concept for this tool.
+  return "";
 }
 
 function subdir(type: ArtifactType): string {
@@ -97,7 +82,6 @@ function subdir(type: ArtifactType): string {
     case "command":
       return "commands";
     case "all":
-      // Sentinel only used in the UI; resolveArtifactDir narrows before calling.
       throw new Error("subdir: 'all' is a UI sentinel, not a concrete type");
   }
 }

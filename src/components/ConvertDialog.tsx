@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ArtifactType, MarkdownArtifact, Tool } from "../lib/artifacts/types";
+import { ALL_AGENTS, displayNameOf } from "../lib/agents/registry";
 
 interface Props {
   source: MarkdownArtifact;
@@ -7,7 +8,7 @@ interface Props {
   onConvert: (targetTool: Tool, targetType: ArtifactType) => Promise<void>;
 }
 
-const TOOLS: Tool[] = ["claude", "codex", "cursor", "openclaw", "cline", "hermes"];
+const TOOLS: Tool[] = ALL_AGENTS;
 const TYPES: ArtifactType[] = ["skill", "agent", "command"];
 
 export function ConvertDialog({ source, onCancel, onConvert }: Props) {
@@ -23,7 +24,7 @@ export function ConvertDialog({ source, onCancel, onConvert }: Props) {
           <label className="fm-label">target tool</label>
           <select value={targetTool} onChange={(e) => setTargetTool(e.target.value as Tool)}>
             {TOOLS.filter((t) => t !== source.tool).map((t) => (
-              <option key={t} value={t}>{t}</option>
+              <option key={t} value={t}>{displayNameOf(t)}</option>
             ))}
           </select>
         </div>

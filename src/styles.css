@@ -313,6 +313,7 @@ input:focus, textarea:focus, select:focus { outline: none; border-color: var(--a
 }
 .confirm-warning { margin-top: 8px; color: var(--warn); font-size: 12px; }
 
+.install-scope-tool { color: var(--muted); font-size: 12px; margin: 0 0 10px 0; }
 .install-scope-options { display: flex; flex-direction: column; gap: 8px; }
 .install-scope-option {
   display: flex;
