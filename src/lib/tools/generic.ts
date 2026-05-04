@@ -34,18 +34,17 @@ export async function listGenericSkills(
 }
 
 // vercel-labs/skills uses leading-dot directories like `.system`, `.curated`,
-// and `.experimental` as *category prefixes* — parents of bundles, not
-// bundles themselves (see vercel-labs/skills/src/skills.ts PRIORITY_PREFIXES).
-// A `.system/SKILL.md` left at the root would otherwise read as a single
-// 45-file bundle named ".system", which is surprising in the UI.
-function isCategoryDir(name: string): boolean {
+// and `.experimental` as *category prefixes* — parents of bundles shipped by
+// the tool's installer (system defaults). User-installed skills go directly
+// at the top level, so we treat anything dot-prefixed as out-of-scope.
+function isSystemCategoryDir(name: string): boolean {
   return name.startsWith(".");
 }
 
-// Some agents store bundles either directly under skillsDir/ OR one level
-// nested under a category directory (Hermes / vercel-labs/skills both use
-// this). We scan both shapes generically and de-duplicate by bundle path,
-// so non-nested layouts simply produce no extra results.
+// Some agents (Hermes) let users organize bundles one level under a non-dot
+// category dir like `<root>/writing/<skill>/SKILL.md`. We descend into those
+// to surface the real bundles, but never into dot-prefixed dirs — those hold
+// system-shipped skills the app doesn't manage.
 async function scanSkillBundles(
   fs: FsAdapter,
   pj: PathJoiner,
@@ -56,12 +55,9 @@ async function scanSkillBundles(
   const out: MarkdownArtifact[] = [];
   const seen = new Set<string>();
 
-  // Top-level bundles. Skip dot-prefixed children — those are category
-  // directories per the vercel-labs/skills convention; the recursive pass
-  // below walks into them looking for the real bundles.
   for (const b of await listSkillBundles(fs, pj, root, tool, scope)) {
     if (!b.bundleDir) continue;
-    if (isCategoryDir(basename(b.bundleDir))) continue;
+    if (isSystemCategoryDir(basename(b.bundleDir))) continue;
     if (seen.has(b.bundleDir)) continue;
     seen.add(b.bundleDir);
     out.push(b);
@@ -70,14 +66,10 @@ async function scanSkillBundles(
   const entries = await safeReadDir(fs, root);
   for (const entry of entries) {
     if (!entry.isDirectory && !entry.isSymlink) continue;
+    if (isSystemCategoryDir(entry.name)) continue;
     const childDir = await pj.join(root, entry.name);
-    if (!isCategoryDir(entry.name)) {
-      // Non-dot dirs already get listed by the top-level pass when they
-      // hold a SKILL.md. If they don't, fall through to the nested scan
-      // (Hermes' `<root>/<category>/<skill>/SKILL.md` layout).
-      const childSkill = await pj.join(childDir, "SKILL.md");
-      if (await safeExists(fs, childSkill)) continue;
-    }
+    const childSkill = await pj.join(childDir, "SKILL.md");
+    if (await safeExists(fs, childSkill)) continue;
     for (const b of await listSkillBundles(fs, pj, childDir, tool, scope)) {
       if (b.bundleDir && seen.has(b.bundleDir)) continue;
       if (b.bundleDir) seen.add(b.bundleDir);

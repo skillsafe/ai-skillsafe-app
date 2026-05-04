@@ -71,6 +71,13 @@ const PROJECTS_EXCLUDE_DIRS = new Set([
 
 const ARTIFACT_EXCLUDE_DIRS = new Set([".DS_Store"]);
 
+// vercel-labs/skills layout reserves dot-prefixed top-level dirs (`.system`,
+// `.curated`, `.experimental`) under `<tool>/skills/` for bundles shipped by
+// the tool's installer. The app only manages user-installed skills, so skill
+// mirrors skip those at the source root. (Sub-dirs further down still mirror
+// normally — a user skill bundle with a `.git` inside is fair game.)
+const SKILL_TOP_LEVEL_EXCLUDE_PREFIXES: ReadonlyArray<string> = ["."];
+
 interface ToolAcc {
   counts: BackupCounts;
   entries: BackupEntry[];
@@ -188,6 +195,8 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupManifest>
           kind: "artifact",
           meta,
           excludeDirNames: ARTIFACT_EXCLUDE_DIRS,
+          topLevelExcludePrefixes:
+            type === "skill" ? SKILL_TOP_LEVEL_EXCLUDE_PREFIXES : undefined,
           entries: acc.entries,
           counts: acc.counts,
           touched,
@@ -253,6 +262,8 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupManifest>
               kind: "artifact",
               meta,
               excludeDirNames: ARTIFACT_EXCLUDE_DIRS,
+              topLevelExcludePrefixes:
+                type === "skill" ? SKILL_TOP_LEVEL_EXCLUDE_PREFIXES : undefined,
               entries: acc.entries,
               counts: acc.counts,
               touched,
@@ -457,6 +468,12 @@ export interface MirrorContext {
     projectRoot?: string;
   };
   excludeDirNames: Set<string>;
+  // Names starting with any of these prefixes are skipped at the top level
+  // of the source tree only (rel === ""). Subdirectories pass through
+  // unchanged. Used to drop tool-shipped category dirs (`.system`, …) from
+  // skill backups without accidentally filtering dot dirs nested inside a
+  // user bundle.
+  topLevelExcludePrefixes?: ReadonlyArray<string>;
   entries: BackupEntry[];
   counts: { added: number; changed: number; removed: number; unchanged: number };
   touched: Set<string>;
@@ -495,9 +512,12 @@ async function walk(
   }
   // Track every directory we touch so the prune pass keeps it.
   ctx.touched.add(dest);
+  const isTopLevel = rel === "";
+  const topPrefixes = isTopLevel ? ctx.topLevelExcludePrefixes : undefined;
   for (const entry of kids) {
     if (ctx.excludeDirNames.has(entry.name)) continue;
     if (entry.name.startsWith(".tmp.")) continue;
+    if (topPrefixes?.some((p) => entry.name.startsWith(p))) continue;
     const childSrc = await ctx.joiner.join(source, entry.name);
     const childDest = await ctx.joiner.join(dest, entry.name);
     const childRel = rel ? `${rel}/${entry.name}` : entry.name;

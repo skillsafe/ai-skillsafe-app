@@ -138,22 +138,16 @@ describe("hermes listing (via the generic registry-driven lister)", () => {
     expect(out.map((a) => a.name)).toEqual(["proj"]);
   });
 
-  it("treats dot-prefixed top-level dirs (.system, .curated) as categories, not bundles", async () => {
-    // vercel-labs/skills uses .system / .curated / .experimental as
-    // category prefixes (see /tmp/skills-src/src/skills.ts:154-159). A
-    // stray SKILL.md at .system/SKILL.md should NOT surface as a 1-bundle
-    // catch-all named ".system"; instead, the real bundles inside it are
-    // listed.
+  it("hides bundles under dot-prefixed top-level dirs (.system, .curated) — those are tool-shipped defaults, not user skills", async () => {
+    // vercel-labs/skills reserves .system / .curated / .experimental for
+    // bundles shipped by the tool's installer. The app only manages
+    // user-installed skills, which live directly under <root>/<bundle>/.
     const root = path.join(home, ".hermes", "skills");
     const sys = path.join(root, ".system");
     await fs.mkdir(sys, { recursive: true });
-    // A spurious SKILL.md directly inside the category dir.
-    await fs.writeFile(
-      path.join(sys, "SKILL.md"),
-      "---\nname: stray\ndescription: should-not-appear\n---\nbody\n",
-    );
-    // A real bundle inside the category — this is what the user expects.
     await createSkillBundle(nodeFs, nodeJoiner, sys, "skill-creator", "real", "hermes", "global");
+    // A user-installed bundle at the top level — this one should appear.
+    await createSkillBundle(nodeFs, nodeJoiner, root, "mine", "user", "hermes", "global");
 
     const out = await listGenericSkills(nodeFs, nodeJoiner, pathDeps(home), {
       tool: "hermes",
@@ -161,7 +155,7 @@ describe("hermes listing (via the generic registry-driven lister)", () => {
       type: "skill",
     });
     const names = out.map((a) => a.name).sort();
-    expect(names).toEqual(["skill-creator"]);
+    expect(names).toEqual(["mine"]);
   });
 
   it("returns empty for agent / command types", async () => {
