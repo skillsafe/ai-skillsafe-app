@@ -6,7 +6,7 @@ import { fetchAccount, runDeviceFlow } from "../lib/skillsafe/auth";
 import { SkillSafeError } from "../lib/skillsafe/client";
 import { CloseIcon, FolderIcon, MonitorIcon, MoonIcon, SunIcon, TrashIcon } from "./icons";
 import { BackupPanel } from "./BackupPanel";
-import { checkForUpdate, installAndRelaunch, installPending } from "../lib/update/runner";
+import { checkForUpdate, installAndRelaunch } from "../lib/update/runner";
 
 interface Props {
   onClose: () => void;
@@ -89,18 +89,19 @@ export function SettingsDialog({ onClose, onToast }: Props) {
   async function handleRestartAndInstall() {
     setRestarting(true);
     try {
-      // Triggering install via the runner directly requires the pending
-      // Update handle, which lives in the orchestrator. The "Restart now"
-      // button on the banner is the primary path; here we simply re-check
-      // and install fresh, which is safe because Tauri's checker returns
-      // the same Update handle.
+      // The pending Update handle lives in the orchestrator (App.tsx) and
+      // is not reachable from here, so we re-check and download-and-install
+      // fresh. `check()` returns a *new* Update handle each call — its
+      // download state is not carried over from any prior check, so calling
+      // install() directly would fail with "Update.install called before
+      // Update.download". `installAndRelaunch` runs downloadAndInstall.
       const update = await checkForUpdate();
       if (!update) {
         onToast("ok", "Update is no longer available.");
         setUpdateReadyToInstall(false);
         return;
       }
-      await installPending(update);
+      await installAndRelaunch(update, setUpdateProgress);
     } catch (e) {
       onToast("error", `Install failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
