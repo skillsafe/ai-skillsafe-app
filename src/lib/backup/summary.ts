@@ -21,7 +21,7 @@ import { slotForPath } from "./dataTypes";
 // Maps the resolved slot to the BackupBrowser's legacy artifact-type filter.
 // Only the three classic types map; other slots leave `type` undefined and
 // the browser groups them by their slot directly.
-const SLOT_TO_TYPE: Record<string, ArtifactType> = {
+const SLOT_TO_TYPE: Record<string, Exclude<ArtifactType, "all">> = {
   skills: "skill",
   agents: "agent",
   commands: "command",
@@ -30,7 +30,7 @@ const SLOT_TO_TYPE: Record<string, ArtifactType> = {
 function inferEntryFields(relPath: string): {
   tool?: Tool;
   scope?: "global";
-  type?: ArtifactType;
+  type?: Exclude<ArtifactType, "all">;
 } {
   const parts = relPath.split("/");
   if (parts.length === 0 || !parts[0]) return {};
