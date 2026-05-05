@@ -22,7 +22,12 @@ tauri-plugin-http = "2.0"
 tauri-plugin-updater = "2.0"
 tauri-plugin-process = "2.0"
 tauri-plugin-deep-link = "2"
-tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+# NB: do not enable the `deep-link` feature on macOS — combined with
+# tauri-plugin-deep-link's own onOpenUrl handler, it causes recursive event
+# emission inside Listeners::emit_filter and stack-overflows on URL delivery
+# (see crash 263178F1, v0.2.1). The deep-link plugin handles URL forwarding
+# via Apple Events on macOS without needing single-instance to relay.
+tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

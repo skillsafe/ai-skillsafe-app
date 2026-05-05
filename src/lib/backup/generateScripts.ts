@@ -1,5 +1,5 @@
 import { atomicWrite, ensureDir, safeReadDir, type FsAdapter } from "../fs";
-import { agents, displayNameOf } from "../agents/registry";
+import { agents } from "../agents/registry";
 import {
   MACOS_PLIST,
   MACOS_SH,

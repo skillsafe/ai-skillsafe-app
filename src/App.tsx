@@ -34,7 +34,6 @@ import * as updateRunner from "./lib/update/runner";
 import { createOrchestrator } from "./lib/update/orchestrator";
 import { InstallScopeDialog, type InstallScopeChoice } from "./components/InstallScopeDialog";
 import { parseDeepLink, type DeepLinkInstall } from "./lib/deepLink";
-import { listen } from "@tauri-apps/api/event";
 import { getCurrent as getCurrentDeepLinks, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 
 export default function App() {
@@ -140,11 +139,13 @@ export default function App() {
     };
   }, [orchestrator]);
 
-  // Deep-link entry: runtime URLs come via `onOpenUrl` (macOS native, all
-  // platforms), the Rust-side `deep-link://new-url` event (single-instance
-  // re-launch on Linux/Windows), and `getCurrent` (cold-start URL the OS
-  // launched us with). We accept all three so the install dialog opens
-  // regardless of how the user got here.
+  // Deep-link entry: runtime URLs come via `onOpenUrl` (the typed wrapper
+  // that subscribes to the deep-link plugin's `deep-link://new-url` event on
+  // every platform), and `getCurrent` (cold-start URL the OS launched us
+  // with). We previously also called `listen("deep-link://new-url")` as a
+  // belt-and-braces second subscription, but that combined with single-
+  // instance's `deep-link` feature reentered Tauri's event dispatch and stack-
+  // overflowed on every URL delivery — see crash report 263178F1 (v0.2.1).
   useEffect(() => {
     let cancelled = false;
     const handleUrl = (raw: string) => {
@@ -173,12 +174,6 @@ export default function App() {
         unlisteners.push(off);
       } catch (e) {
         console.warn("[deep-link] onOpenUrl failed:", e);
-      }
-      try {
-        const off = await listen<string[]>("deep-link://new-url", (e) => handleUrls(e.payload));
-        unlisteners.push(off);
-      } catch (e) {
-        console.warn("[deep-link] listen failed:", e);
       }
     })();
 
