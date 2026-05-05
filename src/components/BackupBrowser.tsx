@@ -15,6 +15,7 @@ import {
 } from "../lib/backup/manifest";
 import type { ArtifactType, Scope, Tool } from "../lib/artifacts/types";
 import { ALL_AGENTS, displayNameOf } from "../lib/agents/registry";
+import { dataTypesFor, EXTRA_SOURCES, slotForPath } from "../lib/backup/dataTypes";
 import { resolveArtifactDir } from "../lib/paths";
 import { renderMarkdown } from "../lib/markdown";
 import { parseFrontmatter } from "../lib/frontmatter";
@@ -23,19 +24,47 @@ import { TreeView } from "./TreeView";
 import type { Attachment } from "../lib/artifacts/types";
 import { ConfirmDialog } from "./ConfirmDialog";
 
-const ALL_TOOLS: ReadonlyArray<{ id: Tool; label: string }> = ALL_AGENTS
-  .map((id) => ({ id, label: displayNameOf(id) }))
-  .sort((a, b) => a.label.localeCompare(b.label));
+const ALL_TOOLS: ReadonlyArray<{ id: Tool; label: string }> = [
+  ...ALL_AGENTS.map((id) => ({ id, label: displayNameOf(id) })),
+  ...Object.values(EXTRA_SOURCES).map((s) => ({ id: s.id, label: s.displayName })),
+].sort((a, b) => a.label.localeCompare(b.label));
 
-type Group = "skill" | "agent" | "command" | "history";
+// A "group" used to be one of the four legacy artifact types. With the new
+// data-type system, the group filter mirrors whichever data-type slots
+// actually exist in the current manifest — so the BackupBrowser pills match
+// what the user picked in Settings.
+type Group = string;
 type ScopeFilter = "all" | "global" | "project";
 
-const GROUP_LABEL: Record<Group, string> = {
-  skill: "Skills",
-  agent: "Agents",
-  command: "Commands",
-  history: "History",
-};
+// Cache of slot id → display label, populated from every tool's data-type
+// registry on first lookup. Falls back to a title-cased version of the slot.
+const _SLOT_LABEL_CACHE = new Map<string, string>();
+function slotLabelFor(slot: string): string {
+  const cached = _SLOT_LABEL_CACHE.get(slot);
+  if (cached !== undefined) return cached;
+  for (const t of ALL_TOOLS) {
+    const types = dataTypesFor(t.id);
+    const match = types.find((d) => d.id === slot);
+    if (match) {
+      _SLOT_LABEL_CACHE.set(slot, match.label);
+      return match.label;
+    }
+  }
+  const fallback = slot
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+  _SLOT_LABEL_CACHE.set(slot, fallback);
+  return fallback;
+}
+
+/** Resolves the slot id for a manifest entry. Delegates to the shared
+ *  helper so summary.ts and the browser stay in sync — including the
+ *  fallback that buckets stray top-level files (e.g.
+ *  `~/.agents/.skill-lock.json`) under "settings" instead of treating the
+ *  filename itself as a one-off slot. */
+function slotOf(entry: BackupEntry): string | null {
+  return slotForPath(entry.relPath);
+}
 
 interface BrowserFile {
   entry: BackupEntry;
@@ -200,37 +229,39 @@ export function BackupBrowser({ onToast }: Props) {
     [visibleTools, toolCounts],
   );
 
-  // For the currently-selected tool (or "all"), which groups exist?
-  // (skill/agent/command come from artifact entries; history maps to
-  // claude/projects entries — included only when the tool filter
-  // includes claude.)
+  // Dynamically derive the set of group pills from the manifest itself —
+  // the slots present (skills, plugins, memory, settings, …) match the
+  // data-types the user picked in Settings, no hardcoded list.
   const groupCounts = useMemo(() => {
-    const acc: Partial<Record<Group, number>> = {};
+    const acc = new Map<string, number>();
     if (!manifest) return acc;
-    const includeClaude = selectedTool === "all" || selectedTool === "claude";
     for (const e of manifest.entries) {
-      if (e.kind === "project") {
-        if (includeClaude) acc.history = (acc.history ?? 0) + 1;
-        continue;
-      }
       if (e.kind !== "artifact") continue;
       if (selectedTool !== "all" && e.tool !== selectedTool) continue;
-      const g = e.type as Group | undefined;
-      if (g === "skill" || g === "agent" || g === "command") {
-        acc[g] = (acc[g] ?? 0) + 1;
-      }
+      const slot = slotOf(e);
+      if (!slot) continue;
+      acc.set(slot, (acc.get(slot) ?? 0) + 1);
     }
     return acc;
   }, [manifest, selectedTool]);
 
-  const totalGroupItems = useMemo(
-    () =>
-      (groupCounts.skill ?? 0) +
-      (groupCounts.agent ?? 0) +
-      (groupCounts.command ?? 0) +
-      (groupCounts.history ?? 0),
-    [groupCounts],
-  );
+  const groupOrder = useMemo(() => {
+    // Stable, predictable ordering: skills first (highest-signal), then the
+    // rest alphabetized by display label.
+    const slots = Array.from(groupCounts.keys());
+    slots.sort((a, b) => {
+      if (a === "skills") return -1;
+      if (b === "skills") return 1;
+      return slotLabelFor(a).localeCompare(slotLabelFor(b));
+    });
+    return slots;
+  }, [groupCounts]);
+
+  const totalGroupItems = useMemo(() => {
+    let n = 0;
+    for (const v of groupCounts.values()) n += v;
+    return n;
+  }, [groupCounts]);
 
   // Within the selected tool+group, which scopes are present? History
   // entries have no scope, so they're naturally excluded; the Scope row
@@ -241,7 +272,7 @@ export function BackupBrowser({ onToast }: Props) {
     for (const e of manifest.entries) {
       if (e.kind !== "artifact") continue;
       if (selectedTool !== "all" && e.tool !== selectedTool) continue;
-      if (group !== "all" && e.type !== group) continue;
+      if (group !== "all" && slotOf(e) !== group) continue;
       if (e.scope === "global") acc.global += 1;
       else if (e.scope === "project") acc.project += 1;
     }
@@ -274,7 +305,7 @@ export function BackupBrowser({ onToast }: Props) {
   useEffect(() => {
     if (!manifest) return;
     if (group === "all") return;
-    if ((groupCounts[group] ?? 0) > 0) return;
+    if ((groupCounts.get(group) ?? 0) > 0) return;
     setGroup("all");
   }, [manifest, groupCounts, group]);
 
@@ -583,8 +614,8 @@ export function BackupBrowser({ onToast }: Props) {
             All
             <span className="backup-tool-count">{totalGroupItems}</span>
           </div>
-          {(["skill", "agent", "command", "history"] as Group[]).map((g) => {
-            const count = groupCounts[g] ?? 0;
+          {groupOrder.map((g) => {
+            const count = groupCounts.get(g) ?? 0;
             const enabled = count > 0;
             return (
               <div
@@ -594,7 +625,7 @@ export function BackupBrowser({ onToast }: Props) {
                 role="tab"
                 aria-selected={group === g}
               >
-                {GROUP_LABEL[g]}
+                {slotLabelFor(g)}
                 <span className="backup-tool-count">{count}</span>
               </div>
             );
@@ -644,7 +675,7 @@ export function BackupBrowser({ onToast }: Props) {
                 ? "Filter…"
                 : group === "history"
                   ? "Filter history…"
-                  : `Filter ${GROUP_LABEL[group].toLowerCase()}…`
+                  : `Filter ${slotLabelFor(group).toLowerCase()}…`
             }
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
@@ -658,7 +689,7 @@ export function BackupBrowser({ onToast }: Props) {
                 ? "Nothing in this backup."
                 : group === "history"
                   ? "No project history in this backup."
-                  : `No ${GROUP_LABEL[group].toLowerCase()} backed up for this tool.`}
+                  : `No ${slotLabelFor(group).toLowerCase()} backed up for this tool.`}
           </div>
         ) : (
           items.map((item) => {
@@ -708,7 +739,10 @@ export function BackupBrowser({ onToast }: Props) {
                     )}
                   </div>
                 </div>
-                {isActive && tree.length > 0 && (() => {
+                {/* Skip the inline tree for single-file items — the only
+                    file is auto-selected on click and shown in the preview
+                    pane, so a one-row tree is dead weight. */}
+                {isActive && item.files.length > 1 && tree.length > 0 && (() => {
                   const fileMap = new Map<string, BrowserFile>();
                   const attachments = toAttachments(tree, fileMap);
                   return (
@@ -843,10 +877,10 @@ function mergeToolManifests(parts: BackupManifest[], destination: string): Backu
   };
 }
 
-// Glue layer for the Tools/Group "All" pills — fans out to the
-// per-group/per-tool helpers and concatenates. Sorting matches the
-// per-helper behaviour so a single-tool view and the All view list items
-// in the same order.
+// Builds the items to render in the middle pane. Filters apply at the entry
+// level (tool / slot / scope) and bucketing is slot-aware: the "skills" slot
+// groups files into bundles by directory; every other slot lists each file
+// as its own item.
 function collectBrowserItems(
   m: BackupManifest,
   selectedTool: Tool | "all",
@@ -854,21 +888,13 @@ function collectBrowserItems(
   scopeFilter: ScopeFilter,
 ): BrowserItem[] {
   const out: BrowserItem[] = [];
-  const artifactGroups: Group[] =
-    group === "all"
-      ? ["skill", "agent", "command"]
-      : group === "history"
-        ? []
-        : [group];
   const tools: Tool[] =
     selectedTool === "all" ? ALL_TOOLS.map((t) => t.id) : [selectedTool];
   for (const tool of tools) {
-    for (const g of artifactGroups) {
-      out.push(...groupArtifactItems(m, tool, g, scopeFilter));
-    }
+    out.push(...itemsForTool(m, tool, group, scopeFilter));
   }
-  // History is claude-only; include when the tool filter covers claude
-  // and the group filter is "all" or "history".
+  // Legacy project-kind entries (from the older runBackup-based manifest)
+  // are still rendered as "history" items for backwards compatibility.
   const includeHistory =
     (selectedTool === "all" || selectedTool === "claude") &&
     (group === "all" || group === "history");
@@ -886,41 +912,53 @@ function countArtifactsByTool(m: BackupManifest | null): Partial<Record<Tool, nu
   return acc;
 }
 
-function groupArtifactItems(
+// Slots that contain skill bundles (a directory with SKILL.md + assets) —
+// items in these slots are grouped one bucket per top-level subdirectory.
+// Everything else gets one bucket per file so the middle-pane list is
+// browsable without click-into-bundle navigation.
+const BUNDLE_SLOTS = new Set(["skills"]);
+
+function itemsForTool(
   m: BackupManifest,
   tool: Tool,
-  type: Group, // "skill" | "agent" | "command"
+  group: Group | "all",
   scope: ScopeFilter,
 ): BrowserItem[] {
   const buckets = new Map<string, BrowserItem>();
   for (const e of m.entries) {
     if (e.kind !== "artifact" || e.tool !== tool) continue;
-    if (e.type !== type) continue;
     if (scope !== "all" && e.scope !== scope) continue;
+    const slot = slotOf(e);
+    if (!slot) continue;
+    if (group !== "all" && slot !== group) continue;
+
     const parts = e.relPath.split("/");
-    const typeIdx = parts.findIndex(
-      (p, i) => i > 1 && (p === "skill" || p === "agent" || p === "command"),
-    );
-    if (typeIdx < 0) continue;
-    const rest = parts.slice(typeIdx + 1);
+    // When the slot was matched against parts[1] (a real data-type dir),
+    // skip both segments. When the slot came from the "settings" fallback
+    // (a stray top-level file like `~/.agents/.skill-lock.json`), parts[1]
+    // *is* the file — keep it.
+    const slotIsLiteralDir = parts[1] === slot;
+    const rest = slotIsLiteralDir ? parts.slice(2) : parts.slice(1);
+
     let key: string;
     let label: string;
     let relInItem: string;
-    if (e.type === "skill") {
+    if (BUNDLE_SLOTS.has(slot)) {
       const bundle = rest[0] ?? "(unnamed)";
-      key = `skill::${e.tool ?? ""}::${e.scope}::${e.projectRoot ?? ""}::${bundle}`;
+      key = `${slot}::${tool}::${e.scope ?? ""}::${e.projectRoot ?? ""}::${bundle}`;
       label = bundle;
-      // Path *within* the bundle is everything after the bundle name.
       relInItem = rest.slice(1).join("/") || rest[0] || "";
     } else {
       const fileName = rest.join("/") || "(unnamed)";
-      key = `${e.type}::${e.tool ?? ""}::${e.scope}::${e.projectRoot ?? ""}::${fileName}`;
+      key = `${slot}::${tool}::${e.scope ?? ""}::${e.projectRoot ?? ""}::${fileName}`;
       label = fileName;
-      relInItem = fileName; // single file
+      relInItem = fileName;
     }
+
     let item = buckets.get(key);
     if (!item) {
-      const badges = [e.type ?? "", e.scope ?? ""].filter(Boolean) as string[];
+      const slotBadge = slotLabelFor(slot).toLowerCase();
+      const badges = [slotBadge, e.scope ?? ""].filter(Boolean) as string[];
       const meta = e.scope === "project" && e.projectRoot
         ? shortProjectName(e.projectRoot)
         : undefined;
@@ -928,11 +966,9 @@ function groupArtifactItems(
       buckets.set(key, item);
     }
     item.files.push({ entry: e, relInItem });
-    // Pick the primary markdown file: SKILL.md for bundles, or the lone .md
-    // for agent / command items.
     if (!item.primaryMdAbs) {
       const baseLower = fileBasename(e.relPath).toLowerCase();
-      if (baseLower === "skill.md" || (e.type !== "skill" && baseLower.endsWith(".md"))) {
+      if (baseLower === "skill.md" || (!BUNDLE_SLOTS.has(slot) && baseLower.endsWith(".md"))) {
         item.primaryMdAbs = e.destPath;
       }
     }

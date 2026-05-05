@@ -9,7 +9,7 @@ describe("path resolver", () => {
     expect(dir).toBe("/Users/jane/.claude/skills");
   });
 
-  it("resolves Claude project agent dir under .agents/", async () => {
+  it("resolves Claude project agent dir under .claude/", async () => {
     resetHomeCache();
     const dir = await resolveArtifactDir(
       pathDeps("/Users/jane"),
@@ -18,7 +18,19 @@ describe("path resolver", () => {
       "agent",
       "/work/repo",
     );
-    expect(dir).toBe("/work/repo/.agents/agents");
+    expect(dir).toBe("/work/repo/.claude/agents");
+  });
+
+  it("resolves Claude project command dir under .claude/", async () => {
+    resetHomeCache();
+    const dir = await resolveArtifactDir(
+      pathDeps("/Users/jane"),
+      "claude",
+      "project",
+      "command",
+      "/work/repo",
+    );
+    expect(dir).toBe("/work/repo/.claude/commands");
   });
 
   it("resolves Codex global commands → ~/.codex/prompts", async () => {

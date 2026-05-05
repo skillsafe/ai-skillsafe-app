@@ -256,7 +256,7 @@ describe("generateScripts", () => {
     await rmrf(tmp);
   });
 
-  it("emits mac script + plist + readme with no leftover placeholders", async () => {
+  it("emits mac script + plist + readme + restore with no leftover placeholders", async () => {
     const result = await generateScripts({
       fs: nodeFs,
       joiner: nodeJoiner,
@@ -266,7 +266,7 @@ describe("generateScripts", () => {
       outDir,
     });
 
-    expect(result.files.length).toBe(3);
+    expect(result.files.length).toBe(4);
     for (const f of result.files) {
       const text = await fs.readFile(f.path, "utf8");
       expect(text).not.toMatch(/{{[A-Z_]+}}/);
@@ -274,9 +274,13 @@ describe("generateScripts", () => {
     const sh = await fs.readFile(path.join(outDir, "claude_backup.sh"), "utf8");
     expect(sh).toContain("/Users/test/.claude/");
     expect(sh).toContain(dest);
+    const restore = await fs.readFile(path.join(outDir, "claude_restore.sh"), "utf8");
+    expect(restore).toContain("scan");
+    expect(restore).toContain("apply");
+    expect(restore).toContain(dest);
   });
 
-  it("emits windows script + register-task + readme with no leftover placeholders", async () => {
+  it("emits windows script + register-task + readme + restore with no leftover placeholders", async () => {
     const result = await generateScripts({
       fs: nodeFs,
       joiner: nodeJoiner,
@@ -286,7 +290,7 @@ describe("generateScripts", () => {
       outDir,
     });
 
-    expect(result.files.length).toBe(3);
+    expect(result.files.length).toBe(4);
     for (const f of result.files) {
       const text = await fs.readFile(f.path, "utf8");
       expect(text).not.toMatch(/{{[A-Z_]+}}/);

@@ -87,6 +87,8 @@
         { "path": "$HOME/Library/LaunchAgents/**" },
         { "path": "$HOME/Library/Application Support/skillsafe-app" },
         { "path": "$HOME/Library/Application Support/skillsafe-app/**" },
+        { "path": "$HOME/Library/Application Support/Claude" },
+        { "path": "$HOME/Library/Application Support/Claude/**" },
         { "path": "$HOME/Library/Logs/skillsafe-backup.log" },
         { "path": "$HOME/Library/Logs/skillsafe-backup.log.old" },
         { "path": "$HOME/Library/CloudStorage" },

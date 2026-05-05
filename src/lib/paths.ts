@@ -53,8 +53,11 @@ export async function resolveArtifactDir(
   const home = await getHome(deps);
 
   if (tool === "claude") {
+    // Project-scope Claude commands/agents live alongside skills at
+    // <project>/.claude/<subdir>/, NOT <project>/.agents/. Mirrors the
+    // registry's skillsDir (".claude/skills") for the same tool.
     if (scope === "project" && projectRoot) {
-      return deps.join(projectRoot, ".agents", subdir(type));
+      return deps.join(projectRoot, ".claude", subdir(type));
     }
     return deps.join(home, ".claude", subdir(type));
   }

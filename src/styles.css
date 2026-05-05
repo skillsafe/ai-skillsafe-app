@@ -246,6 +246,195 @@ input:not([type="radio"]):not([type="checkbox"]):focus, textarea:focus, select:f
   color: var(--muted);
   font-size: 11px;
 }
+
+/* Tools & data types picker — per-tool checkboxes with an inline data-type
+   sublist when the tool is enabled and has more than the fallback "all"
+   slice. Lives in Settings → Local Backup. */
+.backup-tools-picker { display: flex; flex-direction: column; gap: 6px; }
+.backup-tools-filter {
+  flex: 0 0 160px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 11px;
+}
+.backup-tools-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
+  background: var(--panel-2);
+}
+.backup-tool-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+}
+.backup-tool-card.active { border-color: var(--accent); }
+.backup-tool-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  user-select: none;
+}
+.backup-tool-card-head input[type="checkbox"] { flex-shrink: 0; }
+.backup-tool-card-name {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text);
+  font-weight: 500;
+}
+.backup-tool-card-meta {
+  font-size: 10px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.backup-data-type-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 10px 8px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px dashed var(--border);
+}
+.backup-data-type-row { display: flex; flex-direction: column; gap: 2px; padding-top: 4px; }
+.backup-data-type-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+}
+.backup-data-type-name { line-height: 1.2; }
+.backup-data-type-desc { padding-left: 22px; font-size: 11px; color: var(--muted); line-height: 1.35; }
+.backup-tools-toggle { align-self: flex-start; font-size: 11px; }
+.backup-symlink-note {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
+  padding: 6px 10px;
+  border-left: 2px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 4px;
+}
+/* Restore preview dialog — wider than the standard ConfirmDialog because it
+   shows a scrollable list of conflicts that the user can pick from. */
+.restore-dialog { max-width: 720px; width: 90vw; }
+.restore-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  z-index: 1;
+}
+.restore-count {
+  font-size: 12px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  margin-right: auto;
+}
+.restore-section-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.restore-section {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+.restore-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+.restore-section-head input[type="checkbox"] { flex-shrink: 0; }
+.restore-section-name { flex: 1; font-size: 12px; font-weight: 600; color: var(--text); }
+.restore-section-count { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.restore-file-list { list-style: none; margin: 0; padding: 4px 0; }
+.restore-file-row { padding: 0; }
+.restore-file-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 4px 28px;
+  cursor: pointer;
+  font-size: 12px;
+  user-select: none;
+}
+.restore-file-label:hover { background: var(--accent-soft); }
+.restore-file-label input[type="checkbox"] { flex-shrink: 0; }
+.restore-kind {
+  flex-shrink: 0;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.kind-new      { background: rgba(58, 175, 90, 0.15);  color: #3aaf5a; }
+.kind-modified { background: rgba(212, 160, 23, 0.15); color: #d4a017; }
+.kind-extra    { background: rgba(212, 70, 70, 0.15);  color: #d44646; }
+.restore-rel {
+  flex: 1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.restore-size {
+  font-size: 10.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.restore-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+}
+.restore-footer .primary.danger {
+  background: linear-gradient(135deg, #d44646, #b03030);
+  color: white;
+  border-color: transparent;
+}
+.restore-footer .primary.danger:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.backup-symlink-note code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  color: var(--text);
+  background: var(--panel);
+  padding: 0 4px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+}
 .backup-editor-path {
   color: var(--muted); font-size: 12px;
   flex: 1; min-width: 0;

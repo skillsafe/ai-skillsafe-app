@@ -1,10 +1,18 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { Command, open as shellOpen } from "@tauri-apps/plugin-shell";
 import { type as osType } from "@tauri-apps/plugin-os";
 import { useApp } from "../lib/store";
 import { tauriFs, tauriJoiner, tauriPaths } from "../lib/tauriAdapters";
-import { generateScripts, type BackupPlatform } from "../lib/backup/generateScripts";
+import {
+  generateScripts,
+  resolveRestoreMappings,
+  type BackupPlatform,
+} from "../lib/backup/generateScripts";
+import { dataTypesFor, EXTRA_SOURCES } from "../lib/backup/dataTypes";
+import { scanForConflicts, type ConflictItem } from "../lib/backup/restoreScan";
+import { applyRestore } from "../lib/backup/restoreApply";
+import { buildAndWriteManifest } from "../lib/backup/summary";
 import {
   SERVICE_LABEL,
   diagnose as diagnoseSchedule,
@@ -23,12 +31,14 @@ import { ALL_AGENTS, displayNameOf } from "../lib/agents/registry";
 import { FolderIcon } from "./icons";
 import { ConfirmDialog } from "./ConfirmDialog";
 
-// Drawn from the registry so a new entry in src/lib/agents/registry.ts
-// appears here automatically. Sorted alphabetically by display name to keep
-// the picker scannable as the list crosses ~50 entries.
-const ALL_TOOLS: ReadonlyArray<{ id: Tool; label: string }> = ALL_AGENTS
-  .map((id) => ({ id, label: displayNameOf(id) }))
-  .sort((a, b) => a.label.localeCompare(b.label));
+// Combines the agent registry with the EXTRA_SOURCES list (e.g. shared
+// folders like ~/.agents/ that several tools symlink into). Both behave
+// uniformly downstream — the picker, dataTypesFor, and resolveSections all
+// accept either kind of id.
+const ALL_TOOLS: ReadonlyArray<{ id: Tool; label: string }> = [
+  ...ALL_AGENTS.map((id) => ({ id, label: displayNameOf(id) })),
+  ...Object.values(EXTRA_SOURCES).map((s) => ({ id: s.id, label: s.displayName })),
+].sort((a, b) => a.label.localeCompare(b.label));
 
 interface Props {
   onToast: (kind: "ok" | "error", text: string) => void;
@@ -42,12 +52,14 @@ export function BackupPanel({ onToast }: Props) {
     backupBusy,
     backupProgress,
     backupTools,
+    backupDataTypes,
     backupSchedule,
     setBackupDestination,
     setBackupResult,
     setBackupBusy,
     setBackupProgress,
     setBackupTools,
+    setBackupDataTypes,
     setBackupSchedule,
   } = useApp();
 
@@ -73,6 +85,22 @@ export function BackupPanel({ onToast }: Props) {
   const [diag, setDiag] = useState<DiagnosticResult | null>(null);
   const [confirmClearDest, setConfirmClearDest] = useState(false);
   const [confirmUninstall, setConfirmUninstall] = useState(false);
+  const [restoreState, setRestoreState] = useState<
+    | { phase: "idle" }
+    | { phase: "scanning"; mirror: boolean }
+    | {
+        phase: "preview";
+        conflicts: ConflictItem[];
+        selected: Set<string>;
+        mirror: boolean;
+      }
+    | {
+        phase: "applying";
+        total: number;
+        done: number;
+        currentLabel: string;
+      }
+  >({ phase: "idle" });
 
   // Keep draft synced when persisted schedule changes (e.g. on first load).
   useEffect(() => {
@@ -93,7 +121,7 @@ export function BackupPanel({ onToast }: Props) {
     if (platform !== "macos") return;
     ensureLocalGenerated().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backupTools, backupDestination, backupSchedule, platform]);
+  }, [backupTools, backupDataTypes, backupDestination, backupSchedule, platform]);
 
   async function probeStatus() {
     const home = await tauriPaths.homeDir();
@@ -194,7 +222,7 @@ export function BackupPanel({ onToast }: Props) {
 
   async function ensureLocalGenerated(
     schedule: ScheduleSpec = backupSchedule,
-  ): Promise<{ scriptPath: string; plistPath: string }> {
+  ): Promise<{ scriptPath: string; restorePath: string; plistPath: string }> {
     if (!backupDestination) throw new Error("Pick a destination folder first.");
     const home = await tauriPaths.homeDir();
     // Local copy: lives outside OneDrive/Dropbox/etc so launchd can read it
@@ -215,10 +243,12 @@ export function BackupPanel({ onToast }: Props) {
       outDir: localOutDir,
       schedule,
       tools: backupTools,
+      dataTypes: backupDataTypes,
     });
     const scriptPath = await tauriJoiner.join(localOutDir, "claude_backup.sh");
+    const restorePath = await tauriJoiner.join(localOutDir, "claude_restore.sh");
     const plistPath = await tauriJoiner.join(localOutDir, `${SERVICE_LABEL}.plist`);
-    return { scriptPath, plistPath };
+    return { scriptPath, restorePath, plistPath };
   }
 
   async function handleScheduleInstall() {
@@ -415,15 +445,29 @@ export function BackupPanel({ onToast }: Props) {
         throw new Error(out.stderr || out.stdout || `exit code ${out.code}`);
       }
       const generatedAt = Date.now();
-      setBackupResult(generatedAt, {
-        generatedAt,
-        counts: { added: 0, changed: 0, removed: 0, unchanged: 0 },
-        totalBytes: 0,
-        errorCount: 0,
-        errorSamples: [],
-        recentChanges: [],
-        backupRoot: backupDestination,
-      });
+      // Walk the destination, diff against the previous manifest, and write
+      // an updated LAST_BACKUP.json. This is what powers the "Last backup:
+      // …+N ~M -K · X MB" line and the BackupBrowser file tree.
+      try {
+        const { stats } = await buildAndWriteManifest({
+          fs: tauriFs,
+          joiner: tauriJoiner,
+          destination: backupDestination,
+          generatedAt,
+        });
+        setBackupResult(generatedAt, stats);
+      } catch {
+        // Stats are observability — never fail a backup over them.
+        setBackupResult(generatedAt, {
+          generatedAt,
+          counts: { added: 0, changed: 0, removed: 0, unchanged: 0 },
+          totalBytes: 0,
+          errorCount: 0,
+          errorSamples: [],
+          recentChanges: [],
+          backupRoot: backupDestination,
+        });
+      }
       refreshLog();
       if (out.code === 2) {
         onToast("error", "Backup completed with errors. Check the log.");
@@ -437,6 +481,118 @@ export function BackupPanel({ onToast }: Props) {
       setBackupBusy(false);
       setBackupProgress(null);
     }
+  }
+
+  async function handleRestoreScan(mirror: boolean) {
+    if (!backupDestination) {
+      onToast("error", "Pick a destination folder first.");
+      return;
+    }
+    setRestoreState({ phase: "scanning", mirror });
+    try {
+      const home = await tauriPaths.homeDir();
+      const mappings = await resolveRestoreMappings({
+        fs: tauriFs,
+        joiner: tauriJoiner,
+        home,
+        destination: backupDestination,
+        tools: backupTools,
+        dataTypes: backupDataTypes,
+      });
+      const conflicts = await scanForConflicts({
+        fs: tauriFs,
+        joiner: tauriJoiner,
+        mappings,
+        mirror,
+      });
+      if (conflicts.length === 0) {
+        setRestoreState({ phase: "idle" });
+        onToast("ok", "Live tree already matches the backup. Nothing to restore.");
+        return;
+      }
+      // Default-select every conflict — the user starts from "restore
+      // everything" and unchecks anything they want to keep.
+      const selected = new Set(conflicts.map((c) => c.id));
+      setRestoreState({ phase: "preview", conflicts, selected, mirror });
+    } catch (e) {
+      setRestoreState({ phase: "idle" });
+      onToast("error", `Restore scan failed: ${describeErr(e)}`);
+    }
+  }
+
+  async function handleRestoreApply(items: ConflictItem[]) {
+    if (items.length === 0) {
+      onToast("error", "No files selected.");
+      return;
+    }
+    setRestoreState({
+      phase: "applying",
+      total: items.length,
+      done: 0,
+      currentLabel: items[0].rel,
+    });
+    try {
+      const result = await applyRestore({
+        fs: tauriFs,
+        items,
+        onProgress: (done, total, current) => {
+          setRestoreState({
+            phase: "applying",
+            total,
+            done,
+            currentLabel: current.rel,
+          });
+        },
+      });
+      if (result.failed.length > 0) {
+        const sample = result.failed
+          .slice(0, 3)
+          .map((f) => `${f.item.rel}: ${f.error}`)
+          .join("\n");
+        onToast(
+          "error",
+          `Restored ${result.copied} file${result.copied === 1 ? "" : "s"}` +
+            ` (${result.deleted} deleted), ${result.failed.length} failed.\n\n${sample}`,
+        );
+      } else {
+        onToast(
+          "ok",
+          `Restored ${result.copied} file${result.copied === 1 ? "" : "s"}` +
+            (result.deleted > 0 ? ` (${result.deleted} deleted)` : ""),
+        );
+      }
+    } catch (e) {
+      onToast("error", `Restore failed: ${describeErr(e)}`);
+    } finally {
+      setRestoreState({ phase: "idle" });
+    }
+  }
+
+  function toggleConflictSelection(id: string) {
+    if (restoreState.phase !== "preview") return;
+    const next = new Set(restoreState.selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setRestoreState({ ...restoreState, selected: next });
+  }
+
+  function toggleSection(sectionLabel: string, on: boolean) {
+    if (restoreState.phase !== "preview") return;
+    const next = new Set(restoreState.selected);
+    for (const c of restoreState.conflicts) {
+      if (c.section !== sectionLabel) continue;
+      if (on) next.add(c.id);
+      else next.delete(c.id);
+    }
+    setRestoreState({ ...restoreState, selected: next });
+  }
+
+  function toggleAllConflicts(on: boolean) {
+    if (restoreState.phase !== "preview") return;
+    const next = on
+      ? new Set(restoreState.conflicts.map((c) => c.id))
+      : new Set<string>();
+    setRestoreState({ ...restoreState, selected: next });
   }
 
   async function handleGenerateScript() {
@@ -469,6 +625,7 @@ export function BackupPanel({ onToast }: Props) {
         destination: backupDestination,
         outDir,
         tools: backupTools,
+        dataTypes: backupDataTypes,
       });
       onToast("ok", `Generated ${result.files.length} files in ${outDir}`);
       shellOpen(outDir).catch(() => {});
@@ -533,31 +690,24 @@ export function BackupPanel({ onToast }: Props) {
         </div>
       </div>
 
-      <div className="settings-row" style={{ alignItems: "flex-start" }}>
-        <label className="settings-row-label">Tools</label>
-        <div className="pill-row" style={{ flex: 1, flexWrap: "wrap" }}>
-          {ALL_TOOLS.map((t) => (
-            <div
-              key={t.id}
-              className={`pill ${backupTools.includes(t.id) ? "active" : ""}`}
-              onClick={() => toggleTool(t.id)}
-              role="checkbox"
-              aria-checked={backupTools.includes(t.id)}
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === " " || e.key === "Enter") {
-                  e.preventDefault();
-                  toggleTool(t.id);
-                }
-              }}
-            >
-              {t.label}
-            </div>
-          ))}
-        </div>
+      <BackupToolsPicker
+        tools={ALL_TOOLS}
+        selected={backupTools}
+        dataTypeSelection={backupDataTypes}
+        onToggleTool={toggleTool}
+        onToggleDataType={(tool, id, on) => {
+          const cur = backupDataTypes[tool] ?? [];
+          const next = on ? Array.from(new Set([...cur, id])) : cur.filter((x) => x !== id);
+          setBackupDataTypes(tool, next);
+        }}
+      />
+      <div className="backup-symlink-note">
+        Symlinks pointing outside the source tree (for example, a Claude skill
+        linked to <code>.agents/skills/</code>) are dereferenced into the
+        backup so the linked content travels with the backup.
       </div>
 
-      <div className="settings-row">
+      <div className="settings-row" style={{ flexWrap: "wrap" }}>
         <button
           className="primary"
           onClick={handleBackup}
@@ -571,6 +721,29 @@ export function BackupPanel({ onToast }: Props) {
           }
         >
           {backupBusy ? "Backing up…" : "Back up now"}
+        </button>
+        <button
+          onClick={() => handleRestoreScan(false)}
+          disabled={
+            !backupDestination ||
+            backupBusy ||
+            restoreState.phase === "scanning" ||
+            restoreState.phase === "applying" ||
+            platform !== "macos"
+          }
+          title={
+            !backupDestination
+              ? "Pick a backup folder above"
+              : platform !== "macos"
+                ? "In-app restore is macOS-only — use claude_restore.ps1 on Windows"
+                : "Scan the backup against your live tree; warns before overwriting anything"
+          }
+        >
+          {restoreState.phase === "scanning"
+            ? "Scanning…"
+            : restoreState.phase === "applying"
+              ? "Restoring…"
+              : "Restore from backup…"}
         </button>
       </div>
 
@@ -1008,6 +1181,55 @@ export function BackupPanel({ onToast }: Props) {
         </>
       )}
 
+      {restoreState.phase === "preview" && (
+        <RestorePreviewDialog
+          conflicts={restoreState.conflicts}
+          selected={restoreState.selected}
+          mirror={restoreState.mirror}
+          backupDestination={backupDestination ?? ""}
+          onToggle={toggleConflictSelection}
+          onToggleSection={toggleSection}
+          onToggleAll={toggleAllConflicts}
+          onCancel={() => setRestoreState({ phase: "idle" })}
+          onConfirm={() =>
+            handleRestoreApply(
+              restoreState.conflicts.filter((c) => restoreState.selected.has(c.id)),
+            )
+          }
+        />
+      )}
+
+      {restoreState.phase === "applying" && (
+        <div className="dialog-backdrop">
+          <div className="dialog" style={{ maxWidth: 420 }}>
+            <header className="settings-header">
+              <h3>Restoring…</h3>
+            </header>
+            <div className="settings-body">
+              <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                {restoreState.done} / {restoreState.total} files
+              </div>
+              <div className="dl-progress" role="status" aria-live="polite" style={{ marginTop: 8 }}>
+                <div className="dl-progress-bar">
+                  <div
+                    className="dl-progress-fill"
+                    style={{
+                      width:
+                        restoreState.total > 0
+                          ? `${Math.min(100, Math.round((restoreState.done / restoreState.total) * 100))}%`
+                          : "0%",
+                    }}
+                  />
+                </div>
+                <div className="dl-progress-label" style={{ marginTop: 6 }}>
+                  {restoreState.currentLabel}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {confirmClearDest && (
         <ConfirmDialog
           title="Forget backup folder?"
@@ -1190,4 +1412,257 @@ function formatBytes(n: number): string {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
   return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+interface RestorePreviewDialogProps {
+  conflicts: ConflictItem[];
+  selected: Set<string>;
+  mirror: boolean;
+  backupDestination: string;
+  onToggle: (id: string) => void;
+  onToggleSection: (sectionLabel: string, on: boolean) => void;
+  onToggleAll: (on: boolean) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}
+
+// Lists conflicts grouped by section, with a checkbox per file and a master
+// "select all" / per-section toggle. Distinct from ConfirmDialog because the
+// scrollable file list is the whole point.
+function RestorePreviewDialog({
+  conflicts,
+  selected,
+  mirror,
+  backupDestination,
+  onToggle,
+  onToggleSection,
+  onToggleAll,
+  onCancel,
+  onConfirm,
+}: RestorePreviewDialogProps) {
+  const grouped = useMemo(() => {
+    const map = new Map<string, ConflictItem[]>();
+    for (const c of conflicts) {
+      const arr = map.get(c.section) ?? [];
+      arr.push(c);
+      map.set(c.section, arr);
+    }
+    return Array.from(map.entries());
+  }, [conflicts]);
+  const selCount = selected.size;
+  const total = conflicts.length;
+  const allOn = selCount === total;
+  return (
+    <div className="dialog-backdrop" onClick={onCancel}>
+      <div
+        className="dialog restore-dialog"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header className="settings-header">
+          <h3>Review restore — {total} conflict{total === 1 ? "" : "s"}</h3>
+          <button
+            className="settings-close icon-btn"
+            aria-label="Cancel restore"
+            onClick={onCancel}
+          >
+            ×
+          </button>
+        </header>
+        <div className="settings-body">
+          <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+            From <code>{backupDestination}</code>. Uncheck any file you want to
+            keep as-is — only checked files will be overwritten in your live
+            tree.
+            {mirror && " Mirror mode: 'extra' files in your live tree (missing from the backup) will be deleted if checked."}
+          </div>
+          <div className="restore-toolbar">
+            <span className="restore-count">
+              {selCount} of {total} selected
+            </span>
+            <button className="link-btn" onClick={() => onToggleAll(true)} disabled={allOn}>
+              Select all
+            </button>
+            <button className="link-btn" onClick={() => onToggleAll(false)} disabled={selCount === 0}>
+              Deselect all
+            </button>
+          </div>
+          <ul className="restore-section-list">
+            {grouped.map(([section, items]) => {
+              const onCount = items.filter((i) => selected.has(i.id)).length;
+              const all = onCount === items.length;
+              const indeterminate = onCount > 0 && onCount < items.length;
+              return (
+                <li key={section} className="restore-section">
+                  <label className="restore-section-head">
+                    <input
+                      type="checkbox"
+                      checked={all}
+                      ref={(el) => {
+                        if (el) el.indeterminate = indeterminate;
+                      }}
+                      onChange={(e) => onToggleSection(section, e.target.checked)}
+                    />
+                    <span className="restore-section-name">{section}</span>
+                    <span className="restore-section-count">
+                      {onCount}/{items.length}
+                    </span>
+                  </label>
+                  <ul className="restore-file-list">
+                    {items.map((c) => (
+                      <li key={c.id} className="restore-file-row">
+                        <label className="restore-file-label">
+                          <input
+                            type="checkbox"
+                            checked={selected.has(c.id)}
+                            onChange={() => onToggle(c.id)}
+                          />
+                          <span className={`restore-kind kind-${c.kind}`}>
+                            {c.kind === "new"
+                              ? "new"
+                              : c.kind === "modified"
+                                ? "modify"
+                                : "delete"}
+                          </span>
+                          <span className="restore-rel" title={c.dstPath}>
+                            {c.rel}
+                          </span>
+                          <span className="restore-size">
+                            {c.kind === "extra"
+                              ? formatBytes(c.dstSize ?? 0)
+                              : c.kind === "modified" && c.dstSize !== null
+                                ? `${formatBytes(c.dstSize)} → ${formatBytes(c.srcSize ?? 0)}`
+                                : formatBytes(c.srcSize ?? 0)}
+                          </span>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+        <footer className="restore-footer">
+          <button onClick={onCancel}>Cancel</button>
+          <button className="primary danger" onClick={onConfirm} disabled={selCount === 0}>
+            Restore {selCount} file{selCount === 1 ? "" : "s"}
+          </button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+interface BackupToolsPickerProps {
+  tools: ReadonlyArray<{ id: Tool; label: string }>;
+  selected: readonly Tool[];
+  dataTypeSelection: Record<Tool, string[]>;
+  onToggleTool: (tool: Tool) => void;
+  onToggleDataType: (tool: Tool, id: string, on: boolean) => void;
+}
+
+// Tool list with per-tool data-type checkboxes. Enabled tools that have a
+// known sub-structure (Claude, Codex, …) expand inline so the user can pick
+// which slices of the tool's config to back up. Tools with only the fallback
+// "all" data type render as a simple checkbox.
+function BackupToolsPicker({
+  tools,
+  selected,
+  dataTypeSelection,
+  onToggleTool,
+  onToggleDataType,
+}: BackupToolsPickerProps) {
+  const [filter, setFilter] = useState("");
+  const [showAll, setShowAll] = useState(false);
+  const lc = filter.trim().toLowerCase();
+  const visible = lc
+    ? tools.filter((t) => t.id.toLowerCase().includes(lc) || t.label.toLowerCase().includes(lc))
+    : showAll
+      ? tools
+      : tools.filter((t) => selected.includes(t.id));
+  const enabledCount = selected.length;
+  return (
+    <div className="backup-tools-picker">
+      <div className="settings-section-title-row">
+        <div className="settings-section-title" style={{ fontSize: 12 }}>
+          Tools &amp; data types ({enabledCount} selected)
+        </div>
+        <input
+          type="search"
+          className="backup-tools-filter"
+          placeholder="Filter…"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          aria-label="Filter tools"
+        />
+      </div>
+      {visible.length === 0 ? (
+        <div className="projects-empty" style={{ fontSize: 11 }}>
+          {lc ? "No tools match the filter." : "No tools selected yet."}
+        </div>
+      ) : (
+        <ul className="backup-tools-list">
+          {visible.map((t) => {
+            const enabled = selected.includes(t.id);
+            const types = dataTypesFor(t.id);
+            const flat = types.length === 1 && types[0].id === "all";
+            const ids = dataTypeSelection[t.id] ?? [];
+            return (
+              <li
+                key={t.id}
+                className={`backup-tool-card ${enabled ? "active" : ""}`}
+              >
+                <label className="backup-tool-card-head">
+                  <input
+                    type="checkbox"
+                    checked={enabled}
+                    onChange={() => onToggleTool(t.id)}
+                  />
+                  <span className="backup-tool-card-name">{t.label}</span>
+                  <span className="backup-tool-card-meta">
+                    {flat
+                      ? "all config files"
+                      : enabled
+                        ? `${ids.length}/${types.length} data types`
+                        : `${types.length} data types`}
+                  </span>
+                </label>
+                {enabled && !flat && (
+                  <ul className="backup-data-type-list">
+                    {types.map((dt) => {
+                      const on = ids.includes(dt.id);
+                      return (
+                        <li key={dt.id} className="backup-data-type-row">
+                          <label className="backup-data-type-label">
+                            <input
+                              type="checkbox"
+                              checked={on}
+                              onChange={(e) => onToggleDataType(t.id, dt.id, e.target.checked)}
+                            />
+                            <span className="backup-data-type-name">{dt.label}</span>
+                          </label>
+                          {dt.description && (
+                            <div className="backup-data-type-desc">{dt.description}</div>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {!lc && (
+        <button
+          type="button"
+          className="link-btn backup-tools-toggle"
+          onClick={() => setShowAll((s) => !s)}
+        >
+          {showAll ? "Hide unselected tools" : `Show all ${tools.length} tools…`}
+        </button>
+      )}
+    </div>
+  );
 }

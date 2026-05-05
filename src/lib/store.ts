@@ -6,6 +6,12 @@ import type { ScanReport } from "./skillsafe/client";
 import type { BackupStats } from "./backup/manifest";
 import type { BackupProgress } from "./backup/runBackup";
 import type { ScheduleSpec } from "./backup/generateScripts";
+import {
+  defaultDataTypeIdsFor,
+  defaultEnabledExtraSourceIds,
+  isExtraSource,
+  normalizeDataTypeIds,
+} from "./backup/dataTypes";
 import type { UpdateProgress } from "./update/runner";
 import { clearApiKey, loadApiKey, storeApiKey } from "./skillsafe/auth";
 
@@ -37,6 +43,10 @@ const BACKUP_DEST_KEY = "skill-manager.backupDestination";
 const BACKUP_LAST_RUN_KEY = "skill-manager.backupLastRun";
 const BACKUP_STATS_KEY = "skill-manager.backupStats";
 const BACKUP_TOOLS_KEY = "skill-manager.backupTools";
+// Tracks which default-on extra sources we've already seeded so a user who
+// unchecks one isn't fighting the migration on every launch.
+const BACKUP_TOOLS_SEEDED_KEY = "skill-manager.backupToolsSeeded";
+const BACKUP_DATA_TYPES_KEY = "skill-manager.backupDataTypes";
 const BACKUP_SCHEDULE_KEY = "skill-manager.backupSchedule";
 const LAYOUT_KEY = "skill-manager.layout";
 const AUTO_UPDATE_KEY = "skill-manager.autoUpdate";
@@ -46,7 +56,8 @@ const MAX_RECENT_PROJECTS = 12;
 // Tool validation now defers to the registry — see ./agents/registry.ts.
 // `isValidTool` lets the persisted tool list (recent tools, backup tools,
 // default tool) accept any agent npx skills knows about.
-const isValidTool = (t: unknown): t is Tool => typeof t === "string" && isKnownAgent(t);
+const isValidTool = (t: unknown): t is Tool =>
+  typeof t === "string" && (isKnownAgent(t) || isExtraSource(t));
 const VALID_SCOPES: ReadonlyArray<Scope> = ["all", "global", "project", "lockfile"];
 
 type LocalStorageLike = {
@@ -211,15 +222,71 @@ function initialLayout(): LayoutDividers {
 
 function initialBackupTools(): Tool[] {
   const raw = browser.localStorage?.getItem(BACKUP_TOOLS_KEY);
-  if (!raw) return ["claude"];
-  try {
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      const filtered = parsed.filter(isValidTool);
-      if (filtered.length > 0) return filtered;
+  let tools: Tool[];
+  if (!raw) {
+    tools = ["claude"];
+  } else {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const filtered = parsed.filter(isValidTool);
+        tools = filtered.length > 0 ? filtered : ["claude"];
+      } else {
+        tools = ["claude"];
+      }
+    } catch {
+      tools = ["claude"];
     }
-  } catch { /* ignore */ }
-  return ["claude"];
+  }
+  // First-launch / version-bump migration: merge in default-enabled extra
+  // sources only the first time we see them. After this runs once, the
+  // user's saved list is authoritative — they can uncheck and the change
+  // sticks.
+  const seenRaw = browser.localStorage?.getItem(BACKUP_TOOLS_SEEDED_KEY) ?? "";
+  const seen = new Set(seenRaw.split(",").filter(Boolean));
+  const defaults = defaultEnabledExtraSourceIds();
+  let mutated = false;
+  for (const id of defaults) {
+    if (seen.has(id)) continue;
+    if (!tools.includes(id)) {
+      tools.push(id);
+      mutated = true;
+    }
+    seen.add(id);
+  }
+  if (mutated || seen.size !== seenRaw.split(",").filter(Boolean).length) {
+    browser.localStorage?.setItem(BACKUP_TOOLS_SEEDED_KEY, Array.from(seen).join(","));
+    if (mutated) {
+      browser.localStorage?.setItem(BACKUP_TOOLS_KEY, JSON.stringify(tools));
+    }
+  }
+  return tools;
+}
+
+function initialBackupDataTypes(tools: Tool[]): Record<Tool, string[]> {
+  const raw = browser.localStorage?.getItem(BACKUP_DATA_TYPES_KEY);
+  const out: Record<Tool, string[]> = {};
+  // Migration path: any tool selected without a saved data-type list gets the
+  // registry's default-enabled set, preserving prior behavior (the script
+  // backed up a tool's whole config root, which roughly maps to "all default
+  // data types on").
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        for (const [tool, ids] of Object.entries(parsed as Record<string, unknown>)) {
+          if (!isValidTool(tool)) continue;
+          if (!Array.isArray(ids)) continue;
+          const stringIds = ids.filter((s): s is string => typeof s === "string");
+          out[tool] = normalizeDataTypeIds(tool, stringIds);
+        }
+      }
+    } catch { /* ignore */ }
+  }
+  for (const tool of tools) {
+    if (!(tool in out)) out[tool] = defaultDataTypeIdsFor(tool);
+  }
+  return out;
 }
 
 function initialRemoteFilter(): RemoteFilter {
@@ -319,6 +386,7 @@ interface AppState {
   backupBusy: boolean;
   backupProgress: BackupProgress | null;
   backupTools: Tool[];
+  backupDataTypes: Record<Tool, string[]>;
   backupSchedule: ScheduleSpec;
 
   // Auto-update
@@ -390,6 +458,7 @@ interface AppState {
   setBackupBusy: (b: boolean) => void;
   setBackupProgress: (p: BackupProgress | null) => void;
   setBackupTools: (tools: Tool[]) => void;
+  setBackupDataTypes: (tool: Tool, ids: string[]) => void;
   setBackupSchedule: (s: ScheduleSpec) => void;
 
   setAutoUpdate: (b: boolean) => void;
@@ -458,6 +527,7 @@ export const useApp = create<AppState>((set) => ({
   backupBusy: false,
   backupProgress: null,
   backupTools: initialBackupTools(),
+  backupDataTypes: initialBackupDataTypes(initialBackupTools()),
   backupSchedule: initialBackupSchedule(),
 
   autoUpdate: initialAutoUpdate(),
@@ -660,10 +730,24 @@ export const useApp = create<AppState>((set) => ({
   },
   setBackupBusy: (backupBusy) => set({ backupBusy }),
   setBackupProgress: (backupProgress) => set({ backupProgress }),
-  setBackupTools: (backupTools) => {
-    browser.localStorage?.setItem(BACKUP_TOOLS_KEY, JSON.stringify(backupTools));
-    set({ backupTools });
-  },
+  setBackupTools: (backupTools) =>
+    set((state) => {
+      browser.localStorage?.setItem(BACKUP_TOOLS_KEY, JSON.stringify(backupTools));
+      // Seed default data-type ids for any newly enabled tool.
+      const next = { ...state.backupDataTypes };
+      for (const t of backupTools) {
+        if (!(t in next)) next[t] = defaultDataTypeIdsFor(t);
+      }
+      browser.localStorage?.setItem(BACKUP_DATA_TYPES_KEY, JSON.stringify(next));
+      return { backupTools, backupDataTypes: next };
+    }),
+  setBackupDataTypes: (tool, ids) =>
+    set((state) => {
+      const cleaned = normalizeDataTypeIds(tool, ids);
+      const next = { ...state.backupDataTypes, [tool]: cleaned };
+      browser.localStorage?.setItem(BACKUP_DATA_TYPES_KEY, JSON.stringify(next));
+      return { backupDataTypes: next };
+    }),
   setBackupSchedule: (backupSchedule) => {
     browser.localStorage?.setItem(BACKUP_SCHEDULE_KEY, JSON.stringify(backupSchedule));
     set({ backupSchedule });
