@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use tauri::{Emitter, Manager};
+#[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
 use tauri_plugin_deep_link::DeepLinkExt;
 
 fn main() {
@@ -26,17 +27,23 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init());
 
-    builder = builder.setup(|app| {
+    builder = builder.setup(|_app| {
+        // Linux: register the URL scheme handler at runtime (macOS/Windows
+        // installers wire it up via Info.plist / registry). Debug Windows
+        // builds register too so `cargo tauri dev` can test deep links.
         #[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
         {
-            app.deep_link().register("skillsafe")?;
+            _app.deep_link().register("skillsafe")?;
         }
-
-        let handle = app.handle().clone();
-        app.deep_link().on_open_url(move |event| {
-            let urls: Vec<String> = event.urls().iter().map(|u| u.to_string()).collect();
-            let _ = handle.emit("deep-link://new-url", urls);
-        });
+        // Note: do NOT call `app.deep_link().on_open_url(...)` here. The plugin
+        // itself emits `deep-link://new-url` on every URL delivery path
+        // (RunEvent::Opened on macOS, single-launch CLI args on Linux/Windows),
+        // and `on_open_url(f)` registers `f` as a listener on that same event.
+        // Re-emitting the event from inside `f` made the listener fire itself
+        // until the stack guard aborted (SIGABRT, ~14k recursion levels). JS
+        // already subscribes via `onOpenUrl()` (see App.tsx) which is a thin
+        // wrapper around `listen('deep-link://new-url')`, so URLs reach the
+        // frontend through the plugin's own emits without any Rust forwarding.
 
         Ok(())
     });
