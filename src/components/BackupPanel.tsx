@@ -1574,6 +1574,14 @@ function BackupToolsPicker({
 }: BackupToolsPickerProps) {
   const [filter, setFilter] = useState("");
   const [showAll, setShowAll] = useState(false);
+  const [collapsed, setCollapsed] = useState<Set<Tool>>(new Set());
+  const toggleCollapsed = (id: Tool) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const lc = filter.trim().toLowerCase();
   const visible = lc
     ? tools.filter((t) => t.id.toLowerCase().includes(lc) || t.label.toLowerCase().includes(lc))
@@ -1607,27 +1615,39 @@ function BackupToolsPicker({
             const types = dataTypesFor(t.id);
             const flat = types.length === 1 && types[0].id === "all";
             const ids = dataTypeSelection[t.id] ?? [];
+            const expanded = enabled && !flat && !collapsed.has(t.id);
             return (
               <li
                 key={t.id}
                 className={`backup-tool-card ${enabled ? "active" : ""}`}
               >
-                <label className="backup-tool-card-head">
+                <div className="backup-tool-card-head">
                   <input
                     type="checkbox"
                     checked={enabled}
                     onChange={() => onToggleTool(t.id)}
+                    aria-label={`Select ${t.label}`}
                   />
-                  <span className="backup-tool-card-name">{t.label}</span>
-                  <span className="backup-tool-card-meta">
-                    {flat
-                      ? "all config files"
-                      : enabled
-                        ? `${ids.length}/${types.length} data types`
-                        : `${types.length} data types`}
-                  </span>
-                </label>
-                {enabled && !flat && (
+                  <button
+                    type="button"
+                    className="backup-tool-card-nametoggle"
+                    onClick={() => {
+                      if (!flat && enabled) toggleCollapsed(t.id);
+                      else onToggleTool(t.id);
+                    }}
+                    aria-expanded={!flat ? expanded : undefined}
+                  >
+                    <span className="backup-tool-card-name">{t.label}</span>
+                    <span className="backup-tool-card-meta">
+                      {flat
+                        ? "all config files"
+                        : enabled
+                          ? `${ids.length}/${types.length} data types`
+                          : `${types.length} data types`}
+                    </span>
+                  </button>
+                </div>
+                {expanded && (
                   <ul className="backup-data-type-list">
                     {types.map((dt) => {
                       const on = ids.includes(dt.id);
