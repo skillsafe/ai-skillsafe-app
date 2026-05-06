@@ -32,7 +32,7 @@ export interface OrchestratorDeps {
 export interface Orchestrator {
   runUpdateCycle(opts?: { force?: boolean }): Promise<{ outcome: "no-update" | "downloading" | "ready" | "prompted" | "skipped" | "error" | "busy" }>;
   getPendingUpdate(): Update | null;
-  installPendingNow(): Promise<void>;
+  installPendingNow(onProgress?: ProgressHandler): Promise<void>;
   // For the prompt flow: the dialog calls these to drive its actions.
   acceptPromptedUpdate(onProgress: ProgressHandler): Promise<void>;
   dismissPromptedUpdate(skipVersion: boolean, setDismissed: (v: string) => void): void;
@@ -142,12 +142,17 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     return state.pendingUpdate;
   }
 
-  async function installPendingNow() {
+  async function installPendingNow(onProgress?: ProgressHandler) {
     if (!state.pendingUpdate) return;
     clearCloseHook();
-    await runner.installPending(state.pendingUpdate);
-    // Tauri's install handler relaunches the OS process on most platforms;
-    // we don't return.
+    const noop: ProgressHandler = () => {};
+    // The pre-downloaded handle's download state is held in the Rust side of
+    // the updater plugin and does not reliably survive across IPC calls — a
+    // bare install() then throws "Update.install called before Update.download".
+    // installAndRelaunch (downloadAndInstall + relaunch) keeps everything in
+    // one Rust span, so the freshly-downloaded artifact is the one installed.
+    // The redownload cost is one update payload at user-click time.
+    await runner.installAndRelaunch(state.pendingUpdate, onProgress ?? noop);
   }
 
   async function acceptPromptedUpdate(onProgress: ProgressHandler) {

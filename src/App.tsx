@@ -677,9 +677,11 @@ export default function App() {
 
   const handleRestartNow = useCallback(async () => {
     try {
-      await orchestrator.installPendingNow();
+      await orchestrator.installPendingNow((p) => useApp.getState().setUpdateProgress(p));
     } catch (e) {
       emitToast("error", `Install failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      useApp.getState().setUpdateProgress(null);
     }
   }, [orchestrator, emitToast]);
 
