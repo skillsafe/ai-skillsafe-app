@@ -25,6 +25,15 @@ import {
   type LogTail,
   type ScheduleStatus,
 } from "../lib/backup/scheduler";
+import {
+  WIN_TASK_NAME,
+  winDiagnose,
+  winGetStatus,
+  winInstall,
+  winRunNow,
+  winUninstall,
+  type WinDiagnosticResult,
+} from "../lib/backup/winScheduler";
 import type { ScheduleSpec } from "../lib/backup/generateScripts";
 import type { Tool } from "../lib/artifacts/types";
 import { ALL_AGENTS, displayNameOf } from "../lib/agents/registry";
@@ -74,7 +83,10 @@ export function BackupPanel({ onToast }: Props) {
   }
 
   const [generating, setGenerating] = useState(false);
-  const [platform, setPlatform] = useState<BackupPlatform>("macos");
+  // Detect platform synchronously so the auto-regenerate effect below doesn't
+  // briefly run with the wrong target (e.g. emit `.sh` on Windows on first
+  // render before a useEffect could correct the value).
+  const [platform] = useState<BackupPlatform>(detectPlatform);
   const [scheduleStatus, setScheduleStatus] = useState<ScheduleStatus>({ kind: "not_installed" });
   const [scheduleBusy, setScheduleBusy] = useState<null | "install" | "uninstall" | "run" | "refresh">(
     null,
@@ -82,7 +94,7 @@ export function BackupPanel({ onToast }: Props) {
   const [draftSchedule, setDraftSchedule] = useState<ScheduleSpec>(backupSchedule);
   const [logTail, setLogTail] = useState<LogTail | null>(null);
   const [showLog, setShowLog] = useState(false);
-  const [diag, setDiag] = useState<DiagnosticResult | null>(null);
+  const [diag, setDiag] = useState<DiagnosticResult | WinDiagnosticResult | null>(null);
   const [confirmClearDest, setConfirmClearDest] = useState(false);
   const [confirmUninstall, setConfirmUninstall] = useState(false);
   const [restoreState, setRestoreState] = useState<
@@ -107,10 +119,6 @@ export function BackupPanel({ onToast }: Props) {
     setDraftSchedule(backupSchedule);
   }, [backupSchedule]);
 
-  useEffect(() => {
-    setPlatform(detectPlatform());
-  }, []);
-
   // When the user changes the tool selection (or destination), refresh the
   // on-disk script so the next scheduled run picks up the new selection
   // without requiring the user to click "Back up now" or re-install. Best-
@@ -118,12 +126,20 @@ export function BackupPanel({ onToast }: Props) {
   // already surfaced when the user tries to actually run a backup.
   useEffect(() => {
     if (!backupDestination) return;
-    if (platform !== "macos") return;
     ensureLocalGenerated().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backupTools, backupDataTypes, backupDestination, backupSchedule, platform]);
 
-  async function probeStatus() {
+  async function probeStatus(): Promise<ScheduleStatus> {
+    if (platform === "windows") {
+      const s = await winGetStatus();
+      // Map WinScheduleStatus into the shared ScheduleStatus shape so the
+      // existing UI (status pill + label) renders identically to macOS.
+      if (s.kind === "loaded") {
+        return { kind: "loaded", pid: s.pid, lastExitCode: s.lastExitCode };
+      }
+      return { kind: s.kind };
+    }
     const home = await tauriPaths.homeDir();
     const installedPlistPath = await tauriJoiner.join(
       home,
@@ -137,10 +153,9 @@ export function BackupPanel({ onToast }: Props) {
     });
   }
 
-  // Refresh launchd status (macOS only). Re-runs when destination changes
-  // because the plist path is derived from it.
+  // Refresh schedule status (launchd on macOS, Task Scheduler on Windows).
+  // Re-runs when destination changes — paths derived from it.
   useEffect(() => {
-    if (platform !== "macos") return;
     let cancelled = false;
     (async () => {
       try {
@@ -158,25 +173,19 @@ export function BackupPanel({ onToast }: Props) {
 
   async function runDiagnose() {
     try {
-      const home = await tauriPaths.homeDir();
-      const installedPlistPath = await tauriJoiner.join(
-        home,
-        "Library",
-        "LaunchAgents",
-        `${SERVICE_LABEL}.plist`,
-      );
-      const scriptPath = await tauriJoiner.join(
-        home,
-        "Library",
-        "Application Support",
-        "skillsafe-app",
-        "scheduled-backup",
-        "claude_backup.sh",
-      );
+      const paths = await resolvePlatformPaths();
+      if (platform === "windows") {
+        const result = await winDiagnose({
+          scriptPath: paths.scriptPath,
+          exists: (p) => tauriFs.exists(p),
+        });
+        setDiag(result);
+        return;
+      }
       const result = await diagnoseSchedule({
-        installedPlistPath,
+        installedPlistPath: paths.installedPlistPath!,
         exists: (p) => tauriFs.exists(p),
-        scriptPath,
+        scriptPath: paths.scriptPath,
       });
       setDiag(result);
     } catch (e) {
@@ -199,8 +208,7 @@ export function BackupPanel({ onToast }: Props) {
 
   async function refreshLog() {
     try {
-      const home = await tauriPaths.homeDir();
-      const logPath = await tauriJoiner.join(home, "Library", "Logs", "skillsafe-backup.log");
+      const { logPath } = await resolvePlatformPaths();
       const tail = await readLogTail(
         (p) => tauriFs.readTextFile(p),
         (p) => tauriFs.exists(p),
@@ -215,67 +223,150 @@ export function BackupPanel({ onToast }: Props) {
 
   // Load log tail once on mount (and on platform change).
   useEffect(() => {
-    if (platform !== "macos") return;
     refreshLog();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [platform]);
 
-  async function ensureLocalGenerated(
-    schedule: ScheduleSpec = backupSchedule,
-  ): Promise<{ scriptPath: string; restorePath: string; plistPath: string }> {
-    if (!backupDestination) throw new Error("Pick a destination folder first.");
+  // Resolve every path the backup plumbing needs for the current platform in
+  // one place, so handleBackup, ensureLocalGenerated, schedule install/
+  // uninstall, and the log-tail/diagnose paths all stay aligned.
+  //
+  // macOS layout:
+  //   outDir         = ~/Library/Application Support/skillsafe-app/scheduled-backup/
+  //   logPath        = ~/Library/Logs/skillsafe-backup.log
+  //   scriptPath     = <outDir>/claude_backup.sh
+  //   restorePath    = <outDir>/claude_restore.sh
+  //   sourcePlistPath = <outDir>/<SERVICE_LABEL>.plist  (read by install())
+  //   installedPlistPath = ~/Library/LaunchAgents/<SERVICE_LABEL>.plist
+  //
+  // Windows layout (mirrors macOS conventions):
+  //   outDir         = %LOCALAPPDATA%\skillsafe-app\scheduled-backup\
+  //   logPath        = %LOCALAPPDATA%\skillsafe-app\Logs\skillsafe-backup.log
+  //   scriptPath     = <outDir>\claude_backup.ps1
+  //   restorePath    = <outDir>\claude_restore.ps1
+  //   sourcePlistPath / installedPlistPath = null (Task Scheduler is registered
+  //     by schtasks directly — no XML file the user manages).
+  async function resolvePlatformPaths(): Promise<{
+    outDir: string;
+    logPath: string;
+    scriptPath: string;
+    restorePath: string;
+    sourcePlistPath: string | null;
+    installedPlistPath: string | null;
+  }> {
     const home = await tauriPaths.homeDir();
-    // Local copy: lives outside OneDrive/Dropbox/etc so launchd can read it
-    // even when the cloud destination is offline or cloud-only-stub.
-    const localOutDir = await tauriJoiner.join(
+    if (platform === "windows") {
+      const outDir = await tauriJoiner.join(
+        home,
+        "AppData",
+        "Local",
+        "skillsafe-app",
+        "scheduled-backup",
+      );
+      const logDir = await tauriJoiner.join(
+        home,
+        "AppData",
+        "Local",
+        "skillsafe-app",
+        "Logs",
+      );
+      const logPath = await tauriJoiner.join(logDir, "skillsafe-backup.log");
+      return {
+        outDir,
+        logPath,
+        scriptPath: await tauriJoiner.join(outDir, "claude_backup.ps1"),
+        restorePath: await tauriJoiner.join(outDir, "claude_restore.ps1"),
+        sourcePlistPath: null,
+        installedPlistPath: null,
+      };
+    }
+    const outDir = await tauriJoiner.join(
       home,
       "Library",
       "Application Support",
       "skillsafe-app",
       "scheduled-backup",
     );
+    const logPath = await tauriJoiner.join(home, "Library", "Logs", "skillsafe-backup.log");
+    const installedPlistPath = await tauriJoiner.join(
+      home,
+      "Library",
+      "LaunchAgents",
+      `${SERVICE_LABEL}.plist`,
+    );
+    return {
+      outDir,
+      logPath,
+      scriptPath: await tauriJoiner.join(outDir, "claude_backup.sh"),
+      restorePath: await tauriJoiner.join(outDir, "claude_restore.sh"),
+      sourcePlistPath: await tauriJoiner.join(outDir, `${SERVICE_LABEL}.plist`),
+      installedPlistPath,
+    };
+  }
+
+  async function ensureLocalGenerated(
+    schedule: ScheduleSpec = backupSchedule,
+  ): Promise<{
+    scriptPath: string;
+    restorePath: string;
+    sourcePlistPath: string | null;
+    installedPlistPath: string | null;
+    outDir: string;
+  }> {
+    if (!backupDestination) throw new Error("Pick a destination folder first.");
+    const home = await tauriPaths.homeDir();
+    const paths = await resolvePlatformPaths();
+    // Local copy lives outside OneDrive/Dropbox so the scheduler can read it
+    // even when the cloud destination is offline or cloud-only-stub.
     await generateScripts({
       fs: tauriFs,
       joiner: tauriJoiner,
-      platform: "macos",
+      platform,
       home,
       destination: backupDestination,
-      outDir: localOutDir,
+      outDir: paths.outDir,
       schedule,
       tools: backupTools,
       dataTypes: backupDataTypes,
     });
-    const scriptPath = await tauriJoiner.join(localOutDir, "claude_backup.sh");
-    const restorePath = await tauriJoiner.join(localOutDir, "claude_restore.sh");
-    const plistPath = await tauriJoiner.join(localOutDir, `${SERVICE_LABEL}.plist`);
-    return { scriptPath, restorePath, plistPath };
+    return {
+      scriptPath: paths.scriptPath,
+      restorePath: paths.restorePath,
+      sourcePlistPath: paths.sourcePlistPath,
+      installedPlistPath: paths.installedPlistPath,
+      outDir: paths.outDir,
+    };
   }
 
   async function handleScheduleInstall() {
     setScheduleBusy("install");
     try {
-      // Use the LOCAL copy — its plist references a script outside OneDrive,
-      // so launchctl bootstrap can validate the path even when the cloud
-      // destination is offline / cloud-only.
-      const { plistPath } = await ensureLocalGenerated();
-      const sourcePlistContents = await tauriFs.readTextFile(plistPath);
+      const { scriptPath, sourcePlistPath, installedPlistPath } =
+        await ensureLocalGenerated();
+      if (platform === "windows") {
+        await winInstall({ scriptPath, schedule: backupSchedule });
+        const status = await probeStatus();
+        setScheduleStatus(status);
+        onToast("ok", `Daily backup installed. ${scheduleSummary(backupSchedule)}`);
+        return;
+      }
+      // macOS: read the generated plist and bootstrap it via launchctl. The
+      // local plist references a script outside OneDrive so the bootstrap
+      // path validates even when the cloud destination is offline.
       const home = await tauriPaths.homeDir();
+      const sourcePlistContents = await tauriFs.readTextFile(sourcePlistPath!);
       const launchAgentsDir = await tauriJoiner.join(home, "Library", "LaunchAgents");
       // Fresh macOS user accounts don't have ~/Library/LaunchAgents until
       // something installs into it. Create it ourselves so writeFile can land.
       await tauriFs.mkdir(launchAgentsDir, { recursive: true });
-      const installedPlistPath = await tauriJoiner.join(
-        launchAgentsDir,
-        `${SERVICE_LABEL}.plist`,
-      );
       await installSchedule({
         sourcePlistContents,
-        installedPlistPath,
+        installedPlistPath: installedPlistPath!,
         writeFile: (p, c) => tauriFs.writeTextFile(p, c),
       });
       const status = await probeStatus();
       setScheduleStatus(status);
-      onToast("ok", "Daily backup installed. It will run at 12:15 each day.");
+      onToast("ok", `Daily backup installed. ${scheduleSummary(backupSchedule)}`);
     } catch (e) {
       onToast("error", `Install failed: ${describeErr(e)}`);
     } finally {
@@ -286,6 +377,13 @@ export function BackupPanel({ onToast }: Props) {
   async function handleScheduleUninstall() {
     setScheduleBusy("uninstall");
     try {
+      if (platform === "windows") {
+        await winUninstall();
+        const status = await probeStatus();
+        setScheduleStatus(status);
+        onToast("ok", "Daily backup uninstalled.");
+        return;
+      }
       const home = await tauriPaths.homeDir();
       const installedPlistPath = await tauriJoiner.join(
         home,
@@ -321,7 +419,11 @@ export function BackupPanel({ onToast }: Props) {
   async function handleScheduleRunNow() {
     setScheduleBusy("run");
     try {
-      await runScheduleNow();
+      if (platform === "windows") {
+        await winRunNow();
+      } else {
+        await runScheduleNow();
+      }
       onToast("ok", "Triggered scheduled backup.");
       // Re-poll status after a short delay so the user sees the running PID.
       setTimeout(() => {
@@ -347,23 +449,24 @@ export function BackupPanel({ onToast }: Props) {
       onToast("ok", "Schedule saved. Click Install daily backup to apply.");
       return;
     }
-    // Already installed — re-install with the new plist.
+    // Already installed — re-install with the new schedule.
     setScheduleBusy("install");
     try {
-      const { plistPath } = await ensureLocalGenerated(draftSchedule);
-      const sourcePlistContents = await tauriFs.readTextFile(plistPath);
-      const home = await tauriPaths.homeDir();
-      const launchAgentsDir = await tauriJoiner.join(home, "Library", "LaunchAgents");
-      await tauriFs.mkdir(launchAgentsDir, { recursive: true });
-      const installedPlistPath = await tauriJoiner.join(
-        launchAgentsDir,
-        `${SERVICE_LABEL}.plist`,
-      );
-      await installSchedule({
-        sourcePlistContents,
-        installedPlistPath,
-        writeFile: (p, c) => tauriFs.writeTextFile(p, c),
-      });
+      const { scriptPath, sourcePlistPath, installedPlistPath } =
+        await ensureLocalGenerated(draftSchedule);
+      if (platform === "windows") {
+        await winInstall({ scriptPath, schedule: draftSchedule });
+      } else {
+        const home = await tauriPaths.homeDir();
+        const sourcePlistContents = await tauriFs.readTextFile(sourcePlistPath!);
+        const launchAgentsDir = await tauriJoiner.join(home, "Library", "LaunchAgents");
+        await tauriFs.mkdir(launchAgentsDir, { recursive: true });
+        await installSchedule({
+          sourcePlistContents,
+          installedPlistPath: installedPlistPath!,
+          writeFile: (p, c) => tauriFs.writeTextFile(p, c),
+        });
+      }
       const status = await probeStatus();
       setScheduleStatus(status);
       onToast("ok", "Schedule updated.");
@@ -396,12 +499,13 @@ export function BackupPanel({ onToast }: Props) {
     !weekdaysEqual(draftSchedule.weekdays ?? null, backupSchedule.weekdays ?? null);
 
   async function browseBackupFolder() {
-    if (!backupStats?.backupRoot) {
-      onToast("error", "Run a backup first.");
+    const target = backupStats?.backupRoot ?? backupDestination;
+    if (!target) {
+      onToast("error", "Pick a destination folder first.");
       return;
     }
     try {
-      await shellOpen(backupStats.backupRoot);
+      await shellOpen(target);
     } catch (e) {
       onToast("error", `Open failed: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -435,10 +539,20 @@ export function BackupPanel({ onToast }: Props) {
     });
     try {
       // Always regenerate first so the script reflects the current destination
-      // and schedule. Then exec the same script launchd would have run, so
-      // manual + scheduled paths share one implementation.
+      // and schedule. Then exec the same script the OS scheduler would have
+      // run, so manual + scheduled paths share one implementation.
       const { scriptPath } = await ensureLocalGenerated();
-      const out = await Command.create("bash", [scriptPath]).execute();
+      const out =
+        platform === "windows"
+          ? await Command.create("powershell", [
+              "-WindowStyle",
+              "Hidden",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-File",
+              scriptPath,
+            ]).execute()
+          : await Command.create("bash", [scriptPath]).execute();
       // Script exit codes: 0 = clean, 2 = ran with non-fatal failures (logged),
       // anything else = fatal (e.g. destination missing).
       if (out.code !== 0 && out.code !== 2) {
@@ -602,21 +716,14 @@ export function BackupPanel({ onToast }: Props) {
     }
     setGenerating(true);
     try {
-      const platform = detectPlatform();
       const home = await tauriPaths.homeDir();
-      // Generate the script + plist under our app-support dir, never inside
-      // the user's cloud-synced backup folder. Cloud daemons (OneDrive,
-      // Dropbox) introduce permission and sync-lock issues for executable
-      // shell scripts and plists, and putting the runner inside the same
-      // folder it writes to creates needless coupling. The script still
-      // mirrors TO the user's chosen destination at runtime.
-      const outDir = await tauriJoiner.join(
-        home,
-        "Library",
-        "Application Support",
-        "skillsafe-app",
-        "scheduled-backup",
-      );
+      // Generate the script + scheduler config under our per-platform app-data
+      // dir, never inside the user's cloud-synced backup folder. Cloud daemons
+      // (OneDrive, Dropbox) introduce permission and sync-lock issues for
+      // executable scripts, and putting the runner inside the folder it
+      // writes to creates needless coupling. The script still mirrors TO the
+      // user's chosen destination at runtime.
+      const { outDir } = await resolvePlatformPaths();
       const result = await generateScripts({
         fs: tauriFs,
         joiner: tauriJoiner,
@@ -670,7 +777,6 @@ export function BackupPanel({ onToast }: Props) {
                 className="link-btn"
                 onClick={browseBackupFolder}
                 title="Open the backup folder in Finder/Explorer"
-                disabled={!backupStats?.backupRoot}
               >
                 Open folder
               </button>
@@ -728,15 +834,12 @@ export function BackupPanel({ onToast }: Props) {
             !backupDestination ||
             backupBusy ||
             restoreState.phase === "scanning" ||
-            restoreState.phase === "applying" ||
-            platform !== "macos"
+            restoreState.phase === "applying"
           }
           title={
             !backupDestination
               ? "Pick a backup folder above"
-              : platform !== "macos"
-                ? "In-app restore is macOS-only — use claude_restore.ps1 on Windows"
-                : "Scan the backup against your live tree; warns before overwriting anything"
+              : "Scan the backup against your live tree; warns before overwriting anything"
           }
         >
           {restoreState.phase === "scanning"
@@ -888,29 +991,25 @@ export function BackupPanel({ onToast }: Props) {
           <button
             className="link-btn"
             onClick={refreshSchedule}
-            disabled={!!scheduleBusy || platform !== "macos"}
-            title="Refresh launchd status"
+            disabled={!!scheduleBusy}
+            title={
+              platform === "windows"
+                ? "Refresh Task Scheduler status"
+                : "Refresh launchd status"
+            }
           >
             {scheduleBusy === "refresh" ? "Checking…" : "Refresh"}
           </button>
           <button
             className="link-btn"
             onClick={runDiagnose}
-            disabled={platform !== "macos"}
             title="Run all status probes and dump raw output for debugging"
           >
             Diagnose
           </button>
         </div>
       </div>
-      {platform !== "macos" ? (
-        <div className="projects-empty">
-          In-app scheduling is macOS-only. On Windows, click{" "}
-          <strong>Export script…</strong> above and run{" "}
-          <code>register-task.ps1</code> as Administrator once.
-        </div>
-      ) : (
-        <>
+      <>
           <div className="settings-row">
             <span style={{ flex: 1, fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}>
               <span
@@ -929,7 +1028,7 @@ export function BackupPanel({ onToast }: Props) {
                   flexShrink: 0,
                 }}
               />
-              {scheduleStatusLabel(scheduleStatus)}
+              {scheduleStatusLabel(scheduleStatus, platform)}
             </span>
             <div className="settings-row-actions">
               {scheduleStatus.kind === "loaded" ? (
@@ -973,9 +1072,11 @@ export function BackupPanel({ onToast }: Props) {
                   onClick={handleScheduleInstall}
                   disabled={!!scheduleBusy || !backupDestination}
                   title={
-                    backupDestination
-                      ? "Install a launchd job that runs the backup daily at 12:15"
-                      : "Pick a destination first"
+                    !backupDestination
+                      ? "Pick a destination first"
+                      : platform === "windows"
+                        ? "Register a Task Scheduler job that runs the backup on the schedule below"
+                        : "Install a launchd job that runs the backup on the schedule below"
                   }
                 >
                   {scheduleBusy === "install" ? "Installing…" : "Install daily backup"}
@@ -984,7 +1085,8 @@ export function BackupPanel({ onToast }: Props) {
             </div>
           </div>
           <div className="projects-summary-text" style={{ fontSize: 11, paddingLeft: 6 }}>
-            Service: <code>{SERVICE_LABEL}</code> ·{" "}
+            {platform === "windows" ? "Task" : "Service"}:{" "}
+            <code>{platform === "windows" ? WIN_TASK_NAME : SERVICE_LABEL}</code> ·{" "}
             {scheduleSummary(backupSchedule)}
           </div>
 
@@ -1100,13 +1202,7 @@ export function BackupPanel({ onToast }: Props) {
                   className="link-btn"
                   onClick={async () => {
                     try {
-                      const home = await tauriPaths.homeDir();
-                      const logPath = await tauriJoiner.join(
-                        home,
-                        "Library",
-                        "Logs",
-                        "skillsafe-backup.log",
-                      );
+                      const { logPath } = await resolvePlatformPaths();
                       shellOpen(logPath).catch(() => {});
                     } catch (e) {
                       onToast("error", `Open failed: ${describeErr(e)}`);
@@ -1120,8 +1216,11 @@ export function BackupPanel({ onToast }: Props) {
           </div>
           {!logTail ? (
             <div className="projects-empty" style={{ fontSize: 11 }}>
-              No log yet. Once the schedule has run at least once,
-              ~/Library/Logs/skillsafe-backup.log will show its output here.
+              No log yet. Once the schedule has run at least once,{" "}
+              {platform === "windows"
+                ? "%LOCALAPPDATA%\\skillsafe-app\\Logs\\skillsafe-backup.log"
+                : "~/Library/Logs/skillsafe-backup.log"}{" "}
+              will show its output here.
             </div>
           ) : showLog ? (
             <pre
@@ -1179,7 +1278,6 @@ export function BackupPanel({ onToast }: Props) {
             </details>
           )}
         </>
-      )}
 
       {restoreState.phase === "preview" && (
         <RestorePreviewDialog
@@ -1262,9 +1360,10 @@ export function BackupPanel({ onToast }: Props) {
           message={
             <>
               <div>
-                The launchd job <code>{SERVICE_LABEL}</code> will be stopped
-                and removed. Your backup folder and existing files are not
-                deleted.
+                The {platform === "windows" ? "Task Scheduler task" : "launchd job"}{" "}
+                <code>{platform === "windows" ? WIN_TASK_NAME : SERVICE_LABEL}</code>{" "}
+                will be stopped and removed. Your backup folder and existing
+                files are not deleted.
               </div>
               <div className="confirm-warning" style={{ marginTop: 8 }}>
                 Backups will no longer run automatically until you reinstall
@@ -1289,12 +1388,18 @@ export function BackupPanel({ onToast }: Props) {
   );
 }
 
-function scheduleStatusLabel(s: ScheduleStatus): string {
+function scheduleStatusLabel(s: ScheduleStatus, platform: BackupPlatform): string {
   if (s.kind === "not_installed") return "Not installed";
-  if (s.kind === "unsupported") return "launchd not available on this system";
+  if (s.kind === "unsupported") {
+    return platform === "windows"
+      ? "Task Scheduler not available on this system"
+      : "launchd not available on this system";
+  }
   if (s.kind === "installed_not_loaded") return "Installed · launchd hasn't picked it up yet";
-  // loaded
-  if (s.pid !== null && s.pid > 0) return `Running (PID ${s.pid})`;
+  // loaded — pid is a Windows running-flag sentinel (1) or the real macOS PID
+  if (s.pid !== null && s.pid > 0) {
+    return platform === "windows" ? "Running" : `Running (PID ${s.pid})`;
+  }
   if (s.lastExitCode !== null && s.lastExitCode !== 0) {
     return `Loaded · last run exited ${s.lastExitCode}`;
   }
@@ -1328,7 +1433,8 @@ function scheduleSummary(s: ScheduleSpec): string {
   return `Runs at ${hh}:${mm} on ${labels}.`;
 }
 
-function formatDiagnostics(d: DiagnosticResult): string {
+function formatDiagnostics(d: DiagnosticResult | WinDiagnosticResult): string {
+  if (isWinDiagnostic(d)) return formatWinDiagnostics(d);
   const lines: string[] = [
     `uid: ${d.uid ?? "(unknown)"}`,
     `installed plist: ${d.installedPlistPath}`,
@@ -1366,6 +1472,23 @@ function formatDiagnostics(d: DiagnosticResult): string {
 
 function describeErr(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+function isWinDiagnostic(
+  d: DiagnosticResult | WinDiagnosticResult,
+): d is WinDiagnosticResult {
+  return (d as WinDiagnosticResult).taskName !== undefined;
+}
+
+function formatWinDiagnostics(d: WinDiagnosticResult): string {
+  return [
+    `task: ${d.taskName}`,
+    `script path: ${d.scriptPath ?? "(unknown)"}`,
+    `script exists: ${d.scriptExists ?? "(unchecked)"}`,
+    "",
+    `# schtasks /Query /TN ${d.taskName} /FO LIST /V  (exit ${d.queryCode})`,
+    d.queryOutput || "(no output)",
+  ].join("\n");
 }
 
 // Translate Tauri capability rejections into language a user can act on.

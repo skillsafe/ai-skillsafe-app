@@ -45,13 +45,24 @@ def main() -> int:
 
     mac_sig = first_match("*.app.tar.gz.sig")
     linux_sig = first_match("*_amd64.AppImage.sig")
-    # Tauri v2 windows-x86_64 expects *.nsis.zip / *.msi.zip (updater bundles),
-    # not the raw setup.exe. Prefer NSIS; fall back to MSI.
-    win_sig = first_match("*-setup.nsis.zip.sig") or first_match("*_en-US.msi.zip.sig")
+    # Tauri v2 windows targets expect *.nsis.zip / *.msi.zip (updater bundles),
+    # not the raw setup.exe. Prefer NSIS; fall back to MSI. Per-arch matching
+    # keeps x64 and ARM64 entries distinct so each Windows host downloads its
+    # native bundle (Prism emulation works for x64 binaries on ARM64 but adds
+    # overhead and trips up some native API calls).
+    win_x64_sig = (
+        first_match("*_x64-setup.nsis.zip.sig")
+        or first_match("*_x64_en-US.msi.zip.sig")
+    )
+    win_arm64_sig = (
+        first_match("*_arm64-setup.nsis.zip.sig")
+        or first_match("*_arm64_en-US.msi.zip.sig")
+    )
 
     mac = entry(mac_sig, base)
     linux = entry(linux_sig, base)
-    win = entry(win_sig, base)
+    win_x64 = entry(win_x64_sig, base)
+    win_arm64 = entry(win_arm64_sig, base)
 
     platforms: dict[str, dict] = {}
     if mac:
@@ -59,8 +70,10 @@ def main() -> int:
         platforms["darwin-x86_64"] = mac
     if linux:
         platforms["linux-x86_64"] = linux
-    if win:
-        platforms["windows-x86_64"] = win
+    if win_x64:
+        platforms["windows-x86_64"] = win_x64
+    if win_arm64:
+        platforms["windows-aarch64"] = win_arm64
 
     if not platforms:
         print("error: no .sig files found in cwd", file=sys.stderr)

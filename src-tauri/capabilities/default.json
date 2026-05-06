@@ -91,6 +91,10 @@
         { "path": "$HOME/Library/Application Support/Claude/**" },
         { "path": "$HOME/Library/Logs/skillsafe-backup.log" },
         { "path": "$HOME/Library/Logs/skillsafe-backup.log.old" },
+        { "path": "$HOME/AppData/Local/skillsafe-app" },
+        { "path": "$HOME/AppData/Local/skillsafe-app/**" },
+        { "path": "$HOME/AppData/Roaming/Claude" },
+        { "path": "$HOME/AppData/Roaming/Claude/**" },
         { "path": "$HOME/Library/CloudStorage" },
         { "path": "$HOME/Library/CloudStorage/**" },
         { "path": "$HOME/Library/Mobile Documents" },
@@ -118,7 +122,9 @@
         { "name": "launchctl", "cmd": "launchctl", "args": true },
         { "name": "id", "cmd": "id", "args": true },
         { "name": "plutil", "cmd": "plutil", "args": true },
-        { "name": "bash", "cmd": "bash", "args": true }
+        { "name": "bash", "cmd": "bash", "args": true },
+        { "name": "powershell", "cmd": "powershell.exe", "args": true },
+        { "name": "schtasks", "cmd": "schtasks.exe", "args": true }
       ]
     },
     {
@@ -127,7 +133,9 @@
         { "name": "launchctl", "cmd": "launchctl", "args": true },
         { "name": "id", "cmd": "id", "args": true },
         { "name": "plutil", "cmd": "plutil", "args": true },
-        { "name": "bash", "cmd": "bash", "args": true }
+        { "name": "bash", "cmd": "bash", "args": true },
+        { "name": "powershell", "cmd": "powershell.exe", "args": true },
+        { "name": "schtasks", "cmd": "schtasks.exe", "args": true }
       ]
     },
     "os:default",
