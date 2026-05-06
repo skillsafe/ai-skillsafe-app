@@ -128,7 +128,33 @@ export async function saveSkillBundle(
 
 export async function deleteSkillBundle(fs: FsAdapter, artifact: MarkdownArtifact): Promise<void> {
   if (!artifact.bundleDir) throw new Error("deleteSkillBundle requires bundleDir");
+  // Guard against recursive-rm through a symlink. If bundleDir is itself a
+  // symlink (e.g. listing duplication put a .claude/skills/<n> bridge link
+  // in front of the user), unlink the link only — never `rm -r` through it,
+  // which would silently wipe the real bundle in .agents/skills/<n>.
+  if (fs.removeIfSymlink && (await fs.removeIfSymlink(artifact.bundleDir))) {
+    return;
+  }
   await fs.remove(artifact.bundleDir, { recursive: true });
+  // If the canonical bundle lived under .agents/skills/, install.ts may have
+  // dropped a bridge symlink at .claude/skills/<n>. Remove it too — but
+  // only if it's actually a symlink, never a real user-populated dir.
+  if (fs.removeIfSymlink) {
+    const m = artifact.bundleDir.match(/^(.*)[/\\]\.agents[/\\]skills[/\\]([^/\\]+)[/\\]?$/);
+    if (m) {
+      const projectRoot = m[1];
+      const name = m[2];
+      const sep = artifact.bundleDir.includes("\\") ? "\\" : "/";
+      const linkPath = [projectRoot, ".claude", "skills", name].join(sep);
+      try {
+        await fs.removeIfSymlink(linkPath);
+      } catch {
+        // Best-effort cleanup; don't fail the delete if the bridge can't be
+        // removed (e.g. permission issue). The orphaned link is broken but
+        // harmless — Claude Code just silently skips broken symlinks.
+      }
+    }
+  }
 }
 
 export async function createSkillBundle(

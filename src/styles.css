@@ -516,6 +516,10 @@ input:not([type="radio"]):not([type="checkbox"]):focus, textarea:focus, select:f
   color: var(--text);
 }
 .confirm-warning { margin-top: 8px; color: var(--warn); font-size: 12px; }
+.confirm-path-list { margin: 8px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
+.confirm-path-list li { line-height: 1.4; }
+.confirm-path-label { font-size: 12px; color: var(--muted); }
+.confirm-note { margin-top: 8px; font-size: 12px; color: var(--muted); }
 
 .install-scope-tool { color: var(--muted); font-size: 12px; margin: 0 0 10px 0; }
 .install-scope-options { display: flex; flex-direction: column; gap: 8px; }
@@ -532,6 +536,10 @@ input:not([type="radio"]):not([type="checkbox"]):focus, textarea:focus, select:f
 .install-scope-option:hover:not(.disabled) { border-color: var(--accent); }
 .install-scope-option > span { display: flex; flex-direction: column; gap: 2px; }
 .install-scope-hint { color: var(--muted); font-size: 12px; }
+.install-scope-checkbox { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; }
+.install-scope-checkbox > input[type="checkbox"] { margin-top: 3px; }
+.install-scope-checkbox > span { display: flex; flex-direction: column; gap: 2px; }
+.install-scope-checkbox code { font-size: 12px; padding: 0 3px; border-radius: 3px; background: var(--code-bg, rgba(127,127,127,0.12)); }
 
 .backup-restore-btn { margin-left: 6px; }
 

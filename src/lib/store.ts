@@ -438,6 +438,7 @@ interface AppState {
   cacheRemoteVersions: (artifactId: string, versions: string[]) => void;
   markRemoteFailed: (cacheKey: string, message: string) => void;
   cacheRemoteScan: (cacheKey: string, report: ScanReport | null) => void;
+  patchRemoteArtifactFrontmatter: (id: string, patch: Record<string, unknown>) => void;
   appendRemoteArtifacts: (a: MarkdownArtifact[]) => void;
   setRemoteHasMore: (b: boolean) => void;
   setRemoteNextCursor: (c: string | null) => void;
@@ -678,6 +679,12 @@ export const useApp = create<AppState>((set) => ({
   cacheRemoteScan: (cacheKey, report) =>
     set((state) => ({
       remoteScanCache: { ...state.remoteScanCache, [cacheKey]: report },
+    })),
+  patchRemoteArtifactFrontmatter: (id, patch) =>
+    set((state) => ({
+      remoteArtifacts: state.remoteArtifacts.map((a) =>
+        a.id === id ? { ...a, frontmatter: { ...a.frontmatter, ...patch } } : a,
+      ),
     })),
   appendRemoteArtifacts: (more) =>
     set((state) => {

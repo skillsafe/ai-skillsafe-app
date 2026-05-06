@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { ArtifactList } from "./components/ArtifactList";
 import { Editor } from "./components/Editor";
@@ -21,6 +21,7 @@ import { computeBundleHash, readLockfile } from "./lib/lockfile";
 import { convertArtifact } from "./lib/convert";
 import { stringifyFrontmatter } from "./lib/frontmatter";
 import { atomicWrite, ensureDir } from "./lib/fs";
+import { resolveDeletePreview, type DeletePreview } from "./lib/artifacts/deletePreview";
 import { backupOneArtifact } from "./lib/backup/single";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { ResizeHandle } from "./components/ResizeHandle";
@@ -187,6 +188,10 @@ export default function App() {
   // Per-row action state.
   const [uploadPresetId, setUploadPresetId] = useState<string | undefined>(undefined);
   const [pendingDelete, setPendingDelete] = useState<MarkdownArtifact | null>(null);
+  // Cascade preview: resolved asynchronously after pendingDelete is set so
+  // the confirmation dialog can show *exactly* which paths the delete will
+  // touch (the bundle, an associated bridge symlink, both, or just the link).
+  const [deletePreview, setDeletePreview] = useState<DeletePreview | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [backingUpId, setBackingUpId] = useState<string | null>(null);
 
@@ -499,6 +504,7 @@ export default function App() {
           tool: choice.tool,
           scope: choice.scope,
           projectRoot: choice.scope === "project" ? choice.projectRoot : undefined,
+          useSymlink: choice.useSymlink,
         });
         emitToast(
           "ok",
@@ -527,6 +533,23 @@ export default function App() {
     // Errors persist until dismissed so they can be read/copied for debugging.
     setToast({ kind: "error", text: error });
   }, [error]);
+
+  // Resolve the delete-preview (cascade paths + symlink-vs-real) for the
+  // pending artifact. Runs once each time the user opens the modal so the
+  // copy can spell out exactly what will be removed.
+  useEffect(() => {
+    if (!pendingDelete) {
+      setDeletePreview(null);
+      return;
+    }
+    let cancelled = false;
+    resolveDeletePreview(tauriFs, tauriJoiner, pendingDelete).then((p) => {
+      if (!cancelled) setDeletePreview(p);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingDelete]);
 
   const selected = artifacts.find((a) => a.id === selectedId) ?? null;
 
@@ -764,16 +787,7 @@ export default function App() {
       {pendingDelete && (
         <ConfirmDialog
           title={`Delete ${pendingDelete.name}?`}
-          message={
-            <>
-              <div>
-                This will remove the {pendingDelete.isBundle ? "skill bundle" : "file"} from disk:
-              </div>
-              <div className="confirm-target-path">
-                {pendingDelete.bundleDir ?? pendingDelete.path}
-              </div>
-            </>
-          }
+          message={renderDeleteMessage(pendingDelete, deletePreview)}
           confirmLabel="Delete"
           danger
           busy={deleteBusy}
@@ -831,6 +845,70 @@ export default function App() {
       )}
     </div>
     </div>
+  );
+}
+
+function renderDeleteMessage(
+  artifact: MarkdownArtifact,
+  preview: DeletePreview | null,
+): ReactNode {
+  // No preview yet — keep the dialog responsive while the cascade resolver
+  // runs. The single-path fallback matches the conservative behavior even
+  // if the user hits "Delete" before the resolver returns.
+  if (!preview) {
+    return (
+      <>
+        <div>
+          This will remove the {artifact.isBundle ? "skill bundle" : "file"} from disk:
+        </div>
+        <div className="confirm-target-path">{artifact.bundleDir ?? artifact.path}</div>
+      </>
+    );
+  }
+
+  // Case 3: bundleDir is itself a symlink. `deleteSkillBundle` unlinks the
+  // link only — the underlying bundle that the link points to is left in
+  // place. The copy spells this out so the user isn't surprised.
+  if (preview.primaryIsSymlink) {
+    return (
+      <>
+        <div>This entry is a symlink. Deleting it will only remove the link:</div>
+        <div className="confirm-target-path">{preview.primaryPath}</div>
+        <div className="confirm-note">
+          The underlying skill bundle that this symlink points to will <strong>not</strong> be removed.
+        </div>
+      </>
+    );
+  }
+
+  // Case 2: bundle + bridge symlink. Both paths get removed together so
+  // the user knows about the cascade before they confirm.
+  if (preview.bridgeSymlinkPath) {
+    return (
+      <>
+        <div>This will remove <strong>2 paths</strong> from disk:</div>
+        <ol className="confirm-path-list">
+          <li>
+            <span className="confirm-path-label">Skill bundle:</span>
+            <div className="confirm-target-path">{preview.primaryPath}</div>
+          </li>
+          <li>
+            <span className="confirm-path-label">Symlink for Claude Code:</span>
+            <div className="confirm-target-path">{preview.bridgeSymlinkPath}</div>
+          </li>
+        </ol>
+      </>
+    );
+  }
+
+  // Case 1: a single real bundle/file, no cascade.
+  return (
+    <>
+      <div>
+        This will remove the {artifact.isBundle ? "skill bundle" : "file"} from disk:
+      </div>
+      <div className="confirm-target-path">{preview.primaryPath}</div>
+    </>
   );
 }
 

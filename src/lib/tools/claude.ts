@@ -1,4 +1,5 @@
 import type { FsAdapter } from "../fs";
+import { safeReadDir } from "../fs";
 import type { PathJoiner } from "../artifacts/skill";
 import type { ListOptions, MarkdownArtifact } from "../artifacts/types";
 import { listMarkdownFiles, loadMarkdownFile } from "../artifacts/markdownFile";
@@ -19,8 +20,22 @@ export async function listClaudeArtifacts(
   // pick up skills installed via `npx skills add` for tools that share the
   // universal `.agents/skills` location alongside Claude.
   if (opts.type === "skill") {
-    const out = await listGenericSkills(fs, pj, paths, opts);
+    let out = await listGenericSkills(fs, pj, paths, opts);
     if (opts.scope === "project" && opts.projectRoot) {
+      // Drop bridge symlinks under .claude/skills/<n>. They point into
+      // .agents/skills/<n>, which the alt scan below adds as the canonical
+      // entry — without this filter the same skill shows up twice in the UI
+      // and clicking delete on the symlink row would recursive-rm through
+      // the link and wipe the real bundle.
+      const claudeSkillsDir = await pj.join(opts.projectRoot, ".claude", "skills");
+      const linkPaths = new Set<string>();
+      for (const e of await safeReadDir(fs, claudeSkillsDir)) {
+        if (e.isSymlink) linkPaths.add(await pj.join(claudeSkillsDir, e.name));
+      }
+      if (linkPaths.size > 0) {
+        out = out.filter((a) => !a.bundleDir || !linkPaths.has(a.bundleDir));
+      }
+
       const altDir = await pj.join(opts.projectRoot, ".agents", "skills");
       const seen = new Set(out.map((a) => a.bundleDir).filter(Boolean) as string[]);
       for (const b of await listSkillBundles(fs, pj, altDir, "claude", opts.scope)) {

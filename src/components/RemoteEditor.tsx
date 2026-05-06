@@ -4,6 +4,7 @@ import { useApp } from "../lib/store";
 import {
   downloadBlob,
   downloadSkillManifest,
+  getSkill,
   getSkillVersion,
   listSkillVersions,
   SkillSafeError,
@@ -33,6 +34,7 @@ export function RemoteEditor({ onToast }: Props) {
     cacheRemoteVersions,
     markRemoteFailed,
     cacheRemoteScan,
+    patchRemoteArtifactFrontmatter,
     cloudApiKey,
     resolvedTheme,
   } = useApp();
@@ -83,6 +85,41 @@ export function RemoteEditor({ onToast }: Props) {
       .finally(() => { if (!cancelled) setVersionsLoading(false); });
     return () => { cancelled = true; };
   }, [artifact, ns, latestVersion, versions, cloudApiKey, cacheRemoteVersions]);
+
+  // Mirror the web skill page: fire GET /v1/skills/@{ns}/{name} on selection
+  // and merge fresh GitHub fields into the in-memory artifact so list/detail
+  // views reflect the latest metadata the API has.
+  useEffect(() => {
+    if (!artifact || !ns) return;
+    const id = artifact.id;
+    let cancelled = false;
+    getSkill(ns, artifact.name, cloudApiKey)
+      .then(({ data }) => {
+        if (cancelled) return;
+        const s = data as unknown as Record<string, unknown>;
+        const patch: Record<string, unknown> = {};
+        for (const k of [
+          "description",
+          "category",
+          "tags",
+          "visibility",
+          "github_repo_url",
+          "github_stars",
+          "github_forks",
+          "github_language",
+          "github_license",
+          "install_count",
+          "star_count",
+          "latest_version",
+        ]) {
+          if (s[k] !== undefined && s[k] !== null) patch[k] = s[k];
+        }
+        if (s.latest_version) patch.version = s.latest_version;
+        if (Object.keys(patch).length > 0) patchRemoteArtifactFrontmatter(id, patch);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [artifact?.id, ns, cloudApiKey, patchRemoteArtifactFrontmatter]);
 
   // Lazy-fetch manifest + SKILL.md for the active (id, version) pair. We
   // intentionally exclude `remoteBodyCache`, `remoteFailedKeys`, and `onToast`

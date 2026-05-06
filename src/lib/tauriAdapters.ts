@@ -10,6 +10,7 @@ import {
   writeFile as fsWriteFile,
   writeTextFile as fsWriteTextFile,
 } from "@tauri-apps/plugin-fs";
+import { invoke } from "@tauri-apps/api/core";
 import { homeDir, join } from "@tauri-apps/api/path";
 import type { DirEntry, FsAdapter } from "./fs";
 import type { PathResolverDeps } from "./paths";
@@ -48,6 +49,8 @@ export const tauriFs: FsAdapter = {
   rename: async (from, to) => {
     await fsRename(from, to);
   },
+  symlink: (target, link) => invoke<void>("create_symlink", { target, link }),
+  removeIfSymlink: (path) => invoke<boolean>("remove_if_symlink", { path }),
 };
 
 export const tauriPaths: PathResolverDeps = {

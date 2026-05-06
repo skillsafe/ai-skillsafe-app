@@ -16,6 +16,7 @@ export const nodeFs: FsAdapter = {
       name: e.name,
       isFile: e.isFile(),
       isDirectory: e.isDirectory(),
+      isSymlink: e.isSymbolicLink(),
     }));
   },
   exists: async (p) => {
@@ -42,6 +43,18 @@ export const nodeFs: FsAdapter = {
     await fs.rm(p, { recursive: opts?.recursive ?? false, force: true });
   },
   rename: (from, to) => fs.rename(from, to),
+  symlink: (target, link) => fs.symlink(target, link),
+  removeIfSymlink: async (p) => {
+    try {
+      const s = await fs.lstat(p);
+      if (!s.isSymbolicLink()) return false;
+      await fs.unlink(p);
+      return true;
+    } catch (e: any) {
+      if (e?.code === "ENOENT") return false;
+      throw e;
+    }
+  },
 };
 
 export const nodeJoiner: PathJoiner = {

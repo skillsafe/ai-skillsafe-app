@@ -9,6 +9,13 @@ export interface FsAdapter {
   mkdir: (path: string, opts?: { recursive?: boolean }) => Promise<void>;
   remove: (path: string, opts?: { recursive?: boolean }) => Promise<void>;
   rename: (from: string, to: string) => Promise<void>;
+  // Used by Claude project skill installs to bridge .agents/skills/<n> →
+  // .claude/skills/<n>. Optional because some adapters (mock/test) skip it.
+  symlink?: (target: string, link: string) => Promise<void>;
+  // Removes `path` only if it's a symlink. No-op on real files/dirs — keeps
+  // uninstall from accidentally wiping user-authored .claude/skills/<n> if
+  // the bridge link was never created or got replaced with real content.
+  removeIfSymlink?: (path: string) => Promise<boolean>;
 }
 
 export interface DirEntry {
