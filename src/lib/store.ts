@@ -22,6 +22,11 @@ export type ResolvedTheme = "dark" | "light";
 export type RemoteFilter = "all" | "private" | "shared" | "public";
 export type BottomPanel = "cloud" | "backup" | null;
 
+export interface DiffEntryRef {
+  absPath: string;
+  entryId: string;
+}
+
 export interface ViewedFile {
   name: string;
   path: string;
@@ -389,6 +394,13 @@ interface AppState {
   backupDataTypes: Record<Tool, string[]>;
   backupSchedule: ScheduleSpec;
 
+  // In-app file editing + history (Editor.tsx drives editDirty so the parent
+  // can guard navigation; the panel/overlay state lives here so HistoryPanel
+  // and DiffView can be sibling renders rather than nested children).
+  editDirty: boolean;
+  historyPanelPath: string | null;
+  diffEntry: DiffEntryRef | null;
+
   // Auto-update
   autoUpdate: boolean;
   currentVersion: string;
@@ -462,6 +474,12 @@ interface AppState {
   setBackupDataTypes: (tool: Tool, ids: string[]) => void;
   setBackupSchedule: (s: ScheduleSpec) => void;
 
+  setEditDirty: (b: boolean) => void;
+  openHistoryPanel: (absPath: string) => void;
+  closeHistoryPanel: () => void;
+  openDiffEntry: (ref: DiffEntryRef) => void;
+  closeDiffEntry: () => void;
+
   setAutoUpdate: (b: boolean) => void;
   setAvailableUpdate: (u: { version: string; notes: string; date?: string } | null) => void;
   setUpdateProgress: (p: UpdateProgress | null) => void;
@@ -530,6 +548,10 @@ export const useApp = create<AppState>((set) => ({
   backupTools: initialBackupTools(),
   backupDataTypes: initialBackupDataTypes(initialBackupTools()),
   backupSchedule: initialBackupSchedule(),
+
+  editDirty: false,
+  historyPanelPath: null,
+  diffEntry: null,
 
   autoUpdate: initialAutoUpdate(),
   currentVersion: detectAppVersion(),
@@ -759,6 +781,12 @@ export const useApp = create<AppState>((set) => ({
     browser.localStorage?.setItem(BACKUP_SCHEDULE_KEY, JSON.stringify(backupSchedule));
     set({ backupSchedule });
   },
+
+  setEditDirty: (editDirty) => set({ editDirty }),
+  openHistoryPanel: (absPath) => set({ historyPanelPath: absPath, diffEntry: null }),
+  closeHistoryPanel: () => set({ historyPanelPath: null, diffEntry: null }),
+  openDiffEntry: (diffEntry) => set({ diffEntry }),
+  closeDiffEntry: () => set({ diffEntry: null }),
 
   setAutoUpdate: (autoUpdate) => {
     browser.localStorage?.setItem(AUTO_UPDATE_KEY, autoUpdate ? "1" : "0");

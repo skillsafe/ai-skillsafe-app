@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Sidebar } from "./components/Sidebar";
 import { ArtifactList } from "./components/ArtifactList";
 import { Editor } from "./components/Editor";
+import { HistoryPanel } from "./components/HistoryPanel";
+import { DiffViewOverlay } from "./components/DiffViewOverlay";
 import { NewArtifactDialog } from "./components/NewArtifactDialog";
 import { ConvertDialog } from "./components/ConvertDialog";
 import { CloudInfoPane } from "./components/CloudInfoPane";
@@ -710,7 +712,9 @@ export default function App() {
         }}
         onUpload={handleUploadFromRow}
       />
-      <Editor artifact={selected} />
+      <Editor artifact={selected} onReload={reload} />
+      <HistoryPanel onReload={reload} />
+      <DiffViewOverlay />
 
       {bottomPanel === "cloud" && (
         <>
