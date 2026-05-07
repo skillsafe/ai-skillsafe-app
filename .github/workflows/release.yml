@@ -41,7 +41,10 @@ jobs:
         if: startsWith(matrix.platform, 'ubuntu')
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          # xdg-utils ships xdg-mime, which Tauri's AppImage bundler shells
+          # out to. ubuntu-latest's runner image pre-installs it; the arm64
+          # image is more minimal and doesn't, so we install it explicitly.
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
       - run: npm ci
       - name: Fetch Azure Trusted Signing dlib (Windows, when configured)
         # Only the Microsoft-signed dlib can talk to Azure Trusted Signing
