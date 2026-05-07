@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [macos-latest, ubuntu-latest, windows-latest]
+        platform: [macos-latest, ubuntu-latest, ubuntu-24.04-arm, windows-latest]
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -38,7 +38,7 @@ jobs:
         if: matrix.platform == 'windows-latest'
         run: rustup target add aarch64-pc-windows-msvc
       - name: Install Linux deps
-        if: matrix.platform == 'ubuntu-latest'
+        if: startsWith(matrix.platform, 'ubuntu')
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
@@ -80,7 +80,7 @@ jobs:
             unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
           fi
           npm run tauri build -- --target universal-apple-darwin
-      - name: Tauri build (Linux/Windows x64 native)
+      - name: Tauri build (Linux/Windows native)
         if: matrix.platform != 'macos-latest'
         shell: bash
         env:
@@ -183,9 +183,13 @@ jobs:
             - `*_arm64-setup.exe` — recommended (NSIS installer)
             - `*_arm64_en-US.msi` — alternative (MSI for IT-managed installs)
 
-            ### Linux
+            ### Linux (x64 — Intel/AMD)
             - `*_amd64.AppImage` — `chmod +x` and run, no install needed
             - `*_amd64.deb` — `sudo apt install ./*.deb`
+
+            ### Linux (ARM64 — Raspberry Pi 4/5, Ampere, Apple Silicon VMs)
+            - `*_aarch64.AppImage` — `chmod +x` and run, no install needed
+            - `*_arm64.deb` — `sudo apt install ./*.deb`
 
             ### Auto-updates
             The app fetches `latest.json` from this release on launch and verifies the downloaded bundle against the matching `.sig` file. The `*.app.tar.gz`, `*.AppImage.tar.gz`, `*.msi.zip`, `*.nsis.zip` bundles plus their `.sig` files are for the updater — you do not need to download them manually.

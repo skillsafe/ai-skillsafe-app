@@ -44,7 +44,8 @@ def main() -> int:
     base = f"https://github.com/{repo}/releases/download/{tag}"
 
     mac_sig = first_match("*.app.tar.gz.sig")
-    linux_sig = first_match("*_amd64.AppImage.sig")
+    linux_x64_sig = first_match("*_amd64.AppImage.sig")
+    linux_arm64_sig = first_match("*_aarch64.AppImage.sig")
     # Tauri v2 windows targets expect *.nsis.zip / *.msi.zip (updater bundles),
     # not the raw setup.exe. Prefer NSIS; fall back to MSI. Per-arch matching
     # keeps x64 and ARM64 entries distinct so each Windows host downloads its
@@ -60,7 +61,8 @@ def main() -> int:
     )
 
     mac = entry(mac_sig, base)
-    linux = entry(linux_sig, base)
+    linux_x64 = entry(linux_x64_sig, base)
+    linux_arm64 = entry(linux_arm64_sig, base)
     win_x64 = entry(win_x64_sig, base)
     win_arm64 = entry(win_arm64_sig, base)
 
@@ -68,8 +70,10 @@ def main() -> int:
     if mac:
         platforms["darwin-aarch64"] = mac
         platforms["darwin-x86_64"] = mac
-    if linux:
-        platforms["linux-x86_64"] = linux
+    if linux_x64:
+        platforms["linux-x86_64"] = linux_x64
+    if linux_arm64:
+        platforms["linux-aarch64"] = linux_arm64
     if win_x64:
         platforms["windows-x86_64"] = win_x64
     if win_arm64:
