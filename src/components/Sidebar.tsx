@@ -37,7 +37,6 @@ interface SidebarProps {
 export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: SidebarProps = {}) {
   const {
     tool, scope, type, recentTools, recentProjects, projectFilter, bottomPanel,
-    currentVersion,
     setTool, setScope, setType, setProjectRoot, setProjectFilter,
     setSettingsScrollTarget,
   } = useApp();
@@ -64,10 +63,7 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
     <aside className="sidebar">
       <div className="brand">
         <ShieldIcon size={22} />
-        <div className="brand-title">
-          AI SkillSafe
-          <span className="brand-version" title={`Version ${currentVersion}`}>v{currentVersion}</span>
-        </div>
+        <div className="brand-title">AI SkillSafe</div>
         {onToggleCloud && (
           <button
             className={`theme-toggle icon-btn ${cloudActive ? "active" : ""}`}

@@ -88,11 +88,32 @@ export default function App() {
     setLayout,
     showUpdateDialog,
     setDismissedUpdateVersion,
+    currentVersion,
   } = useApp();
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", resolvedTheme);
   }, [resolvedTheme]);
+
+  // Window title carries the running version so users can verify which
+  // build they're on without opening Settings. Static "title" in
+  // tauri.conf.json is the at-launch fallback; this overrides it once
+  // React mounts.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        if (cancelled) return;
+        await getCurrentWindow().setTitle(`AI SkillSafe v${currentVersion}`);
+      } catch {
+        // Non-Tauri context (e.g. vitest) — nothing to do.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentVersion]);
 
   // When theme === "system", track OS preference changes live.
   useEffect(() => {

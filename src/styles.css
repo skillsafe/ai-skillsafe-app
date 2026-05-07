@@ -846,8 +846,7 @@ input:not([type="radio"]):not([type="checkbox"]):focus, textarea:focus, select:f
 
 .brand { display: flex; align-items: center; gap: 8px; padding: 4px 6px 12px; }
 .brand-mark { width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg, #6aa6ff, #69d28a); }
-.brand-title { font-weight: 600; flex: 1; display: flex; align-items: baseline; gap: 6px; min-width: 0; }
-.brand-version { font-weight: 400; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.brand-title { font-weight: 600; flex: 1; min-width: 0; }
 .brand-globe { display: inline-flex; align-items: center; color: var(--accent); }
 .theme-toggle { padding: 2px 8px; font-size: 13px; line-height: 1; }
 .theme-toggle.icon-btn { display: inline-flex; align-items: center; justify-content: center; padding: 4px 6px; color: var(--muted); }
