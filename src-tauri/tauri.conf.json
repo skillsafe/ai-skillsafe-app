@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "AI SkillSafe",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "identifier": "app.skillsafe.ai",
   "build": {
     "frontendDist": "../dist",
@@ -57,7 +57,7 @@
   "bundle": {
     "active": true,
     "createUpdaterArtifacts": true,
-    "targets": ["app", "dmg", "deb", "nsis"],
+    "targets": ["app", "dmg", "deb", "appimage", "nsis"],
     "category": "DeveloperTool",
     "shortDescription": "Manage Claude / Codex / Cursor skills, agents, and commands",
     "longDescription": "A cross-platform desktop app for browsing, editing, and converting markdown-frontmatter artifacts (skills, agents, commands, rules) across Claude Code, OpenAI Codex CLI, and Cursor IDE.",

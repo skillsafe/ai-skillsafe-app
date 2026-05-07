@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import type { Update } from "@tauri-apps/plugin-updater";
 import { createOrchestrator, type UpdateRunner, type UpdateStoreView } from "../src/lib/update/orchestrator";
-import type { ProgressHandler, UpdateProgress } from "../src/lib/update/runner";
+import type { CheckResult, ManualUpdate, ProgressHandler, UpdateProgress } from "../src/lib/update/runner";
 
 function makeStub(version = "0.2.0", body = "Notes"): Update {
   return {
@@ -55,11 +55,21 @@ interface RunnerCounts {
   downloadAndInstall: number;
 }
 
-function makeRunner(update: Update | null, downloadDelayMs = 0): { runner: UpdateRunner; counts: RunnerCounts } {
+function makeManualStub(version = "0.2.0", body = "Notes"): ManualUpdate {
+  return {
+    __manual: true,
+    version,
+    body,
+    date: "2026-04-25T00:00:00Z",
+    downloadPageUrl: "https://app.skillsafe.ai/",
+  };
+}
+
+function makeRunner(update: CheckResult, downloadDelayMs = 0): { runner: UpdateRunner; counts: RunnerCounts } {
   const counts: RunnerCounts = { download: 0, install: 0, downloadAndInstall: 0 };
   const runner: UpdateRunner = {
     checkForUpdate: async () => update,
-    downloadOnly: async (_u: Update, onProgress: ProgressHandler) => {
+    downloadOnly: async (_u: CheckResult, onProgress: ProgressHandler) => {
       counts.download++;
       onProgress({ phase: "downloading", downloadedBytes: 0, totalBytes: 100 });
       if (downloadDelayMs > 0) await new Promise((r) => setTimeout(r, downloadDelayMs));
@@ -150,6 +160,18 @@ describe("orchestrator runUpdateCycle", () => {
     const r = await orch.runUpdateCycle();
     expect(r.outcome).toBe("error");
     expect(store.state.error).toBe("network down");
+  });
+
+  it("manual update (Linux): always prompts, never auto-downloads, even with autoUpdate=true", async () => {
+    const store = makeStore(true);
+    const { runner, counts } = makeRunner(makeManualStub("0.3.0"));
+    const orch = createOrchestrator({ runner, store, logError });
+    const r = await orch.runUpdateCycle();
+    expect(r.outcome).toBe("prompted");
+    expect(counts.download).toBe(0);
+    expect(store.state.ready).toBe(false);
+    expect(store.state.available?.version).toBe("0.3.0");
+    expect(store.state.showDialog).toBe(true);
   });
 
   it("dismissPromptedUpdate with skipVersion=true persists the version", async () => {

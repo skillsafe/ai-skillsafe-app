@@ -3,13 +3,14 @@
 // orchestrator logic can be unit-tested without a Tauri runtime.
 
 import type { Update } from "@tauri-apps/plugin-updater";
-import type { UpdateProgress, ProgressHandler } from "./runner";
+import type { UpdateProgress, ProgressHandler, CheckResult, ManualUpdate } from "./runner";
+import { isManualUpdate } from "./runner";
 
 export interface UpdateRunner {
-  checkForUpdate(): Promise<Update | null>;
-  downloadOnly(update: Update, onProgress: ProgressHandler): Promise<void>;
-  installPending(update: Update): Promise<void>;
-  installAndRelaunch(update: Update, onProgress: ProgressHandler): Promise<void>;
+  checkForUpdate(): Promise<CheckResult>;
+  downloadOnly(update: CheckResult, onProgress: ProgressHandler): Promise<void>;
+  installPending(update: CheckResult): Promise<void>;
+  installAndRelaunch(update: CheckResult, onProgress: ProgressHandler): Promise<void>;
 }
 
 export interface UpdateStoreView {
@@ -41,7 +42,7 @@ export interface Orchestrator {
 interface InternalState {
   pendingUpdate: Update | null;
   inFlight: "checking" | "downloading" | "ready" | null;
-  promptedUpdate: Update | null;
+  promptedUpdate: Update | ManualUpdate | null;
   closeHandlerUnlisten: (() => void) | null;
 }
 
@@ -88,7 +89,7 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     // can't both reach the downloader.
     state.inFlight = "checking";
 
-    let update: Update | null;
+    let update: CheckResult;
     try {
       update = await runner.checkForUpdate();
     } catch (err) {
@@ -112,7 +113,10 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
 
     store.setAvailableUpdate({ version: update.version, notes: update.body ?? "", date: update.date });
 
-    if (store.getAutoUpdate()) {
+    // Linux ships .deb only — there's no auto-installable bundle, so always
+    // route to the prompt path (which opens the download page on accept),
+    // regardless of the autoUpdate setting.
+    if (store.getAutoUpdate() && !isManualUpdate(update)) {
       state.inFlight = "downloading";
       try {
         await runner.downloadOnly(update, (p) => store.setUpdateProgress(p));

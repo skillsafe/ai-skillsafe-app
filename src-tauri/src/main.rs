@@ -25,6 +25,30 @@ fn create_symlink(target: String, link: String) -> Result<(), String> {
     }
 }
 
+// On Linux, reports how the running app was installed so JS can decide
+// whether the Tauri auto-updater can apply an update in place. The bundler
+// only auto-signs `.AppImage.tar.gz` (and Win/Mac bundles) — `.deb` and `.rpm`
+// have no signed updater artifact, so check() either errors with "fallback
+// platforms not found" or downloads an AppImage tarball that dpkg/rpm can't
+// install. The `APPIMAGE` env var is set by AppImageKit when the AppImage
+// binds itself; its absence on Linux means we're running from a system
+// install (.deb / .rpm). Other platforms always return "supported".
+#[tauri::command]
+fn linux_installer_kind() -> &'static str {
+    #[cfg(target_os = "linux")]
+    {
+        if std::env::var_os("APPIMAGE").is_some() {
+            "appimage"
+        } else {
+            "system"
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        "supported"
+    }
+}
+
 // Removes `path` only when it is a symlink. Returns true if a symlink was
 // removed, false if the path didn't exist or wasn't a symlink. Used during
 // Claude project skill uninstall so we never delete a real `.claude/skills/<n>`
@@ -97,7 +121,7 @@ fn main() {
     });
 
     builder
-        .invoke_handler(tauri::generate_handler![create_symlink, remove_if_symlink])
+        .invoke_handler(tauri::generate_handler![create_symlink, remove_if_symlink, linux_installer_kind])
         .run(tauri::generate_context!())
         .expect("error while running skillsafe");
 }

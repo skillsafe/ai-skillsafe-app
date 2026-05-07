@@ -46,16 +46,22 @@ def main() -> int:
     # Tauri v2 updater bundles per-platform:
     #   * macOS: *.app.tar.gz (universal)
     #   * Windows: *.nsis.zip per arch (we no longer ship MSI)
-    # Linux installs from .deb are manual-update only — Tauri's updater can't
-    # apply patches to a .deb in place; AppImage was the only auto-update
-    # format on Linux and we no longer ship it.
+    #   * Linux: *.AppImage.tar.gz per arch — auto-signed by the bundler.
+    # Linux .deb installs are manual-update only: the Tauri bundler doesn't
+    # auto-sign .deb (only AppImage / NSIS / MSI / app.tar.gz), so we have no
+    # signed .deb to publish. Users on .deb need a one-time manual update to
+    # the AppImage to start receiving auto-updates.
     mac_sig = first_match("*.app.tar.gz.sig")
     win_x64_sig = first_match("*_x64-setup.nsis.zip.sig")
     win_arm64_sig = first_match("*_arm64-setup.nsis.zip.sig")
+    linux_x64_sig = first_match("*_amd64.AppImage.tar.gz.sig")
+    linux_arm64_sig = first_match("*_arm64.AppImage.tar.gz.sig")
 
     mac = entry(mac_sig, base)
     win_x64 = entry(win_x64_sig, base)
     win_arm64 = entry(win_arm64_sig, base)
+    linux_x64 = entry(linux_x64_sig, base)
+    linux_arm64 = entry(linux_arm64_sig, base)
 
     platforms: dict[str, dict] = {}
     if mac:
@@ -65,6 +71,10 @@ def main() -> int:
         platforms["windows-x86_64"] = win_x64
     if win_arm64:
         platforms["windows-aarch64"] = win_arm64
+    if linux_x64:
+        platforms["linux-x86_64"] = linux_x64
+    if linux_arm64:
+        platforms["linux-aarch64"] = linux_arm64
 
     if not platforms:
         print("error: no .sig files found in cwd", file=sys.stderr)

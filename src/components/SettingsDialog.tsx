@@ -6,7 +6,7 @@ import { fetchAccount, runDeviceFlow } from "../lib/skillsafe/auth";
 import { SkillSafeError } from "../lib/skillsafe/client";
 import { CloseIcon, FolderIcon, MonitorIcon, MoonIcon, SunIcon, TrashIcon } from "./icons";
 import { BackupPanel } from "./BackupPanel";
-import { checkForUpdate, installAndRelaunch } from "../lib/update/runner";
+import { checkForUpdate, installAndRelaunch, isManualUpdate } from "../lib/update/runner";
 
 interface Props {
   onClose: () => void;
@@ -64,7 +64,17 @@ export function SettingsDialog({ onClose, onToast }: Props) {
         return;
       }
       setAvailableUpdate({ version: update.version, notes: update.body ?? "", date: update.date });
-      if (autoUpdate) {
+      if (isManualUpdate(update)) {
+        // Linux: no auto-installable bundle. installAndRelaunch on a manual
+        // update opens the download page; do that explicitly so the toast
+        // text matches the action.
+        onToast("ok", `Update v${update.version} available — opening download page…`);
+        try {
+          await shellOpen(update.downloadPageUrl);
+        } catch (e) {
+          onToast("error", `Couldn't open download page: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      } else if (autoUpdate) {
         // Stream the download via the same orchestrator path. We trigger the
         // 6h cycle indirectly by showing the user the version is available;
         // a full cycle will pick it up. For an explicit "check" we just

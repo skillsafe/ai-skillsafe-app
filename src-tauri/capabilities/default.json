@@ -154,7 +154,10 @@
     "os:default",
     {
       "identifier": "http:default",
-      "allow": [{ "url": "https://api.skillsafe.ai/*" }]
+      "allow": [
+        { "url": "https://api.skillsafe.ai/*" },
+        { "url": "https://app.skillsafe.ai/*" }
+      ]
     },
     "updater:default",
     "process:default",

@@ -120,6 +120,8 @@ jobs:
           path: |
             src-tauri/target/**/release/bundle/**/*.dmg
             src-tauri/target/**/release/bundle/**/*.deb
+            src-tauri/target/**/release/bundle/**/*.AppImage
+            src-tauri/target/**/release/bundle/**/*.AppImage.tar.gz
             src-tauri/target/**/release/bundle/**/*.exe
             src-tauri/target/**/release/bundle/**/*.app.tar.gz
             src-tauri/target/**/release/bundle/**/*.nsis.zip
@@ -142,16 +144,20 @@ jobs:
             - `*_arm64-setup.exe` — NSIS installer
 
             ### Linux (x64 — Intel/AMD)
-            - `*_amd64.deb` — `sudo apt install ./*.deb`
+            - `*_amd64.AppImage` — portable, auto-updates supported. `chmod +x *.AppImage && ./*.AppImage`
+            - `*_amd64.deb` — `sudo apt install ./*.deb` (manual-update only)
 
             ### Linux (ARM64 — Raspberry Pi 4/5, Ampere, Apple Silicon VMs)
-            - `*_arm64.deb` — `sudo apt install ./*.deb`
+            - `*_arm64.AppImage` — portable, auto-updates supported. `chmod +x *.AppImage && ./*.AppImage`
+            - `*_arm64.deb` — `sudo apt install ./*.deb` (manual-update only)
 
             ### Auto-updates
-            The app fetches `latest.json` from this release on launch and verifies the downloaded bundle against the matching `.sig` file. The `*.app.tar.gz` and `*.nsis.zip` bundles plus their `.sig` files are for the updater — you do not need to download them manually. (Linux installs from `.deb` are manual-update only — Tauri's updater plugin needs an AppImage bundle to apply patches in place, which we no longer ship.)
+            The app fetches `latest.json` from this release on launch and verifies the downloaded bundle against the matching `.sig` file. The `*.app.tar.gz`, `*.nsis.zip`, and `*.AppImage.tar.gz` bundles plus their `.sig` files are for the updater — you do not need to download them manually. (Linux `.deb` installs are manual-update only: Tauri's bundler doesn't auto-sign `.deb`, so the updater can't verify them. Switch to the AppImage to get auto-updates.)
           files: |
             src-tauri/target/**/release/bundle/**/*.dmg
             src-tauri/target/**/release/bundle/**/*.deb
+            src-tauri/target/**/release/bundle/**/*.AppImage
+            src-tauri/target/**/release/bundle/**/*.AppImage.tar.gz
             src-tauri/target/**/release/bundle/**/*.exe
             src-tauri/target/**/release/bundle/**/*.app.tar.gz
             src-tauri/target/**/release/bundle/**/*.nsis.zip
