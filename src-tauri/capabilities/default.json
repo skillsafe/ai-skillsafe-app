@@ -94,6 +94,10 @@
         { "path": "$HOME/Library/Application Support/Claude/**" },
         { "path": "$HOME/Library/Logs/skillsafe-backup.log" },
         { "path": "$HOME/Library/Logs/skillsafe-backup.log.old" },
+        { "path": "$HOME/.local/share/skillsafe-app" },
+        { "path": "$HOME/.local/share/skillsafe-app/**" },
+        { "path": "$HOME/.local/state/skillsafe-app" },
+        { "path": "$HOME/.local/state/skillsafe-app/**" },
         { "path": "$HOME/AppData/Local/skillsafe-app" },
         { "path": "$HOME/AppData/Local/skillsafe-app/**" },
         { "path": "$HOME/AppData/Local/app.skillsafe.ai" },
@@ -131,7 +135,8 @@
         { "name": "plutil", "cmd": "plutil", "args": true },
         { "name": "bash", "cmd": "bash", "args": true },
         { "name": "powershell", "cmd": "powershell.exe", "args": true },
-        { "name": "schtasks", "cmd": "schtasks.exe", "args": true }
+        { "name": "schtasks", "cmd": "schtasks.exe", "args": true },
+        { "name": "crontab", "cmd": "crontab", "args": true }
       ]
     },
     {
@@ -142,7 +147,8 @@
         { "name": "plutil", "cmd": "plutil", "args": true },
         { "name": "bash", "cmd": "bash", "args": true },
         { "name": "powershell", "cmd": "powershell.exe", "args": true },
-        { "name": "schtasks", "cmd": "schtasks.exe", "args": true }
+        { "name": "schtasks", "cmd": "schtasks.exe", "args": true },
+        { "name": "crontab", "cmd": "crontab", "args": true }
       ]
     },
     "os:default",

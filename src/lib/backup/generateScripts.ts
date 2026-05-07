@@ -1,9 +1,12 @@
 import { atomicWrite, ensureDir, safeReadDir, type FsAdapter } from "../fs";
 import { agents } from "../agents/registry";
 import {
+  LINUX_RESTORE_SH,
+  LINUX_SH,
   MACOS_PLIST,
   MACOS_RESTORE_SH,
   MACOS_SH,
+  README_LINUX,
   README_MAC,
   README_WIN,
   WINDOWS_PS1,
@@ -19,7 +22,7 @@ import {
   type DataType,
 } from "./dataTypes";
 
-export type BackupPlatform = "macos" | "windows";
+export type BackupPlatform = "macos" | "windows" | "linux";
 
 export interface ScheduleSpec {
   hour: number; // 0-23
@@ -75,7 +78,50 @@ export async function generateScripts(
   if (opts.platform === "macos") {
     return generateMac({ ...opts, label });
   }
+  if (opts.platform === "linux") {
+    return generateLinux({ ...opts, label });
+  }
   return generateWindows({ ...opts, label });
+}
+
+// Linux paths follow XDG conventions: scheduled-backup scripts under
+// ~/.local/share/skillsafe-app/, log under ~/.local/state/skillsafe-app/. We
+// pass them down explicitly via the platform-paths helper in BackupPanel
+// rather than hardcode them here, but the templates need a {{LOG_PATH}} so
+// the bash script knows where to append.
+async function generateLinux(opts: PreparedOptions): Promise<GenerateScriptsResult> {
+  const scriptPath = await opts.joiner.join(opts.outDir, "claude_backup.sh");
+  const restorePath = await opts.joiner.join(opts.outDir, "claude_restore.sh");
+  const readmePath = await opts.joiner.join(opts.outDir, "README.md");
+  const tools = normalizeTools(opts.tools);
+  const sections = await resolveSections(opts, tools, opts.dataTypes);
+
+  const logPath = `${opts.home}/.local/state/skillsafe-app/skillsafe-backup.log`;
+  const logPathRestore = `${opts.home}/.local/state/skillsafe-app/skillsafe-restore.log`;
+
+  const replacements = {
+    HOME: opts.home,
+    DEST: opts.destination,
+    LABEL: opts.label,
+    SCRIPT_PATH: scriptPath,
+    LOG_PATH: logPath,
+    LOG_PATH_RESTORE: logPathRestore,
+    N: String(sections.length),
+    TOOL_SECTIONS: renderBashSections(sections),
+    TOOL_LIST_MD: renderToolListMd(sections, opts.home),
+    SCAN_SECTIONS: renderBashRestoreSections(sections, "scan"),
+    APPLY_SECTIONS: renderBashRestoreSections(sections, "apply"),
+  };
+
+  const sh = substitute(LINUX_SH, replacements);
+  const restoreSh = substitute(LINUX_RESTORE_SH, replacements);
+  const readme = substitute(README_LINUX, replacements);
+
+  return writeAll(opts, [
+    { path: scriptPath, contents: sh },
+    { path: restorePath, contents: restoreSh },
+    { path: readmePath, contents: readme },
+  ]);
 }
 
 async function sweepLocalTmps(

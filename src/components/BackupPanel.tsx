@@ -34,6 +34,15 @@ import {
   winUninstall,
   type WinDiagnosticResult,
 } from "../lib/backup/winScheduler";
+import {
+  LINUX_CRON_MARKER,
+  linuxDiagnose,
+  linuxGetStatus,
+  linuxInstall,
+  linuxRunNow,
+  linuxUninstall,
+  type LinuxDiagnosticResult,
+} from "../lib/backup/linuxScheduler";
 import type { ScheduleSpec } from "../lib/backup/generateScripts";
 import type { Tool } from "../lib/artifacts/types";
 import { ALL_AGENTS, displayNameOf } from "../lib/agents/registry";
@@ -94,7 +103,9 @@ export function BackupPanel({ onToast }: Props) {
   const [draftSchedule, setDraftSchedule] = useState<ScheduleSpec>(backupSchedule);
   const [logTail, setLogTail] = useState<LogTail | null>(null);
   const [showLog, setShowLog] = useState(false);
-  const [diag, setDiag] = useState<DiagnosticResult | WinDiagnosticResult | null>(null);
+  const [diag, setDiag] = useState<
+    DiagnosticResult | WinDiagnosticResult | LinuxDiagnosticResult | null
+  >(null);
   const [confirmClearDest, setConfirmClearDest] = useState(false);
   const [confirmUninstall, setConfirmUninstall] = useState(false);
   const [restoreState, setRestoreState] = useState<
@@ -140,6 +151,15 @@ export function BackupPanel({ onToast }: Props) {
       }
       return { kind: s.kind };
     }
+    if (platform === "linux") {
+      const s = await linuxGetStatus();
+      if (s.kind === "loaded") {
+        // cron has no PID/last-exit telemetry — null both so the UI renders
+        // "Status: registered" without a stale running indicator.
+        return { kind: "loaded", pid: null, lastExitCode: null };
+      }
+      return { kind: s.kind };
+    }
     const home = await tauriPaths.homeDir();
     const installedPlistPath = await tauriJoiner.join(
       home,
@@ -176,6 +196,14 @@ export function BackupPanel({ onToast }: Props) {
       const paths = await resolvePlatformPaths();
       if (platform === "windows") {
         const result = await winDiagnose({
+          scriptPath: paths.scriptPath,
+          exists: (p) => tauriFs.exists(p),
+        });
+        setDiag(result);
+        return;
+      }
+      if (platform === "linux") {
+        const result = await linuxDiagnose({
           scriptPath: paths.scriptPath,
           exists: (p) => tauriFs.exists(p),
         });
@@ -246,6 +274,15 @@ export function BackupPanel({ onToast }: Props) {
   //   restorePath    = <outDir>\claude_restore.ps1
   //   sourcePlistPath / installedPlistPath = null (Task Scheduler is registered
   //     by schtasks directly — no XML file the user manages).
+  //
+  // Linux layout (XDG):
+  //   outDir         = ~/.local/share/skillsafe-app/scheduled-backup/
+  //   logPath        = ~/.local/state/skillsafe-app/skillsafe-backup.log
+  //   scriptPath     = <outDir>/claude_backup.sh
+  //   restorePath    = <outDir>/claude_restore.sh
+  //   cronStagePath  = <outDir>/.crontab.next  (temp file piped to crontab(1))
+  //   sourcePlistPath / installedPlistPath = null (cron is line-based — no
+  //     plist analogue).
   async function resolvePlatformPaths(): Promise<{
     outDir: string;
     logPath: string;
@@ -253,6 +290,7 @@ export function BackupPanel({ onToast }: Props) {
     restorePath: string;
     sourcePlistPath: string | null;
     installedPlistPath: string | null;
+    cronStagePath: string | null;
   }> {
     const home = await tauriPaths.homeDir();
     if (platform === "windows") {
@@ -278,6 +316,32 @@ export function BackupPanel({ onToast }: Props) {
         restorePath: await tauriJoiner.join(outDir, "claude_restore.ps1"),
         sourcePlistPath: null,
         installedPlistPath: null,
+        cronStagePath: null,
+      };
+    }
+    if (platform === "linux") {
+      const outDir = await tauriJoiner.join(
+        home,
+        ".local",
+        "share",
+        "skillsafe-app",
+        "scheduled-backup",
+      );
+      const logPath = await tauriJoiner.join(
+        home,
+        ".local",
+        "state",
+        "skillsafe-app",
+        "skillsafe-backup.log",
+      );
+      return {
+        outDir,
+        logPath,
+        scriptPath: await tauriJoiner.join(outDir, "claude_backup.sh"),
+        restorePath: await tauriJoiner.join(outDir, "claude_restore.sh"),
+        sourcePlistPath: null,
+        installedPlistPath: null,
+        cronStagePath: await tauriJoiner.join(outDir, ".crontab.next"),
       };
     }
     const outDir = await tauriJoiner.join(
@@ -301,6 +365,7 @@ export function BackupPanel({ onToast }: Props) {
       restorePath: await tauriJoiner.join(outDir, "claude_restore.sh"),
       sourcePlistPath: await tauriJoiner.join(outDir, `${SERVICE_LABEL}.plist`),
       installedPlistPath,
+      cronStagePath: null,
     };
   }
 
@@ -311,6 +376,7 @@ export function BackupPanel({ onToast }: Props) {
     restorePath: string;
     sourcePlistPath: string | null;
     installedPlistPath: string | null;
+    cronStagePath: string | null;
     outDir: string;
   }> {
     if (!backupDestination) throw new Error("Pick a destination folder first.");
@@ -329,11 +395,23 @@ export function BackupPanel({ onToast }: Props) {
       tools: backupTools,
       dataTypes: backupDataTypes,
     });
+    if (platform === "linux") {
+      // cron(1) requires the script to be executable. atomicWrite leaves the
+      // mode at the filesystem default (typically 0644); chmod here so the
+      // crontab line we install can actually run.
+      try {
+        await Command.create("bash", ["-c", `chmod +x "${paths.scriptPath}" "${paths.restorePath}"`]).execute();
+      } catch {
+        // Best-effort: chmod failures surface later as cron-job failures with
+        // a clear "permission denied" in the log. Don't block install on it.
+      }
+    }
     return {
       scriptPath: paths.scriptPath,
       restorePath: paths.restorePath,
       sourcePlistPath: paths.sourcePlistPath,
       installedPlistPath: paths.installedPlistPath,
+      cronStagePath: paths.cronStagePath,
       outDir: paths.outDir,
     };
   }
@@ -341,10 +419,23 @@ export function BackupPanel({ onToast }: Props) {
   async function handleScheduleInstall() {
     setScheduleBusy("install");
     try {
-      const { scriptPath, sourcePlistPath, installedPlistPath } =
+      const { scriptPath, sourcePlistPath, installedPlistPath, cronStagePath } =
         await ensureLocalGenerated();
       if (platform === "windows") {
         await winInstall({ scriptPath, schedule: backupSchedule });
+        const status = await probeStatus();
+        setScheduleStatus(status);
+        onToast("ok", `Daily backup installed. ${scheduleSummary(backupSchedule)}`);
+        return;
+      }
+      if (platform === "linux") {
+        await linuxInstall({
+          scriptPath,
+          schedule: backupSchedule,
+          stagePath: cronStagePath!,
+          writeFile: (p, c) => tauriFs.writeTextFile(p, c),
+          removeFile: (p) => tauriFs.remove(p),
+        });
         const status = await probeStatus();
         setScheduleStatus(status);
         onToast("ok", `Daily backup installed. ${scheduleSummary(backupSchedule)}`);
@@ -379,6 +470,18 @@ export function BackupPanel({ onToast }: Props) {
     try {
       if (platform === "windows") {
         await winUninstall();
+        const status = await probeStatus();
+        setScheduleStatus(status);
+        onToast("ok", "Daily backup uninstalled.");
+        return;
+      }
+      if (platform === "linux") {
+        const paths = await resolvePlatformPaths();
+        await linuxUninstall({
+          stagePath: paths.cronStagePath!,
+          writeFile: (p, c) => tauriFs.writeTextFile(p, c),
+          removeFile: (p) => tauriFs.remove(p),
+        });
         const status = await probeStatus();
         setScheduleStatus(status);
         onToast("ok", "Daily backup uninstalled.");
@@ -421,6 +524,9 @@ export function BackupPanel({ onToast }: Props) {
     try {
       if (platform === "windows") {
         await winRunNow();
+      } else if (platform === "linux") {
+        const { scriptPath } = await ensureLocalGenerated();
+        await linuxRunNow(scriptPath);
       } else {
         await runScheduleNow();
       }
@@ -452,10 +558,18 @@ export function BackupPanel({ onToast }: Props) {
     // Already installed — re-install with the new schedule.
     setScheduleBusy("install");
     try {
-      const { scriptPath, sourcePlistPath, installedPlistPath } =
+      const { scriptPath, sourcePlistPath, installedPlistPath, cronStagePath } =
         await ensureLocalGenerated(draftSchedule);
       if (platform === "windows") {
         await winInstall({ scriptPath, schedule: draftSchedule });
+      } else if (platform === "linux") {
+        await linuxInstall({
+          scriptPath,
+          schedule: draftSchedule,
+          stagePath: cronStagePath!,
+          writeFile: (p, c) => tauriFs.writeTextFile(p, c),
+          removeFile: (p) => tauriFs.remove(p),
+        });
       } else {
         const home = await tauriPaths.homeDir();
         const sourcePlistContents = await tauriFs.readTextFile(sourcePlistPath!);
@@ -1085,7 +1199,11 @@ export function BackupPanel({ onToast }: Props) {
             </div>
           </div>
           <div className="projects-summary-text" style={{ fontSize: 11, paddingLeft: 6 }}>
-            {platform === "windows" ? "Task" : "Service"}:{" "}
+            {platform === "windows"
+              ? "Task"
+              : platform === "linux"
+              ? "Cron job"
+              : "Service"}:{" "}
             <code>{platform === "windows" ? WIN_TASK_NAME : SERVICE_LABEL}</code> ·{" "}
             {scheduleSummary(backupSchedule)}
           </div>
@@ -1360,7 +1478,12 @@ export function BackupPanel({ onToast }: Props) {
           message={
             <>
               <div>
-                The {platform === "windows" ? "Task Scheduler task" : "launchd job"}{" "}
+                The{" "}
+                {platform === "windows"
+                  ? "Task Scheduler task"
+                  : platform === "linux"
+                  ? "cron entry"
+                  : "launchd job"}{" "}
                 <code>{platform === "windows" ? WIN_TASK_NAME : SERVICE_LABEL}</code>{" "}
                 will be stopped and removed. Your backup folder and existing
                 files are not deleted.
@@ -1391,9 +1514,9 @@ export function BackupPanel({ onToast }: Props) {
 function scheduleStatusLabel(s: ScheduleStatus, platform: BackupPlatform): string {
   if (s.kind === "not_installed") return "Not installed";
   if (s.kind === "unsupported") {
-    return platform === "windows"
-      ? "Task Scheduler not available on this system"
-      : "launchd not available on this system";
+    if (platform === "windows") return "Task Scheduler not available on this system";
+    if (platform === "linux") return "cron not available on this system";
+    return "launchd not available on this system";
   }
   if (s.kind === "installed_not_loaded") return "Installed · launchd hasn't picked it up yet";
   // loaded — pid is a Windows running-flag sentinel (1) or the real macOS PID
@@ -1433,8 +1556,11 @@ function scheduleSummary(s: ScheduleSpec): string {
   return `Runs at ${hh}:${mm} on ${labels}.`;
 }
 
-function formatDiagnostics(d: DiagnosticResult | WinDiagnosticResult): string {
+function formatDiagnostics(
+  d: DiagnosticResult | WinDiagnosticResult | LinuxDiagnosticResult,
+): string {
   if (isWinDiagnostic(d)) return formatWinDiagnostics(d);
+  if (isLinuxDiagnostic(d)) return formatLinuxDiagnostics(d);
   const lines: string[] = [
     `uid: ${d.uid ?? "(unknown)"}`,
     `installed plist: ${d.installedPlistPath}`,
@@ -1475,9 +1601,15 @@ function describeErr(e: unknown): string {
 }
 
 function isWinDiagnostic(
-  d: DiagnosticResult | WinDiagnosticResult,
+  d: DiagnosticResult | WinDiagnosticResult | LinuxDiagnosticResult,
 ): d is WinDiagnosticResult {
   return (d as WinDiagnosticResult).taskName !== undefined;
+}
+
+function isLinuxDiagnostic(
+  d: DiagnosticResult | WinDiagnosticResult | LinuxDiagnosticResult,
+): d is LinuxDiagnosticResult {
+  return (d as LinuxDiagnosticResult).cronAvailable !== undefined;
 }
 
 function formatWinDiagnostics(d: WinDiagnosticResult): string {
@@ -1488,6 +1620,21 @@ function formatWinDiagnostics(d: WinDiagnosticResult): string {
     "",
     `# schtasks /Query /TN ${d.taskName} /FO LIST /V  (exit ${d.queryCode})`,
     d.queryOutput || "(no output)",
+  ].join("\n");
+}
+
+function formatLinuxDiagnostics(d: LinuxDiagnosticResult): string {
+  return [
+    `cron available: ${d.cronAvailable}`,
+    `cron has our line: ${d.cronHasOurLine}`,
+    `cron line: ${d.cronLine ?? "(none)"}`,
+    `script path: ${d.scriptPath ?? "(unknown)"}`,
+    `script exists: ${d.scriptExists ?? "(unchecked)"}`,
+    "",
+    `# crontab -l  (exit ${d.crontabReadCode})`,
+    d.crontabReadOutput || "(no output)",
+    "",
+    `# our cron marker: ${LINUX_CRON_MARKER}`,
   ].join("\n");
 }
 
@@ -1513,6 +1660,7 @@ function detectPlatform(): BackupPlatform {
   try {
     const t = osType();
     if (t === "windows") return "windows";
+    if (t === "linux") return "linux";
     return "macos";
   } catch {
     return "macos";
