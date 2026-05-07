@@ -43,26 +43,17 @@ def main() -> int:
     )
     base = f"https://github.com/{repo}/releases/download/{tag}"
 
+    # Tauri v2 updater bundles per-platform:
+    #   * macOS: *.app.tar.gz (universal)
+    #   * Windows: *.nsis.zip per arch (we no longer ship MSI)
+    # Linux installs from .deb are manual-update only — Tauri's updater can't
+    # apply patches to a .deb in place; AppImage was the only auto-update
+    # format on Linux and we no longer ship it.
     mac_sig = first_match("*.app.tar.gz.sig")
-    linux_x64_sig = first_match("*_amd64.AppImage.sig")
-    linux_arm64_sig = first_match("*_aarch64.AppImage.sig")
-    # Tauri v2 windows targets expect *.nsis.zip / *.msi.zip (updater bundles),
-    # not the raw setup.exe. Prefer NSIS; fall back to MSI. Per-arch matching
-    # keeps x64 and ARM64 entries distinct so each Windows host downloads its
-    # native bundle (Prism emulation works for x64 binaries on ARM64 but adds
-    # overhead and trips up some native API calls).
-    win_x64_sig = (
-        first_match("*_x64-setup.nsis.zip.sig")
-        or first_match("*_x64_en-US.msi.zip.sig")
-    )
-    win_arm64_sig = (
-        first_match("*_arm64-setup.nsis.zip.sig")
-        or first_match("*_arm64_en-US.msi.zip.sig")
-    )
+    win_x64_sig = first_match("*_x64-setup.nsis.zip.sig")
+    win_arm64_sig = first_match("*_arm64-setup.nsis.zip.sig")
 
     mac = entry(mac_sig, base)
-    linux_x64 = entry(linux_x64_sig, base)
-    linux_arm64 = entry(linux_arm64_sig, base)
     win_x64 = entry(win_x64_sig, base)
     win_arm64 = entry(win_arm64_sig, base)
 
@@ -70,10 +61,6 @@ def main() -> int:
     if mac:
         platforms["darwin-aarch64"] = mac
         platforms["darwin-x86_64"] = mac
-    if linux_x64:
-        platforms["linux-x86_64"] = linux_x64
-    if linux_arm64:
-        platforms["linux-aarch64"] = linux_arm64
     if win_x64:
         platforms["windows-x86_64"] = win_x64
     if win_arm64:

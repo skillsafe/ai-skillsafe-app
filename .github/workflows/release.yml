@@ -119,13 +119,9 @@ jobs:
           name: skillsafe-${{ matrix.platform }}
           path: |
             src-tauri/target/**/release/bundle/**/*.dmg
-            src-tauri/target/**/release/bundle/**/*.AppImage
             src-tauri/target/**/release/bundle/**/*.deb
-            src-tauri/target/**/release/bundle/**/*.msi
             src-tauri/target/**/release/bundle/**/*.exe
             src-tauri/target/**/release/bundle/**/*.app.tar.gz
-            src-tauri/target/**/release/bundle/**/*.AppImage.tar.gz
-            src-tauri/target/**/release/bundle/**/*.msi.zip
             src-tauri/target/**/release/bundle/**/*.nsis.zip
             src-tauri/target/**/release/bundle/**/*.sig
       - name: Publish GitHub Release
@@ -140,32 +136,24 @@ jobs:
             On first launch macOS may say "unidentified developer" — right-click the app and choose **Open** once to bypass.
 
             ### Windows (x64 — Intel/AMD)
-            - `*_x64-setup.exe` — recommended (NSIS installer)
-            - `*_x64_en-US.msi` — alternative (MSI for IT-managed installs)
+            - `*_x64-setup.exe` — NSIS installer
 
             ### Windows (ARM64 — Surface Pro X / Snapdragon X / Copilot+ PCs)
-            - `*_arm64-setup.exe` — recommended (NSIS installer)
-            - `*_arm64_en-US.msi` — alternative (MSI for IT-managed installs)
+            - `*_arm64-setup.exe` — NSIS installer
 
             ### Linux (x64 — Intel/AMD)
-            - `*_amd64.AppImage` — `chmod +x` and run, no install needed
             - `*_amd64.deb` — `sudo apt install ./*.deb`
 
             ### Linux (ARM64 — Raspberry Pi 4/5, Ampere, Apple Silicon VMs)
-            - `*_aarch64.AppImage` — `chmod +x` and run, no install needed
             - `*_arm64.deb` — `sudo apt install ./*.deb`
 
             ### Auto-updates
-            The app fetches `latest.json` from this release on launch and verifies the downloaded bundle against the matching `.sig` file. The `*.app.tar.gz`, `*.AppImage.tar.gz`, `*.msi.zip`, `*.nsis.zip` bundles plus their `.sig` files are for the updater — you do not need to download them manually.
+            The app fetches `latest.json` from this release on launch and verifies the downloaded bundle against the matching `.sig` file. The `*.app.tar.gz` and `*.nsis.zip` bundles plus their `.sig` files are for the updater — you do not need to download them manually. (Linux installs from `.deb` are manual-update only — Tauri's updater plugin needs an AppImage bundle to apply patches in place, which we no longer ship.)
           files: |
             src-tauri/target/**/release/bundle/**/*.dmg
-            src-tauri/target/**/release/bundle/**/*.AppImage
             src-tauri/target/**/release/bundle/**/*.deb
-            src-tauri/target/**/release/bundle/**/*.msi
             src-tauri/target/**/release/bundle/**/*.exe
             src-tauri/target/**/release/bundle/**/*.app.tar.gz
-            src-tauri/target/**/release/bundle/**/*.AppImage.tar.gz
-            src-tauri/target/**/release/bundle/**/*.msi.zip
             src-tauri/target/**/release/bundle/**/*.nsis.zip
             src-tauri/target/**/release/bundle/**/*.sig
           fail_on_unmatched_files: false

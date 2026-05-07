@@ -57,7 +57,7 @@
   "bundle": {
     "active": true,
     "createUpdaterArtifacts": true,
-    "targets": ["app", "dmg", "deb", "appimage", "msi", "nsis"],
+    "targets": ["app", "dmg", "deb", "nsis"],
     "category": "DeveloperTool",
     "shortDescription": "Manage Claude / Codex / Cursor skills, agents, and commands",
     "longDescription": "A cross-platform desktop app for browsing, editing, and converting markdown-frontmatter artifacts (skills, agents, commands, rules) across Claude Code, OpenAI Codex CLI, and Cursor IDE.",
