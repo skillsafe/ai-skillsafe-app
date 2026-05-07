@@ -46,30 +46,6 @@ jobs:
           # image is more minimal and doesn't, so we install it explicitly.
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
       - run: npm ci
-      - name: Fetch Azure Trusted Signing dlib (Windows, when configured)
-        # Only the Microsoft-signed dlib can talk to Azure Trusted Signing
-        # via signtool. Pulled fresh per CI run from the public NuGet feed so
-        # we don't have to vendor it. When AZURE_TRUSTED_SIGNING_ACCOUNT_NAME
-        # is unset (forks, dev tags), we skip and the wrapper script no-ops.
-        if: matrix.platform == 'windows-latest' && env.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME != ''
-        env:
-          AZURE_TRUSTED_SIGNING_ACCOUNT_NAME: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME }}
-        shell: pwsh
-        run: |
-          $pkgDir = Join-Path $env:RUNNER_TEMP "trusted-signing"
-          New-Item -ItemType Directory -Force -Path $pkgDir | Out-Null
-          nuget install Microsoft.Trusted.Signing.Client `
-            -Version 1.0.53 `
-            -OutputDirectory $pkgDir `
-            -ExcludeVersion `
-            -NonInteractive
-          $dlib = Join-Path $pkgDir "Microsoft.Trusted.Signing.Client/bin/x64/Azure.CodeSigning.Dlib.dll"
-          if (-not (Test-Path $dlib)) {
-            Write-Error "dlib not found at $dlib after nuget install"
-            exit 1
-          }
-          Write-Host "AZURE_TRUSTED_SIGNING_DLIB_PATH=$dlib"
-          "AZURE_TRUSTED_SIGNING_DLIB_PATH=$dlib" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Tauri build (macOS universal)
         if: matrix.platform == 'macos-latest'
         shell: bash
@@ -89,15 +65,6 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Azure Trusted Signing (Windows Authenticode). All six are
-          # passed unconditionally — sign-windows.ps1 no-ops cleanly when
-          # any are empty, so forks without secrets still build unsigned.
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          AZURE_TRUSTED_SIGNING_ENDPOINT: ${{ secrets.AZURE_TRUSTED_SIGNING_ENDPOINT }}
-          AZURE_TRUSTED_SIGNING_ACCOUNT_NAME: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME }}
-          AZURE_TRUSTED_SIGNING_CERT_PROFILE_NAME: ${{ secrets.AZURE_TRUSTED_SIGNING_CERT_PROFILE_NAME }}
         run: |
           if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
             unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
@@ -114,12 +81,6 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          AZURE_TRUSTED_SIGNING_ENDPOINT: ${{ secrets.AZURE_TRUSTED_SIGNING_ENDPOINT }}
-          AZURE_TRUSTED_SIGNING_ACCOUNT_NAME: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME }}
-          AZURE_TRUSTED_SIGNING_CERT_PROFILE_NAME: ${{ secrets.AZURE_TRUSTED_SIGNING_CERT_PROFILE_NAME }}
         run: |
           if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
             unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
