@@ -1180,6 +1180,24 @@ export function BackupPanel({ onToast }: Props) {
                     {scheduleBusy === "uninstall" ? "Uninstalling…" : "Uninstall"}
                   </button>
                 </>
+              ) : scheduleStatus.kind === "unsupported" ? (
+                // No scheduler binary on this system (cron missing on Linux,
+                // launchctl missing/sandboxed on macOS, schtasks missing on
+                // Windows). Hide the install action — clicking it just
+                // bubbles up an ENOENT spawn error. Surface guidance instead.
+                <span
+                  className="projects-summary-text"
+                  style={{ fontSize: 11, color: "var(--muted)" }}
+                  title={
+                    platform === "windows"
+                      ? "Task Scheduler (schtasks.exe) was not found on this system."
+                      : platform === "linux"
+                        ? "cron(1) was not found. Install your distro's cron package (e.g. cronie, vixie-cron) and reopen this dialog."
+                        : "launchctl was not found. This is unusual on macOS — try restarting the app."
+                  }
+                >
+                  Scheduler unavailable
+                </span>
               ) : (
                 <button
                   className="primary"
@@ -1190,7 +1208,9 @@ export function BackupPanel({ onToast }: Props) {
                       ? "Pick a destination first"
                       : platform === "windows"
                         ? "Register a Task Scheduler job that runs the backup on the schedule below"
-                        : "Install a launchd job that runs the backup on the schedule below"
+                        : platform === "linux"
+                          ? "Add a cron entry that runs the backup on the schedule below"
+                          : "Install a launchd job that runs the backup on the schedule below"
                   }
                 >
                   {scheduleBusy === "install" ? "Installing…" : "Install daily backup"}
@@ -1657,14 +1677,26 @@ function friendlyBackupError(raw: string): string {
 }
 
 function detectPlatform(): BackupPlatform {
+  // Trust @tauri-apps/plugin-os when it answers, but never silently fall
+  // through to "macos" — on Linux the Tauri webview occasionally reports
+  // an unexpected value or the invoke throws before the plugin is wired
+  // up, and the macOS default would route the install handler into
+  // launchctl, which spawns to ENOENT ("No such file or directory (os
+  // error 2)") on Linux. Cross-check with navigator.userAgent/platform
+  // so we land on the correct branch even when osType() is unhappy.
   try {
     const t = osType();
-    if (t === "windows") return "windows";
-    if (t === "linux") return "linux";
-    return "macos";
+    if (t === "windows" || t === "linux" || t === "macos") return t;
   } catch {
-    return "macos";
+    /* fall through to UA-based detection */
   }
+  const ua = (typeof navigator !== "undefined"
+    ? `${navigator.userAgent || ""} ${navigator.platform || ""}`
+    : ""
+  ).toLowerCase();
+  if (/windows|win32|win64/.test(ua)) return "windows";
+  if (/linux|x11|cros/.test(ua)) return "linux";
+  return "macos";
 }
 
 function formatRelative(ts: number): string {
