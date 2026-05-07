@@ -43,19 +43,22 @@ def main() -> int:
     )
     base = f"https://github.com/{repo}/releases/download/{tag}"
 
-    # Tauri v2 updater bundles per-platform:
-    #   * macOS: *.app.tar.gz (universal)
-    #   * Windows: *.nsis.zip per arch (we no longer ship MSI)
-    #   * Linux: *.AppImage.tar.gz per arch — auto-signed by the bundler.
+    # Tauri v2 (non-v1-compatible) signs each per-platform bundle directly,
+    # no .tar.gz / .zip wrap (except macOS, which has to tar the .app dir):
+    #   * macOS: *.app.tar.gz (universal) + .sig
+    #   * Windows: *_<arch>-setup.exe + .sig (NSIS — we no longer ship MSI)
+    #   * Linux:  *_<arch>.AppImage + .sig — note Tauri labels the ARM
+    #     AppImage `_aarch64.AppImage` while the same-arch .deb is
+    #     `_arm64.deb`. Don't "normalize" the script to one label.
     # Linux .deb installs are manual-update only: the Tauri bundler doesn't
     # auto-sign .deb (only AppImage / NSIS / MSI / app.tar.gz), so we have no
     # signed .deb to publish. Users on .deb need a one-time manual update to
     # the AppImage to start receiving auto-updates.
     mac_sig = first_match("*.app.tar.gz.sig")
-    win_x64_sig = first_match("*_x64-setup.nsis.zip.sig")
-    win_arm64_sig = first_match("*_arm64-setup.nsis.zip.sig")
-    linux_x64_sig = first_match("*_amd64.AppImage.tar.gz.sig")
-    linux_arm64_sig = first_match("*_arm64.AppImage.tar.gz.sig")
+    win_x64_sig = first_match("*_x64-setup.exe.sig")
+    win_arm64_sig = first_match("*_arm64-setup.exe.sig")
+    linux_x64_sig = first_match("*_amd64.AppImage.sig")
+    linux_arm64_sig = first_match("*_aarch64.AppImage.sig")
 
     mac = entry(mac_sig, base)
     win_x64 = entry(win_x64_sig, base)
