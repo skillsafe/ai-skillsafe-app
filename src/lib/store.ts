@@ -14,8 +14,11 @@ import {
 } from "./backup/dataTypes";
 import type { UpdateProgress } from "./update/runner";
 import { clearApiKey, loadApiKey, storeApiKey } from "./skillsafe/auth";
+import type { ConfigKind, ProjectSettingsTier } from "./configs/types";
 
 declare const __APP_VERSION__: string;
+
+export type View = "artifacts" | "configs";
 
 export type Theme = "dark" | "light" | "system";
 export type ResolvedTheme = "dark" | "light";
@@ -56,6 +59,9 @@ const BACKUP_SCHEDULE_KEY = "skill-manager.backupSchedule";
 const LAYOUT_KEY = "skill-manager.layout";
 const AUTO_UPDATE_KEY = "skill-manager.autoUpdate";
 const DISMISSED_UPDATE_KEY = "skill-manager.dismissedUpdateVersion";
+const VIEW_KEY = "skill-manager.view";
+const CONFIG_KIND_KEY = "skill-manager.configKind";
+const PROJECT_SETTINGS_TIER_KEY = "skill-manager.projectSettingsTier";
 const MAX_RECENT_TOOLS = 3;
 const MAX_RECENT_PROJECTS = 12;
 // Tool validation now defers to the registry — see ./agents/registry.ts.
@@ -313,6 +319,28 @@ function initialDismissedUpdate(): string | null {
   return browser.localStorage?.getItem(DISMISSED_UPDATE_KEY) ?? null;
 }
 
+function initialView(): View {
+  const v = browser.localStorage?.getItem(VIEW_KEY);
+  return v === "configs" ? "configs" : "artifacts";
+}
+
+const VALID_CONFIG_KINDS: ReadonlyArray<ConfigKind> = [
+  "permissions",
+  "hooks",
+  "mcp",
+  "keybindings",
+];
+
+function initialConfigKind(): ConfigKind {
+  const v = browser.localStorage?.getItem(CONFIG_KIND_KEY);
+  return VALID_CONFIG_KINDS.includes(v as ConfigKind) ? (v as ConfigKind) : "permissions";
+}
+
+function initialProjectSettingsTier(): ProjectSettingsTier {
+  const v = browser.localStorage?.getItem(PROJECT_SETTINGS_TIER_KEY);
+  return v === "shared" ? "shared" : "local";
+}
+
 function detectAppVersion(): string {
   // Vite injects this at build time (see vite.config.ts).
   if (typeof __APP_VERSION__ !== "undefined") return __APP_VERSION__;
@@ -373,6 +401,13 @@ interface AppState {
   remoteLoadingMore: boolean;
   remoteViewedFile: ViewedFile | null;
   installedRemoteIds: string[];
+
+  // Configs view (sibling to Artifacts) — settings.json/.mcp.json/keybindings.json
+  view: View;
+  configKind: ConfigKind;
+  // Inside project scope, settings.json is split into a checked-in `shared`
+  // file and a gitignored `local` file. The toggle persists per-user.
+  projectSettingsTier: ProjectSettingsTier;
 
   // Settings
   showSettings: boolean;
@@ -458,6 +493,10 @@ interface AppState {
   setRemoteViewedFile: (v: ViewedFile | null) => void;
   markRemoteInstalled: (id: string) => void;
 
+  setView: (v: View) => void;
+  setConfigKind: (k: ConfigKind) => void;
+  setProjectSettingsTier: (t: ProjectSettingsTier) => void;
+
   setShowSettings: (b: boolean) => void;
   setSettingsScrollTarget: (id: string | null) => void;
   setDefaultTool: (t: Tool) => void;
@@ -532,6 +571,10 @@ export const useApp = create<AppState>((set) => ({
   remoteLoadingMore: false,
   remoteViewedFile: null,
   installedRemoteIds: [],
+
+  view: initialView(),
+  configKind: initialConfigKind(),
+  projectSettingsTier: initialProjectSettingsTier(),
 
   showSettings: false,
   settingsScrollTarget: null,
@@ -724,6 +767,19 @@ export const useApp = create<AppState>((set) => ({
         ? state
         : { installedRemoteIds: [...state.installedRemoteIds, id] },
     ),
+
+  setView: (view) => {
+    browser.localStorage?.setItem(VIEW_KEY, view);
+    set({ view });
+  },
+  setConfigKind: (configKind) => {
+    browser.localStorage?.setItem(CONFIG_KIND_KEY, configKind);
+    set({ configKind });
+  },
+  setProjectSettingsTier: (projectSettingsTier) => {
+    browser.localStorage?.setItem(PROJECT_SETTINGS_TIER_KEY, projectSettingsTier);
+    set({ projectSettingsTier });
+  },
 
   setShowSettings: (showSettings) => set({ showSettings }),
   setSettingsScrollTarget: (settingsScrollTarget) => set({ settingsScrollTarget }),

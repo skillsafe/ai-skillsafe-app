@@ -57,6 +57,7 @@
         { "path": "$HOME/**/skills-lock.json" },
         { "path": "$HOME/**/CLAUDE.md" },
         { "path": "$HOME/**/AGENTS.md" },
+        { "path": "$HOME/**/.mcp.json" },
         { "path": "$HOME/**/skillsafe-backup" },
         { "path": "$HOME/**/skillsafe-backup/**" },
         { "path": "$HOME/**/scheduled-backup" },

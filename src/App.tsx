@@ -12,6 +12,8 @@ import { RemoteEditor } from "./components/RemoteEditor";
 import { CloudActionsDialog } from "./components/CloudActionsDialog";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { BackupBrowser } from "./components/BackupBrowser";
+import { ConfigsPanel } from "./components/ConfigsPanel";
+import { ConfigsList } from "./components/ConfigsList";
 import type { ArtifactType, MarkdownArtifact, Scope, Tool } from "./lib/artifacts/types";
 import { useApp } from "./lib/store";
 import { listArtifacts } from "./lib/tools";
@@ -89,6 +91,7 @@ export default function App() {
     showUpdateDialog,
     setDismissedUpdateVersion,
     currentVersion,
+    view,
   } = useApp();
 
   useEffect(() => {
@@ -724,20 +727,29 @@ export default function App() {
         onToggleBackup={() => setBottomPanel(bottomPanel === "backup" ? null : "backup")}
         onOpenSettings={() => setShowSettings(true)}
       />
-      <ArtifactList
-        onNew={() => setShowNew(true)}
-        onConvert={() => setShowConvert(true)}
-        onReload={reload}
-        onDelete={(a) => setPendingDelete(a)}
-        onBackup={(a) => {
-          if (backingUpId) return;
-          handleBackupFromRow(a);
-        }}
-        onUpload={handleUploadFromRow}
-      />
-      <Editor artifact={selected} onReload={reload} />
-      <HistoryPanel onReload={reload} />
-      <DiffViewOverlay />
+      {view === "artifacts" ? (
+        <>
+          <ArtifactList
+            onNew={() => setShowNew(true)}
+            onConvert={() => setShowConvert(true)}
+            onReload={reload}
+            onDelete={(a) => setPendingDelete(a)}
+            onBackup={(a) => {
+              if (backingUpId) return;
+              handleBackupFromRow(a);
+            }}
+            onUpload={handleUploadFromRow}
+          />
+          <Editor artifact={selected} onReload={reload} />
+          <HistoryPanel onReload={reload} />
+          <DiffViewOverlay />
+        </>
+      ) : (
+        <>
+          <ConfigsList />
+          <ConfigsPanel onToast={emitToast} />
+        </>
+      )}
 
       {bottomPanel === "cloud" && (
         <>
@@ -775,7 +787,7 @@ export default function App() {
         min={200}
         max={560}
         style={{ left: `calc(${layout.col1}px + ${layout.col2}px)` }}
-        ariaLabel="Resize artifact list"
+        ariaLabel={view === "artifacts" ? "Resize artifact list" : "Resize configs list"}
         onChange={(v) => setLayout({ col2: v })}
       />
       {bottomPanel && (

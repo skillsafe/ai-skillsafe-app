@@ -28,6 +28,13 @@ const TYPES: { id: ArtifactType; label: string }[] = [
   { id: "command", label: "Commands" },
 ];
 
+// Configs only apply to global / project — there's no "all" file and no
+// lockfile to drift against, so we slice the artifact-scopes down here.
+const CONFIG_SCOPES: { id: Scope; label: string }[] = [
+  { id: "global", label: "Global" },
+  { id: "project", label: "Project" },
+];
+
 interface SidebarProps {
   onToggleCloud?: () => void;
   onToggleBackup?: () => void;
@@ -37,9 +44,15 @@ interface SidebarProps {
 export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: SidebarProps = {}) {
   const {
     tool, scope, type, recentTools, recentProjects, projectFilter, bottomPanel,
+    view,
     setTool, setScope, setType, setProjectRoot, setProjectFilter,
+    setView,
     setSettingsScrollTarget,
   } = useApp();
+  const isConfigs = view === "configs";
+  // The configs view doesn't have an "all" scope; coerce silently when
+  // switching in so the sub-views render against a real file.
+  const effectiveScope: Scope = isConfigs && scope === "all" ? "global" : scope;
 
   function manageProjects() {
     setSettingsScrollTarget("settings-projects");
@@ -98,45 +111,49 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
         )}
       </div>
 
-      <div className="section-label">Tool</div>
-      <select
-        className="tool-select"
-        value={tool}
-        onChange={(e) => setTool(e.target.value as Tool)}
-      >
-        {TOOLS.map((t) => (
-          <option key={t.id} value={t.id}>{t.label}</option>
-        ))}
-      </select>
-      {recentTools.length > 0 && (
+      {!isConfigs && (
         <>
-          <div className="section-label" id="sidebar-recent-label">Recent</div>
-          <div className="pill-row" role="tablist" aria-labelledby="sidebar-recent-label">
-            {recentTools.map((id) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={tool === id}
-                className={`pill ${tool === id ? "active" : ""}`}
-                onClick={() => setTool(id)}
-              >
-                {toolLabel(id)}
-              </button>
+          <div className="section-label">Tool</div>
+          <select
+            className="tool-select"
+            value={tool}
+            onChange={(e) => setTool(e.target.value as Tool)}
+          >
+            {TOOLS.map((t) => (
+              <option key={t.id} value={t.id}>{t.label}</option>
             ))}
-          </div>
+          </select>
+          {recentTools.length > 0 && (
+            <>
+              <div className="section-label" id="sidebar-recent-label">Recent</div>
+              <div className="pill-row" role="tablist" aria-labelledby="sidebar-recent-label">
+                {recentTools.map((id) => (
+                  <button
+                    key={id}
+                    type="button"
+                    role="tab"
+                    aria-selected={tool === id}
+                    className={`pill ${tool === id ? "active" : ""}`}
+                    onClick={() => setTool(id)}
+                  >
+                    {toolLabel(id)}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </>
       )}
 
       <div className="section-label" id="sidebar-scope-label">Scope</div>
       <div className="pill-row" role="tablist" aria-labelledby="sidebar-scope-label">
-        {SCOPES.map((s) => (
+        {(isConfigs ? CONFIG_SCOPES : SCOPES).map((s) => (
           <button
             key={s.id}
             type="button"
             role="tab"
-            aria-selected={scope === s.id}
-            className={`pill ${scope === s.id ? "active" : ""}`}
+            aria-selected={effectiveScope === s.id}
+            className={`pill ${effectiveScope === s.id ? "active" : ""}`}
             onClick={() => {
               if (s.id === "project" && recentProjects.length === 0) pickProject();
               setScope(s.id);
@@ -147,28 +164,12 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
         ))}
       </div>
 
-      <div className="section-label" id="sidebar-type-label">Type</div>
-      <div className="pill-row" role="tablist" aria-labelledby="sidebar-type-label">
-        {TYPES.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={type === t.id}
-            className={`pill ${type === t.id ? "active" : ""}`}
-            onClick={() => setType(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {scope === "project" && recentProjects.length === 0 && (
+      {effectiveScope === "project" && recentProjects.length === 0 && (
         <div className="projects-summary">
           <button className="link-btn" onClick={pickProject}>+ Add a project…</button>
         </div>
       )}
-      {scope === "project" && recentProjects.length > 0 && (
+      {effectiveScope === "project" && recentProjects.length > 0 && (
         <>
           <div className="section-label">Filter by project</div>
           <select
@@ -227,6 +228,40 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
           <button className="link-btn" onClick={manageProjects}>Manage projects…</button>
         </div>
       )}
+
+      <div className="section-label" id="sidebar-type-label">Type</div>
+      <div className="pill-row" role="tablist" aria-labelledby="sidebar-type-label">
+        {TYPES.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={!isConfigs && type === t.id}
+            className={`pill ${!isConfigs && type === t.id ? "active" : ""}`}
+            onClick={() => {
+              setView("artifacts");
+              setType(t.id);
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+        <button
+          type="button"
+          role="tab"
+          aria-selected={isConfigs}
+          className={`pill ${isConfigs ? "active" : ""}`}
+          onClick={() => {
+            // Configs are only meaningful at a concrete scope; coerce "all"
+            // → global so the editor has a real file to render against.
+            if (scope === "all") setScope("global");
+            setView("configs");
+          }}
+          title="Permissions, hooks, MCP, keybindings"
+        >
+          Configs
+        </button>
+      </div>
 
     </aside>
   );
