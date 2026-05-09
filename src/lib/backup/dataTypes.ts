@@ -96,6 +96,8 @@ const TOOL_DATA_TYPES: Record<string, DataType[]> = {
 export interface ExtraSource {
   id: string;
   displayName: string;
+  /** Long-form description shown as a tooltip when the user hovers the row. */
+  hoverDescription?: string;
   configRoot: (deps: PathResolverDeps) => Promise<string>;
   types: DataType[];
   /** Included on first launch for users who don't have a saved preference. */
@@ -108,7 +110,9 @@ const home = (deps: PathResolverDeps, ...parts: string[]) =>
 export const EXTRA_SOURCES: Record<string, ExtraSource> = {
   "shared-agents": {
     id: "shared-agents",
-    displayName: "Shared agents folder (~/.agents/)",
+    displayName: "Shared",
+    hoverDescription:
+      "Shared agents folder (~/.agents/) — universal skills folder used by Cline, Dexto, Warp, and other tools that symlink into it.",
     configRoot: (d) => home(d, ".agents"),
     types: [
       {
@@ -123,6 +127,12 @@ export const EXTRA_SOURCES: Record<string, ExtraSource> = {
     ],
     defaultEnabled: true,
   },
+  // The Workbench master folder is intentionally NOT registered here.
+  // Regular backup mirrors what each AI agent has on disk; the master
+  // folder is a SkillSafe-curated sibling that the user updates manually
+  // via the Workbench (Add to master / Update master). Both live under
+  // the backup folder but serve distinct roles, and treating master as a
+  // regular backup tool would conflate the two.
 };
 
 export function isExtraSource(name: string): boolean {

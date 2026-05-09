@@ -14,6 +14,8 @@ import { SettingsDialog } from "./components/SettingsDialog";
 import { BackupBrowser } from "./components/BackupBrowser";
 import { ConfigsPanel } from "./components/ConfigsPanel";
 import { ConfigsList } from "./components/ConfigsList";
+import { InventoryList } from "./components/InventoryList";
+import { Workbench } from "./components/Workbench";
 import type { ArtifactType, MarkdownArtifact, Scope, Tool } from "./lib/artifacts/types";
 import { useApp } from "./lib/store";
 import { listArtifacts } from "./lib/tools";
@@ -727,7 +729,7 @@ export default function App() {
         onToggleBackup={() => setBottomPanel(bottomPanel === "backup" ? null : "backup")}
         onOpenSettings={() => setShowSettings(true)}
       />
-      {view === "artifacts" ? (
+      {view === "artifacts" && (
         <>
           <ArtifactList
             onNew={() => setShowNew(true)}
@@ -744,10 +746,17 @@ export default function App() {
           <HistoryPanel onReload={reload} />
           <DiffViewOverlay />
         </>
-      ) : (
+      )}
+      {view === "configs" && (
         <>
           <ConfigsList />
           <ConfigsPanel onToast={emitToast} />
+        </>
+      )}
+      {view === "workbench" && (
+        <>
+          <InventoryList />
+          <Workbench />
         </>
       )}
 
@@ -787,7 +796,13 @@ export default function App() {
         min={200}
         max={560}
         style={{ left: `calc(${layout.col1}px + ${layout.col2}px)` }}
-        ariaLabel={view === "artifacts" ? "Resize artifact list" : "Resize configs list"}
+        ariaLabel={
+          view === "artifacts"
+            ? "Resize artifact list"
+            : view === "workbench"
+              ? "Resize inventory list"
+              : "Resize configs list"
+        }
         onChange={(v) => setLayout({ col2: v })}
       />
       {bottomPanel && (

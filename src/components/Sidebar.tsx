@@ -1,6 +1,8 @@
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import type { ArtifactType, Scope, Tool } from "../lib/artifacts/types";
 import { ALL_AGENTS, displayNameOf } from "../lib/agents/registry";
+import { toolsWithSurfaces } from "../lib/agents/state";
+import type { StateCategory } from "../lib/inventory/types";
 import { useApp } from "../lib/store";
 import { ArchiveIcon, GearIcon, GlobeIcon, ShieldIcon } from "./icons";
 
@@ -35,6 +37,16 @@ const CONFIG_SCOPES: { id: Scope; label: string }[] = [
   { id: "project", label: "Project" },
 ];
 
+// Workbench inventory categories surfaced as filter pills. Order roughly
+// matches how often users touch each category.
+const WORKBENCH_CATEGORIES: { id: StateCategory; label: string }[] = [
+  { id: "memory", label: "Memory" },
+  { id: "mcp", label: "MCP" },
+  { id: "hooks", label: "Hooks" },
+  { id: "permissions", label: "Permissions" },
+  { id: "keybindings", label: "Keybindings" },
+];
+
 interface SidebarProps {
   onToggleCloud?: () => void;
   onToggleBackup?: () => void;
@@ -45,14 +57,21 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
   const {
     tool, scope, type, recentTools, recentProjects, projectFilter, bottomPanel,
     view,
+    workbenchTool, workbenchCategory, workbenchInstalled,
     setTool, setScope, setType, setProjectRoot, setProjectFilter,
     setView,
+    setWorkbenchTool, setWorkbenchCategory,
     setSettingsScrollTarget,
   } = useApp();
   const isConfigs = view === "configs";
-  // The configs view doesn't have an "all" scope; coerce silently when
+  const isWorkbench = view === "workbench";
+  // Configs/Workbench don't have an "all" scope; coerce silently when
   // switching in so the sub-views render against a real file.
-  const effectiveScope: Scope = isConfigs && scope === "all" ? "global" : scope;
+  const effectiveScope: Scope =
+    (isConfigs || isWorkbench) && scope === "all" ? "global" : scope;
+  // Tools the Workbench knows how to read. Used to populate its source
+  // selector and de-duplicate it from the artifact tool dropdown.
+  const workbenchToolIds = toolsWithSurfaces();
 
   function manageProjects() {
     setSettingsScrollTarget("settings-projects");
@@ -111,7 +130,7 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
         )}
       </div>
 
-      {!isConfigs && (
+      {!isConfigs && !isWorkbench && (
         <>
           <div className="section-label">Tool</div>
           <select
@@ -142,6 +161,54 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
               </div>
             </>
           )}
+        </>
+      )}
+
+      {isWorkbench && (
+        <>
+          <div className="section-label">Source tool</div>
+          <select
+            className="tool-select"
+            value={workbenchTool ?? ""}
+            onChange={(e) => setWorkbenchTool(e.target.value || null)}
+          >
+            <option value="">All tools</option>
+            <option value="__master__">Master (added)</option>
+            {workbenchToolIds.map((id) => {
+              const installed = workbenchInstalled[id];
+              const label = displayNameOf(id);
+              return (
+                <option key={id} value={id}>
+                  {label}
+                  {installed === false ? " (not installed)" : ""}
+                </option>
+              );
+            })}
+          </select>
+          <div className="section-label" id="sidebar-workbench-cat-label">Category</div>
+          <div className="pill-row" role="tablist" aria-labelledby="sidebar-workbench-cat-label">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={workbenchCategory === null}
+              className={`pill ${workbenchCategory === null ? "active" : ""}`}
+              onClick={() => setWorkbenchCategory(null)}
+            >
+              All
+            </button>
+            {WORKBENCH_CATEGORIES.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                role="tab"
+                aria-selected={workbenchCategory === c.id}
+                className={`pill ${workbenchCategory === c.id ? "active" : ""}`}
+                onClick={() => setWorkbenchCategory(c.id)}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
         </>
       )}
 
@@ -236,8 +303,8 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
             key={t.id}
             type="button"
             role="tab"
-            aria-selected={!isConfigs && type === t.id}
-            className={`pill ${!isConfigs && type === t.id ? "active" : ""}`}
+            aria-selected={!isConfigs && !isWorkbench && type === t.id}
+            className={`pill ${!isConfigs && !isWorkbench && type === t.id ? "active" : ""}`}
             onClick={() => {
               setView("artifacts");
               setType(t.id);
@@ -260,6 +327,19 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
           title="Permissions, hooks, MCP, keybindings"
         >
           Configs
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={isWorkbench}
+          className={`pill ${isWorkbench ? "active" : ""}`}
+          onClick={() => {
+            if (scope === "all") setScope("global");
+            setView("workbench");
+          }}
+          title="Cross-tool inventory of memory, MCP, hooks, etc."
+        >
+          Workbench
         </button>
       </div>
 

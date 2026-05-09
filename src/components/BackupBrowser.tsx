@@ -16,6 +16,14 @@ import {
 import type { ArtifactType, Scope, Tool } from "../lib/artifacts/types";
 import { ALL_AGENTS, displayNameOf } from "../lib/agents/registry";
 import { dataTypesFor, EXTRA_SOURCES, slotForPath } from "../lib/backup/dataTypes";
+import {
+  listMasterFiles,
+  loadManifest as loadMasterManifest,
+  resolveMasterRoot,
+  restoreSourceFromMaster,
+  decodeMasterPath,
+} from "../lib/master/store";
+import type { MasterEntry } from "../lib/master/types";
 import { resolveArtifactDir } from "../lib/paths";
 import { renderMarkdown } from "../lib/markdown";
 import { parseFrontmatter } from "../lib/frontmatter";
@@ -24,9 +32,26 @@ import { TreeView } from "./TreeView";
 import type { Attachment } from "../lib/artifacts/types";
 import { ConfirmDialog } from "./ConfirmDialog";
 
-const ALL_TOOLS: ReadonlyArray<{ id: Tool; label: string }> = [
+// Virtual tool key used inside the BackupBrowser to surface the Workbench
+// master folder alongside regular per-tool snapshots. Master is NOT a
+// real backup source (the regular backup picker excludes it on purpose);
+// the entry exists here so users can preview / browse master contents
+// from this view too.
+const MASTER_BROWSER_KEY = "master";
+
+const ALL_TOOLS: ReadonlyArray<{ id: Tool; label: string; tooltip?: string }> = [
   ...ALL_AGENTS.map((id) => ({ id, label: displayNameOf(id) })),
-  ...Object.values(EXTRA_SOURCES).map((s) => ({ id: s.id, label: s.displayName })),
+  ...Object.values(EXTRA_SOURCES).map((s) => ({
+    id: s.id,
+    label: s.displayName,
+    tooltip: s.hoverDescription,
+  })),
+  {
+    id: MASTER_BROWSER_KEY,
+    label: "Master",
+    tooltip:
+      "Workbench master folder — curated unified files shared across tools. Browse-only here; update via the Workbench tab.",
+  },
 ].sort((a, b) => a.label.localeCompare(b.label));
 
 // A "group" used to be one of the four legacy artifact types. With the new
@@ -176,26 +201,59 @@ export function BackupBrowser({ onToast }: Props) {
           }
         }
         if (cancelled) return;
+        // Master folder entries are added to whichever manifest we end up
+        // returning so the user can browse/preview master files alongside
+        // regular tool snapshots. The master folder itself isn't a backup
+        // source — the entries are read live from <backup>/master/.
+        const masterEntries = await loadMasterAsBackupEntries(
+          backupDestination,
+          null,
+        );
+        if (cancelled) return;
+
+        // Resolve the regular-backup manifest first (per-tool, then
+        // legacy fallback) and only then layer master entries on top, so
+        // the presence of master files never short-circuits regular
+        // backup loading.
+        let baseManifest: BackupManifest | null = null;
         if (partials.length > 0) {
-          setManifest(mergeToolManifests(partials, backupDestination));
+          baseManifest = mergeToolManifests(partials, backupDestination);
+        } else {
+          // Legacy fallback: pre-per-tool layouts had a single manifest at
+          // <dest>/LAST_BACKUP.json or <dest>/skillsafe-backup/LAST_BACKUP.json.
+          let legacyPath = await tauriJoiner.join(backupDestination, MANIFEST_FILENAME);
+          if (!(await tauriFs.exists(legacyPath))) {
+            legacyPath = await tauriJoiner.join(
+              backupDestination,
+              BACKUP_SUBDIR,
+              MANIFEST_FILENAME,
+            );
+          }
+          if (await tauriFs.exists(legacyPath)) {
+            const text = await tauriFs.readTextFile(legacyPath);
+            if (cancelled) return;
+            baseManifest = parseManifest(text);
+            if (!baseManifest) setLoadError("Manifest file is unreadable.");
+          }
+        }
+
+        if (baseManifest) {
+          baseManifest.entries.push(...masterEntries);
+          setManifest(baseManifest);
           return;
         }
-        // Legacy fallback: pre-per-tool layouts had a single manifest at
-        // <dest>/LAST_BACKUP.json or <dest>/skillsafe-backup/LAST_BACKUP.json.
-        let legacyPath = await tauriJoiner.join(backupDestination, MANIFEST_FILENAME);
-        if (!(await tauriFs.exists(legacyPath))) {
-          legacyPath = await tauriJoiner.join(
-            backupDestination,
-            BACKUP_SUBDIR,
-            MANIFEST_FILENAME,
-          );
-        }
-        if (await tauriFs.exists(legacyPath)) {
-          const text = await tauriFs.readTextFile(legacyPath);
-          if (cancelled) return;
-          const m = parseManifest(text);
-          setManifest(m);
-          if (!m) setLoadError("Manifest file is unreadable.");
+
+        // No regular backup at all — render master-only if we have it,
+        // otherwise an empty manifest so the panel shows its empty state.
+        if (masterEntries.length > 0) {
+          setManifest({
+            version: MANIFEST_VERSION,
+            generatedAt: 0,
+            destination: backupDestination,
+            counts: { added: 0, changed: 0, removed: 0, unchanged: 0 },
+            entries: masterEntries,
+            errors: [],
+          });
           return;
         }
         setManifest(null);
@@ -419,6 +477,35 @@ export function BackupBrowser({ onToast }: Props) {
   async function startRestore(item: BrowserItem) {
     const firstEntry = item.files[0]?.entry;
     if (!firstEntry || firstEntry.kind !== "artifact") return;
+    // Master items go through a separate flow: the destination is the
+    // entry's first recorded source on disk, not a registry-resolved
+    // tool config dir.
+    if (firstEntry.tool === MASTER_BROWSER_KEY) {
+      try {
+        const masterRel = firstEntry.relPath.replace(/^master\//, "");
+        const root = await resolveMasterRoot(
+          tauriPaths,
+          null,
+          backupDestination ?? null,
+        );
+        const m = await loadMasterManifest(tauriFs, tauriJoiner, root);
+        const entry = m.entries.find((e) => e.masterPath === masterRel);
+        const source = entry?.sources[0];
+        if (!entry || !source) {
+          onToast(
+            "error",
+            "This master file has no recorded source. Use the Workbench → Transfer to push it to a tool.",
+          );
+          return;
+        }
+        setRestoreTargetDir(source.absPath);
+        setRestoreTargetExists(await tauriFs.exists(source.absPath));
+        setRestorePending(item);
+      } catch (e) {
+        onToast("error", `Couldn't prepare master restore: ${e instanceof Error ? e.message : String(e)}`);
+      }
+      return;
+    }
     if (!firstEntry.tool || !firstEntry.scope || !firstEntry.type) {
       onToast("error", "Backup entry is missing tool/scope/type — can't restore.");
       return;
@@ -451,7 +538,40 @@ export function BackupBrowser({ onToast }: Props) {
     const item = restorePending;
     if (!item) return;
     const firstEntry = item.files[0]?.entry;
-    if (!firstEntry || firstEntry.kind !== "artifact" || !firstEntry.tool || !firstEntry.scope || !firstEntry.type) {
+    if (!firstEntry || firstEntry.kind !== "artifact") {
+      setRestorePending(null);
+      return;
+    }
+    // Master items: write the master payload back to its first recorded
+    // source via the Workbench's restore helper, which knows how to merge
+    // MCP entries (and overwrite memory files).
+    if (firstEntry.tool === MASTER_BROWSER_KEY) {
+      setRestoreBusy(true);
+      try {
+        const masterRel = firstEntry.relPath.replace(/^master\//, "");
+        const root = await resolveMasterRoot(
+          tauriPaths,
+          null,
+          backupDestination ?? null,
+        );
+        const m = await loadMasterManifest(tauriFs, tauriJoiner, root);
+        const entry = m.entries.find((e) => e.masterPath === masterRel);
+        const source = entry?.sources[0];
+        if (!entry || !source) {
+          onToast("error", "Master entry is missing — try refreshing the panel.");
+          return;
+        }
+        await restoreSourceFromMaster(tauriFs, tauriJoiner, root, entry, source, item.label);
+        onToast("ok", `Restored master → ${source.absPath}`);
+        setRestorePending(null);
+      } catch (e) {
+        onToast("error", `Restore failed: ${e instanceof Error ? e.message : String(e)}`);
+      } finally {
+        setRestoreBusy(false);
+      }
+      return;
+    }
+    if (!firstEntry.tool || !firstEntry.scope || !firstEntry.type) {
       setRestorePending(null);
       return;
     }
@@ -568,7 +688,11 @@ export function BackupBrowser({ onToast }: Props) {
                         setSelectedTool(t.id);
                       }
                     }}
-                    title={`${t.label} · ${count} backed up`}
+                    title={
+                      t.tooltip
+                        ? `${t.tooltip} · ${count} backed up`
+                        : `${t.label} · ${count} backed up`
+                    }
                   >
                     {t.label}
                     <span className="backup-tool-count">{count}</span>
@@ -848,6 +972,69 @@ export function BackupBrowser({ onToast }: Props) {
 
 function BackupEmpty({ children }: { children?: React.ReactNode }) {
   return <div className="backup-browser-empty">{children}</div>;
+}
+
+// Synthesize backup-shaped entries for every file in the Workbench
+// master folder. Returned entries are tagged with tool="master" so the
+// existing tool-tile / counts / preview pipeline picks them up; they are
+// NOT real backup snapshots — the destPath is the live master file
+// itself, and Restore is intercepted to call the Workbench's master
+// restore path instead of the regular backup restore.
+async function loadMasterAsBackupEntries(
+  backupDestination: string,
+  masterRootOverride: string | null,
+): Promise<BackupEntry[]> {
+  try {
+    const masterRoot = await resolveMasterRoot(
+      tauriPaths,
+      masterRootOverride,
+      backupDestination,
+    );
+    if (!(await tauriFs.exists(masterRoot))) return [];
+    const [files, manifest] = await Promise.all([
+      listMasterFiles(tauriFs, tauriJoiner, masterRoot),
+      loadMasterManifest(tauriFs, tauriJoiner, masterRoot),
+    ]);
+    if (files.length === 0) return [];
+    const byPath = new Map<string, MasterEntry>();
+    for (const e of manifest.entries) byPath.set(e.masterPath, e);
+    const out: BackupEntry[] = [];
+    for (const rel of files) {
+      const abs = await tauriJoiner.join(masterRoot, ...rel.split("/"));
+      let bytes = 0;
+      try {
+        bytes = (await tauriFs.stat(abs)).size;
+      } catch {
+        /* ignore */
+      }
+      const entry = byPath.get(rel);
+      const decoded = decodeMasterPath(rel);
+      // Prefix the relPath with "master/" so slotForPath can decide a
+      // sensible slot; unknown segments fall through to "settings". We
+      // also expose the underlying source's tool/scope when known so the
+      // file tree headers read naturally.
+      out.push({
+        kind: "artifact",
+        tool: MASTER_BROWSER_KEY,
+        scope:
+          entry?.sources[0]?.scope ?? decoded.scope ?? "global",
+        // "agent" is the closest existing artifact type for memory-style
+        // single-file content. Restore is intercepted before this is
+        // used to resolve a target dir.
+        type: "agent",
+        projectRoot: entry?.sources[0]?.projectPath ?? undefined,
+        relPath: `master/${rel}`,
+        destPath: abs,
+        sha256: entry?.canonicalHash ?? "",
+        bytes,
+        status: "unchanged",
+      });
+    }
+    return out;
+  } catch {
+    // Master folder is optional; missing/inaccessible just means no rows.
+    return [];
+  }
 }
 
 // Combine per-tool manifests into one manifest the existing browser UI can

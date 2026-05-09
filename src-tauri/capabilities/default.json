@@ -85,6 +85,8 @@
         { "path": "$HOME/**/cline_backup/**" },
         { "path": "$HOME/**/hermes_backup" },
         { "path": "$HOME/**/hermes_backup/**" },
+        { "path": "$HOME/SkillSafe" },
+        { "path": "$HOME/SkillSafe/**" },
         { "path": "$HOME/Library/LaunchAgents" },
         { "path": "$HOME/Library/LaunchAgents/**" },
         { "path": "$HOME/Library/Application Support/skillsafe-app" },

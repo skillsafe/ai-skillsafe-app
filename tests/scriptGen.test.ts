@@ -188,7 +188,7 @@ describe("script tool sections", () => {
     expect(sections).toHaveLength(1);
     expect(sections[0].configRoot).toBe("/Users/xhu/.agents");
     expect(sections[0].destSubdir).toBe("shared-agents");
-    expect(sections[0].toolLabel).toMatch(/Shared agents/);
+    expect(sections[0].toolLabel).toBe("Shared");
   });
 });
 

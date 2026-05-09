@@ -53,9 +53,13 @@ import { ConfirmDialog } from "./ConfirmDialog";
 // folders like ~/.agents/ that several tools symlink into). Both behave
 // uniformly downstream — the picker, dataTypesFor, and resolveSections all
 // accept either kind of id.
-const ALL_TOOLS: ReadonlyArray<{ id: Tool; label: string }> = [
+const ALL_TOOLS: ReadonlyArray<{ id: Tool; label: string; tooltip?: string }> = [
   ...ALL_AGENTS.map((id) => ({ id, label: displayNameOf(id) })),
-  ...Object.values(EXTRA_SOURCES).map((s) => ({ id: s.id, label: s.displayName })),
+  ...Object.values(EXTRA_SOURCES).map((s) => ({
+    id: s.id,
+    label: s.displayName,
+    tooltip: s.hoverDescription,
+  })),
 ].sort((a, b) => a.label.localeCompare(b.label));
 
 interface Props {
@@ -1857,7 +1861,7 @@ function RestorePreviewDialog({
 }
 
 interface BackupToolsPickerProps {
-  tools: ReadonlyArray<{ id: Tool; label: string }>;
+  tools: ReadonlyArray<{ id: Tool; label: string; tooltip?: string }>;
   selected: readonly Tool[];
   dataTypeSelection: Record<Tool, string[]>;
   onToggleTool: (tool: Tool) => void;
@@ -1923,6 +1927,7 @@ function BackupToolsPicker({
               <li
                 key={t.id}
                 className={`backup-tool-card ${enabled ? "active" : ""}`}
+                title={t.tooltip}
               >
                 <div className="backup-tool-card-head">
                   <input
@@ -1939,6 +1944,7 @@ function BackupToolsPicker({
                       else onToggleTool(t.id);
                     }}
                     aria-expanded={!flat ? expanded : undefined}
+                    title={t.tooltip}
                   >
                     <span className="backup-tool-card-name">{t.label}</span>
                     <span className="backup-tool-card-meta">

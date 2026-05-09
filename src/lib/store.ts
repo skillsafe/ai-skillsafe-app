@@ -15,10 +15,11 @@ import {
 import type { UpdateProgress } from "./update/runner";
 import { clearApiKey, loadApiKey, storeApiKey } from "./skillsafe/auth";
 import type { ConfigKind, ProjectSettingsTier } from "./configs/types";
+import type { InventorySnapshot } from "./inventory/types";
 
 declare const __APP_VERSION__: string;
 
-export type View = "artifacts" | "configs";
+export type View = "artifacts" | "configs" | "workbench";
 
 export type Theme = "dark" | "light" | "system";
 export type ResolvedTheme = "dark" | "light";
@@ -321,7 +322,27 @@ function initialDismissedUpdate(): string | null {
 
 function initialView(): View {
   const v = browser.localStorage?.getItem(VIEW_KEY);
-  return v === "configs" ? "configs" : "artifacts";
+  if (v === "configs" || v === "workbench") return v;
+  return "artifacts";
+}
+
+const WORKBENCH_TOOL_KEY = "skill-manager.workbenchTool";
+const WORKBENCH_CATEGORY_KEY = "skill-manager.workbenchCategory";
+const MASTER_ROOT_KEY = "skill-manager.masterRoot";
+
+function initialWorkbenchTool(): string | null {
+  const v = browser.localStorage?.getItem(WORKBENCH_TOOL_KEY);
+  return typeof v === "string" && v ? v : null;
+}
+
+function initialWorkbenchCategory(): string | null {
+  const v = browser.localStorage?.getItem(WORKBENCH_CATEGORY_KEY);
+  return typeof v === "string" && v ? v : null;
+}
+
+function initialMasterRoot(): string | null {
+  const v = browser.localStorage?.getItem(MASTER_ROOT_KEY);
+  return typeof v === "string" && v ? v : null;
 }
 
 const VALID_CONFIG_KINDS: ReadonlyArray<ConfigKind> = [
@@ -408,6 +429,35 @@ interface AppState {
   // Inside project scope, settings.json is split into a checked-in `shared`
   // file and a gitignored `local` file. The toggle persists per-user.
   projectSettingsTier: ProjectSettingsTier;
+
+  // Workbench view (sibling to Artifacts/Configs) — cross-tool inventory of
+  // memory files, MCP servers, hooks, etc. `null` for tool means "show all
+  // tools at once"; `null` for category means "show all categories".
+  workbenchTool: string | null;
+  workbenchCategory: string | null;
+  workbenchSelectedId: string | null;
+  workbenchInventory: InventorySnapshot | null;
+  workbenchLoading: boolean;
+  workbenchError: string | null;
+  workbenchInstalled: Record<string, boolean>;
+  /**
+   * User-overridden master folder. null = use the default
+   * `<home>/SkillSafe/master` resolved at runtime.
+   */
+  masterRoot: string | null;
+  /** Resolved master root cache; populated on first scan. */
+  masterRootResolved: string | null;
+  /** Loaded manifest; rescanned alongside the inventory. */
+  masterManifest: import("./master/types").Manifest | null;
+  /**
+   * Items synthesized by walking the master folder, including orphan
+   * files (present on disk but missing from the manifest). Used by the
+   * Workbench when "Master" is the source so the user sees every file in
+   * the folder, not just manifest-tracked ones.
+   */
+  masterItems: import("./inventory/types").InventoryItem[];
+  /** Bumped by master actions to force a Workbench re-scan. */
+  workbenchScanNonce: number;
 
   // Settings
   showSettings: boolean;
@@ -496,6 +546,18 @@ interface AppState {
   setView: (v: View) => void;
   setConfigKind: (k: ConfigKind) => void;
   setProjectSettingsTier: (t: ProjectSettingsTier) => void;
+  setWorkbenchTool: (t: string | null) => void;
+  setWorkbenchCategory: (c: string | null) => void;
+  setWorkbenchSelectedId: (id: string | null) => void;
+  setWorkbenchInventory: (snap: InventorySnapshot | null) => void;
+  setWorkbenchLoading: (b: boolean) => void;
+  setWorkbenchError: (e: string | null) => void;
+  setWorkbenchInstalled: (m: Record<string, boolean>) => void;
+  setMasterRoot: (p: string | null) => void;
+  setMasterRootResolved: (p: string | null) => void;
+  setMasterManifest: (m: import("./master/types").Manifest | null) => void;
+  setMasterItems: (items: import("./inventory/types").InventoryItem[]) => void;
+  bumpWorkbenchScan: () => void;
 
   setShowSettings: (b: boolean) => void;
   setSettingsScrollTarget: (id: string | null) => void;
@@ -575,6 +637,18 @@ export const useApp = create<AppState>((set) => ({
   view: initialView(),
   configKind: initialConfigKind(),
   projectSettingsTier: initialProjectSettingsTier(),
+  workbenchTool: initialWorkbenchTool(),
+  workbenchCategory: initialWorkbenchCategory(),
+  workbenchSelectedId: null,
+  workbenchInventory: null,
+  workbenchLoading: false,
+  workbenchError: null,
+  workbenchInstalled: {},
+  masterRoot: initialMasterRoot(),
+  masterRootResolved: null,
+  masterManifest: null,
+  masterItems: [],
+  workbenchScanNonce: 0,
 
   showSettings: false,
   settingsScrollTarget: null,
@@ -780,6 +854,33 @@ export const useApp = create<AppState>((set) => ({
     browser.localStorage?.setItem(PROJECT_SETTINGS_TIER_KEY, projectSettingsTier);
     set({ projectSettingsTier });
   },
+  setWorkbenchTool: (workbenchTool) => {
+    if (workbenchTool) browser.localStorage?.setItem(WORKBENCH_TOOL_KEY, workbenchTool);
+    else browser.localStorage?.removeItem(WORKBENCH_TOOL_KEY);
+    set({ workbenchTool, workbenchSelectedId: null });
+  },
+  setWorkbenchCategory: (workbenchCategory) => {
+    if (workbenchCategory) browser.localStorage?.setItem(WORKBENCH_CATEGORY_KEY, workbenchCategory);
+    else browser.localStorage?.removeItem(WORKBENCH_CATEGORY_KEY);
+    set({ workbenchCategory, workbenchSelectedId: null });
+  },
+  setWorkbenchSelectedId: (workbenchSelectedId) => set({ workbenchSelectedId }),
+  setWorkbenchInventory: (workbenchInventory) => set({ workbenchInventory }),
+  setWorkbenchLoading: (workbenchLoading) => set({ workbenchLoading }),
+  setWorkbenchError: (workbenchError) => set({ workbenchError }),
+  setWorkbenchInstalled: (workbenchInstalled) => set({ workbenchInstalled }),
+  setMasterRoot: (masterRoot) => {
+    if (masterRoot) browser.localStorage?.setItem(MASTER_ROOT_KEY, masterRoot);
+    else browser.localStorage?.removeItem(MASTER_ROOT_KEY);
+    // Clear resolved + manifest so the next scan recomputes against the
+    // new root rather than serving stale data from the prior path.
+    set({ masterRoot, masterRootResolved: null, masterManifest: null });
+  },
+  setMasterRootResolved: (masterRootResolved) => set({ masterRootResolved }),
+  setMasterManifest: (masterManifest) => set({ masterManifest }),
+  setMasterItems: (masterItems) => set({ masterItems }),
+  bumpWorkbenchScan: () =>
+    set((state) => ({ workbenchScanNonce: state.workbenchScanNonce + 1 })),
 
   setShowSettings: (showSettings) => set({ showSettings }),
   setSettingsScrollTarget: (settingsScrollTarget) => set({ settingsScrollTarget }),
