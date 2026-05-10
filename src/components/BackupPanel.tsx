@@ -12,8 +12,7 @@ import {
 import { dataTypesFor, EXTRA_SOURCES } from "../lib/backup/dataTypes";
 import { scanForConflicts, type ConflictItem } from "../lib/backup/restoreScan";
 import { applyRestore } from "../lib/backup/restoreApply";
-import { aggregateToolManifests } from "../lib/backup/aggregate";
-import { MANIFEST_FILENAME, summarize } from "../lib/backup/manifest";
+import { buildAndWriteManifest } from "../lib/backup/summary";
 import {
   SERVICE_LABEL,
   diagnose as diagnoseSchedule,
@@ -678,35 +677,19 @@ export function BackupPanel({ onToast }: Props) {
         throw new Error(out.stderr || out.stdout || `exit code ${out.code}`);
       }
       const generatedAt = Date.now();
-      // Aggregate per-tool LAST_BACKUP.json manifests into the stats line
-      // ("Last backup: …+N ~M -K · X MB"). The old whole-destination walker
-      // (summary.ts) wrote a duplicate root-level manifest that ingested the
-      // master/ folder, producing stale rows in the BackupBrowser; per-tool
-      // manifests already track adds/changes/removes scoped to their tool.
+      // Walk the destination, diff against the previous manifest, and write
+      // an updated LAST_BACKUP.json. This is what powers the "Last backup:
+      // …+N ~M -K · X MB" line and the BackupBrowser file tree. The walker
+      // in summary.ts skips the master/ tree, so master files only ever
+      // surface via loadMasterAsBackupEntries (live walk).
       try {
-        const merged = await aggregateToolManifests(
-          tauriFs,
-          tauriJoiner,
-          backupDestination,
-        );
-        if (merged) {
-          // Override with the run's actual timestamp so "Last backup: just
-          // now" stays accurate even if individual tool manifests were
-          // stamped slightly earlier.
-          merged.generatedAt = generatedAt;
-          merged.destination = backupDestination;
-          setBackupResult(generatedAt, summarize(merged));
-        } else {
-          setBackupResult(generatedAt, {
-            generatedAt,
-            counts: { added: 0, changed: 0, removed: 0, unchanged: 0 },
-            totalBytes: 0,
-            errorCount: 0,
-            errorSamples: [],
-            recentChanges: [],
-            backupRoot: backupDestination,
-          });
-        }
+        const { stats } = await buildAndWriteManifest({
+          fs: tauriFs,
+          joiner: tauriJoiner,
+          destination: backupDestination,
+          generatedAt,
+        });
+        setBackupResult(generatedAt, stats);
       } catch {
         // Stats are observability — never fail a backup over them.
         setBackupResult(generatedAt, {
@@ -718,21 +701,6 @@ export function BackupPanel({ onToast }: Props) {
           recentChanges: [],
           backupRoot: backupDestination,
         });
-      }
-      // One-time cleanup: older versions wrote a top-level
-      // <dest>/LAST_BACKUP.json that's now obsolete. Delete it so the
-      // BackupBrowser doesn't keep finding stale entries (and we don't
-      // need a legacy-fallback code path). Best-effort.
-      try {
-        const stalePath = await tauriJoiner.join(
-          backupDestination,
-          MANIFEST_FILENAME,
-        );
-        if (await tauriFs.exists(stalePath)) {
-          await tauriFs.remove(stalePath);
-        }
-      } catch {
-        /* best-effort */
       }
       refreshLog();
       if (out.code === 2) {

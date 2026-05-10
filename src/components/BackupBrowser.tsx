@@ -5,11 +5,14 @@ import { useApp } from "../lib/store";
 import { tauriFs, tauriJoiner, tauriPaths } from "../lib/tauriAdapters";
 import { restoreFromBackup } from "../lib/backup/single";
 import {
+  BACKUP_SUBDIR,
+  MANIFEST_FILENAME,
   MANIFEST_VERSION,
+  parseManifest,
+  toolBackupSubdir,
   type BackupEntry,
   type BackupManifest,
 } from "../lib/backup/manifest";
-import { aggregateToolManifests } from "../lib/backup/aggregate";
 import type { ArtifactType, Scope, Tool } from "../lib/artifacts/types";
 import { ALL_AGENTS, displayNameOf } from "../lib/agents/registry";
 import { dataTypesFor, EXTRA_SOURCES, slotForPath } from "../lib/backup/dataTypes";
@@ -176,24 +179,69 @@ export function BackupBrowser({ onToast }: Props) {
       setLoading(true);
       setLoadError(null);
       try {
-        // Per-tool layout: aggregate every <dest>/<tool>_backup/LAST_BACKUP.json
-        // into one in-memory manifest. The old whole-destination root
-        // <dest>/LAST_BACKUP.json is no longer written or read; per-tool
-        // manifests are the only source of truth, and master files are
-        // pulled live from <dest>/master/.
-        const baseManifest = await aggregateToolManifests(
-          tauriFs,
-          tauriJoiner,
-          backupDestination,
-        );
+        // Per-tool layout: read each <dest>/<tool>_backup/LAST_BACKUP.json
+        // (used by the JS-side runBackup.ts) and merge them. Fall back to
+        // the root-level <dest>/LAST_BACKUP.json that the bash/PowerShell
+        // backup script's post-walk (summary.ts) writes.
+        const partials: BackupManifest[] = [];
+        for (const t of ALL_TOOLS) {
+          const path = await tauriJoiner.join(
+            backupDestination,
+            toolBackupSubdir(t.id),
+            MANIFEST_FILENAME,
+          );
+          if (!(await tauriFs.exists(path))) continue;
+          try {
+            const text = await tauriFs.readTextFile(path);
+            const m = parseManifest(text);
+            if (m) partials.push(m);
+          } catch {
+            // Skip unreadable per-tool manifests; surface a generic error
+            // below if NONE could be loaded.
+          }
+        }
         if (cancelled) return;
+        // Master folder entries are added to whichever manifest we end up
+        // returning so the user can browse/preview master files alongside
+        // regular tool snapshots. The master folder itself isn't a backup
+        // source — the entries are read live from <backup>/master/.
         const masterEntries = await loadMasterAsBackupEntries(
           backupDestination,
           null,
         );
         if (cancelled) return;
 
+        let baseManifest: BackupManifest | null = null;
+        if (partials.length > 0) {
+          baseManifest = mergeToolManifests(partials, backupDestination);
+        } else {
+          // Fallback: pre-per-tool layout had a single manifest at
+          // <dest>/LAST_BACKUP.json (still written today by the bash-flow
+          // post-walk in summary.ts) or <dest>/skillsafe-backup/LAST_BACKUP.json.
+          let legacyPath = await tauriJoiner.join(backupDestination, MANIFEST_FILENAME);
+          if (!(await tauriFs.exists(legacyPath))) {
+            legacyPath = await tauriJoiner.join(
+              backupDestination,
+              BACKUP_SUBDIR,
+              MANIFEST_FILENAME,
+            );
+          }
+          if (await tauriFs.exists(legacyPath)) {
+            const text = await tauriFs.readTextFile(legacyPath);
+            if (cancelled) return;
+            baseManifest = parseManifest(text);
+            if (!baseManifest) setLoadError("Manifest file is unreadable.");
+          }
+        }
+
         if (baseManifest) {
+          // Defensive: drop any pre-existing tool="master" entries from
+          // older manifests (which may have used the legacy <tool>--<name>
+          // filename layout that no longer exists on disk). The fresh
+          // masterEntries are authoritative.
+          baseManifest.entries = baseManifest.entries.filter(
+            (e) => e.kind !== "artifact" || e.tool !== MASTER_BROWSER_KEY,
+          );
           baseManifest.entries.push(...masterEntries);
           setManifest(baseManifest);
           return;
@@ -999,6 +1047,33 @@ async function loadMasterAsBackupEntries(
     // Master folder is optional; missing/inaccessible just means no rows.
     return [];
   }
+}
+
+// Combine per-tool manifests into one manifest the existing browser UI can
+// render. Counts sum, entries concatenate, errors concatenate; generatedAt is
+// the most recent tool's run.
+function mergeToolManifests(parts: BackupManifest[], destination: string): BackupManifest {
+  const counts = { added: 0, changed: 0, removed: 0, unchanged: 0 };
+  const entries: BackupEntry[] = [];
+  const errors: string[] = [];
+  let generatedAt = 0;
+  for (const m of parts) {
+    counts.added += m.counts.added;
+    counts.changed += m.counts.changed;
+    counts.removed += m.counts.removed;
+    counts.unchanged += m.counts.unchanged;
+    entries.push(...m.entries);
+    errors.push(...m.errors);
+    if (m.generatedAt > generatedAt) generatedAt = m.generatedAt;
+  }
+  return {
+    version: MANIFEST_VERSION,
+    generatedAt,
+    destination,
+    counts,
+    entries,
+    errors,
+  };
 }
 
 // Builds the items to render in the middle pane. Filters apply at the entry
