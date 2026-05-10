@@ -15,6 +15,9 @@ import type { InventoryItem } from "../lib/inventory/types";
 export const MASTER_TOOL_SENTINEL = "__master__";
 
 export function InventoryList() {
+  const tool = useApp((s) => s.tool);
+  const scope = useApp((s) => s.scope);
+  const projectFilter = useApp((s) => s.projectFilter);
   const workbenchSelectedId = useApp((s) => s.workbenchSelectedId);
   const inventory = useApp((s) => s.workbenchInventory);
   const loading = useApp((s) => s.workbenchLoading);
@@ -23,15 +26,27 @@ export function InventoryList() {
   const masterItems = useApp((s) => s.masterItems);
   const setSelected = useApp((s) => s.setWorkbenchSelectedId);
 
-  // Live items across all tools + master-only items with no matching
-  // live source. De-duplicated by id; live wins so its drift state and
-  // origin path are preserved.
+  // Live items + master-only items with no matching live source,
+  // de-duplicated by id (live wins). Then narrowed by the same Tool +
+  // Scope + Project selectors that drive the artifact list, so the
+  // Settings filter behaves like Skills/Agents/Commands. Master-only
+  // orphans (tool === MASTER_TOOL_SENTINEL) are tool-agnostic and
+  // always pass the tool filter.
   const filtered = useMemo(() => {
     const live = inventory?.items ?? [];
     const liveIds = new Set(live.map((it) => it.id));
     const masterOnly = masterItems.filter((it) => !liveIds.has(it.id));
-    return [...live, ...masterOnly];
-  }, [inventory, masterItems]);
+    const merged = [...live, ...masterOnly];
+    return merged.filter((it) => {
+      if (it.tool !== MASTER_TOOL_SENTINEL && it.tool !== tool) return false;
+      if (scope === "global" && it.scope !== "global") return false;
+      if (scope === "project") {
+        if (it.scope !== "project") return false;
+        if (projectFilter && it.projectPath !== projectFilter) return false;
+      }
+      return true;
+    });
+  }, [inventory, masterItems, tool, scope, projectFilter]);
 
   return (
     <section className="list-pane">

@@ -5,14 +5,11 @@ import { useApp } from "../lib/store";
 import { tauriFs, tauriJoiner, tauriPaths } from "../lib/tauriAdapters";
 import { restoreFromBackup } from "../lib/backup/single";
 import {
-  BACKUP_SUBDIR,
-  MANIFEST_FILENAME,
   MANIFEST_VERSION,
-  parseManifest,
-  toolBackupSubdir,
   type BackupEntry,
   type BackupManifest,
 } from "../lib/backup/manifest";
+import { aggregateToolManifests } from "../lib/backup/aggregate";
 import type { ArtifactType, Scope, Tool } from "../lib/artifacts/types";
 import { ALL_AGENTS, displayNameOf } from "../lib/agents/registry";
 import { dataTypesFor, EXTRA_SOURCES, slotForPath } from "../lib/backup/dataTypes";
@@ -179,63 +176,22 @@ export function BackupBrowser({ onToast }: Props) {
       setLoading(true);
       setLoadError(null);
       try {
-        // Per-tool layout: read each <dest>/<tool>_backup/LAST_BACKUP.json
-        // and merge into one in-memory manifest for the existing UI. Fall
-        // back to the older single-manifest layouts when no per-tool
-        // manifests are present.
-        const partials: BackupManifest[] = [];
-        for (const t of ALL_TOOLS) {
-          const path = await tauriJoiner.join(
-            backupDestination,
-            toolBackupSubdir(t.id),
-            MANIFEST_FILENAME,
-          );
-          if (!(await tauriFs.exists(path))) continue;
-          try {
-            const text = await tauriFs.readTextFile(path);
-            const m = parseManifest(text);
-            if (m) partials.push(m);
-          } catch {
-            // Skip unreadable per-tool manifests; surface a generic error
-            // below if NONE could be loaded.
-          }
-        }
+        // Per-tool layout: aggregate every <dest>/<tool>_backup/LAST_BACKUP.json
+        // into one in-memory manifest. The old whole-destination root
+        // <dest>/LAST_BACKUP.json is no longer written or read; per-tool
+        // manifests are the only source of truth, and master files are
+        // pulled live from <dest>/master/.
+        const baseManifest = await aggregateToolManifests(
+          tauriFs,
+          tauriJoiner,
+          backupDestination,
+        );
         if (cancelled) return;
-        // Master folder entries are added to whichever manifest we end up
-        // returning so the user can browse/preview master files alongside
-        // regular tool snapshots. The master folder itself isn't a backup
-        // source — the entries are read live from <backup>/master/.
         const masterEntries = await loadMasterAsBackupEntries(
           backupDestination,
           null,
         );
         if (cancelled) return;
-
-        // Resolve the regular-backup manifest first (per-tool, then
-        // legacy fallback) and only then layer master entries on top, so
-        // the presence of master files never short-circuits regular
-        // backup loading.
-        let baseManifest: BackupManifest | null = null;
-        if (partials.length > 0) {
-          baseManifest = mergeToolManifests(partials, backupDestination);
-        } else {
-          // Legacy fallback: pre-per-tool layouts had a single manifest at
-          // <dest>/LAST_BACKUP.json or <dest>/skillsafe-backup/LAST_BACKUP.json.
-          let legacyPath = await tauriJoiner.join(backupDestination, MANIFEST_FILENAME);
-          if (!(await tauriFs.exists(legacyPath))) {
-            legacyPath = await tauriJoiner.join(
-              backupDestination,
-              BACKUP_SUBDIR,
-              MANIFEST_FILENAME,
-            );
-          }
-          if (await tauriFs.exists(legacyPath)) {
-            const text = await tauriFs.readTextFile(legacyPath);
-            if (cancelled) return;
-            baseManifest = parseManifest(text);
-            if (!baseManifest) setLoadError("Manifest file is unreadable.");
-          }
-        }
 
         if (baseManifest) {
           baseManifest.entries.push(...masterEntries);
@@ -243,7 +199,7 @@ export function BackupBrowser({ onToast }: Props) {
           return;
         }
 
-        // No regular backup at all — render master-only if we have it,
+        // No regular backup yet — render master-only if we have it,
         // otherwise an empty manifest so the panel shows its empty state.
         if (masterEntries.length > 0) {
           setManifest({
@@ -991,10 +947,18 @@ async function loadMasterAsBackupEntries(
       backupDestination,
     );
     if (!(await tauriFs.exists(masterRoot))) return [];
-    const [files, manifest] = await Promise.all([
+    const [rawFiles, manifest] = await Promise.all([
       listMasterFiles(tauriFs, tauriJoiner, masterRoot),
       loadMasterManifest(tauriFs, tauriJoiner, masterRoot),
     ]);
+    // Defensive: listMasterFiles already skips manifest.json at every
+    // depth, but older bundled builds shipped without that skip and we
+    // never want metadata showing up as a "Restore"-able row in the
+    // BackupBrowser. Drop any path whose basename is the master manifest.
+    const files = rawFiles.filter((rel) => {
+      const base = rel.split("/").pop() ?? rel;
+      return base.toLowerCase() !== "manifest.json";
+    });
     if (files.length === 0) return [];
     const byPath = new Map<string, MasterEntry>();
     for (const e of manifest.entries) byPath.set(e.masterPath, e);
@@ -1035,33 +999,6 @@ async function loadMasterAsBackupEntries(
     // Master folder is optional; missing/inaccessible just means no rows.
     return [];
   }
-}
-
-// Combine per-tool manifests into one manifest the existing browser UI can
-// render. Counts sum, entries concatenate, errors concatenate; generatedAt is
-// the most recent tool's run.
-function mergeToolManifests(parts: BackupManifest[], destination: string): BackupManifest {
-  const counts = { added: 0, changed: 0, removed: 0, unchanged: 0 };
-  const entries: BackupEntry[] = [];
-  const errors: string[] = [];
-  let generatedAt = 0;
-  for (const m of parts) {
-    counts.added += m.counts.added;
-    counts.changed += m.counts.changed;
-    counts.removed += m.counts.removed;
-    counts.unchanged += m.counts.unchanged;
-    entries.push(...m.entries);
-    errors.push(...m.errors);
-    if (m.generatedAt > generatedAt) generatedAt = m.generatedAt;
-  }
-  return {
-    version: MANIFEST_VERSION,
-    generatedAt,
-    destination,
-    counts,
-    entries,
-    errors,
-  };
 }
 
 // Builds the items to render in the middle pane. Filters apply at the entry

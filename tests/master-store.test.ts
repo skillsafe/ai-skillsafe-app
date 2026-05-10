@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   addToMaster,
   encodeProjectPath,
+  listMasterFiles,
   loadManifest,
   masterPathFor,
   masterStateFor,
@@ -205,6 +206,46 @@ describe("master/store manifest CRUD", () => {
     expect(after.mcpServers.sibling.command).toBe("echo");
     expect(after.mcpServers.playwright.command).toBe("npx");
     expect(after.mcpServers.playwright.args).toEqual(["npx", "@playwright/mcp"].slice(1));
+  });
+});
+
+describe("listMasterFiles", () => {
+  let masterRoot: string;
+
+  beforeEach(async () => {
+    masterRoot = await makeTmp("master-list");
+  });
+
+  afterEach(async () => {
+    await rmrf(masterRoot);
+  });
+
+  it("returns payload files but skips the master manifest at the root", async () => {
+    await fs.writeFile(path.join(masterRoot, "manifest.json"), "{}");
+    const memDir = path.join(masterRoot, "memory", "global", "claude");
+    await fs.mkdir(memDir, { recursive: true });
+    await fs.writeFile(path.join(memDir, "CLAUDE.md"), "x");
+
+    const files = await listMasterFiles(nodeFs, nodeJoiner, masterRoot);
+    expect(files).toEqual(["memory/global/claude/CLAUDE.md"]);
+  });
+
+  it("skips manifest.json at any depth, not just the root", async () => {
+    const sub = path.join(masterRoot, "memory", "global");
+    await fs.mkdir(sub, { recursive: true });
+    await fs.writeFile(path.join(sub, "manifest.json"), "{}");
+    await fs.writeFile(path.join(sub, "CLAUDE.md"), "x");
+
+    const files = await listMasterFiles(nodeFs, nodeJoiner, masterRoot);
+    expect(files).toEqual(["memory/global/CLAUDE.md"]);
+  });
+
+  it("skips dotfiles like .DS_Store", async () => {
+    await fs.writeFile(path.join(masterRoot, ".DS_Store"), "x");
+    await fs.writeFile(path.join(masterRoot, "real.md"), "y");
+
+    const files = await listMasterFiles(nodeFs, nodeJoiner, masterRoot);
+    expect(files).toEqual(["real.md"]);
   });
 });
 
