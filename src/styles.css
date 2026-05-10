@@ -11,6 +11,10 @@
   --warn: #ffb84d;
   --error: #ff6b6b;
   --ok: #69d28a;
+  /* --danger is the foreground color for destructive text/icons (error
+     messages, destructive action labels). Kept distinct from --error so
+     non-error destructive surfaces can theme separately if needed. */
+  --danger: #ff6b6b;
   --danger-bg: #443322;
   --danger-border: #886644;
   --bundle-bg: #243b3b;
@@ -35,6 +39,7 @@
   --warn: #b45309;
   --error: #dc2626;
   --ok: #15803d;
+  --danger: #b91c1c;
   --danger-bg: #fef2e2;
   --danger-border: #f3c98a;
   --bundle-bg: #e0f2f1;
@@ -70,6 +75,34 @@ input:not([type="radio"]):not([type="checkbox"]), textarea, select {
   width: 100%;
 }
 input:not([type="radio"]):not([type="checkbox"]):focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
+
+/* Keyboard focus ring. Mouse clicks suppress the ring (focus-visible is
+   only set when the browser determines focus came from keyboard nav), so
+   pointer users don't see it. Applied broadly so every interactive
+   element — buttons, role=button cards, link-btns, pills — has visible
+   focus state without per-component opt-in. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+input:not([type="radio"]):not([type="checkbox"]):focus-visible,
+textarea:focus-visible,
+select:focus-visible { outline-offset: 0; }
+
+/* Honor the OS-level "reduce motion" setting (Settings → Accessibility on
+   macOS / Windows / GNOME). Drops transitions/animations to near-zero so
+   the UI feels stable for users who get motion-sick. !important is OK
+   here because it's a global accessibility override that should beat any
+   per-component animation rule. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
 
 .app-root {
   display: flex;
@@ -1679,7 +1712,7 @@ button.pill { font-family: inherit; line-height: inherit; }
 .workbench-list { display: flex; flex-direction: column; gap: 0; }
 .workbench-list-header { padding: 8px 12px 4px; border-bottom: 1px solid var(--border); }
 .workbench-loading { color: var(--muted); font-weight: normal; }
-.workbench-list-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.workbench-list-meta { font-size: 11px; color: var(--muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
 .workbench-error { padding: 10px 12px; color: var(--danger, #c00); font-size: 12px; border-bottom: 1px solid var(--border); }
 .workbench-empty { padding: 16px; color: var(--muted); font-size: 12px; }
 .workbench-group { padding: 8px 0; border-bottom: 1px solid var(--border); }
@@ -1728,9 +1761,6 @@ button.pill { font-family: inherit; line-height: inherit; }
 .master-folder-hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
 .master-folder-actions { display: flex; gap: 6px; }
 
-.workbench-list-actions { display: flex; gap: 6px; margin-top: 4px; }
-.workbench-list-actions .link-btn { font-size: 11px; padding: 0; }
-
 .workbench-loading-placeholder { color: var(--muted); font-size: 12px; padding: 12px; font-style: italic; }
 .workbench-sources { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
 .workbench-sources-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
@@ -1738,6 +1768,13 @@ button.pill { font-family: inherit; line-height: inherit; }
 .workbench-source-item { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; }
 .workbench-source-tool { font-size: 12px; font-weight: 500; }
 .workbench-source-path { font-size: 11px; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
+.workbench-source-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.workbench-source-meta { flex: 1; min-width: 0; }
+.workbench-source-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.workbench-source-actions button { font-size: 11px; padding: 2px 8px; }
+.workbench-source-tool .badge { margin-left: 6px; }
+.transfer-bind-row { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; font-size: 13px; }
+.transfer-bind-row input[type="checkbox"] { margin: 0; }
 
 /* TransferDialog */
 .transfer-dialog { min-width: 580px; max-width: 720px; max-height: 80vh; display: flex; flex-direction: column; padding: 16px 20px; }
@@ -1759,7 +1796,6 @@ button.pill { font-family: inherit; line-height: inherit; }
 .transfer-preview { max-height: 220px; overflow: auto; }
 
 /* Bulk restore + master export header */
-.workbench-list-actions { gap: 10px; flex-wrap: wrap; }
 .workbench-list-toast { padding: 6px 10px; font-size: 11px; background: var(--panel-2, rgba(127,127,127,0.08)); color: var(--text); border-radius: 4px; margin-top: 6px; word-break: break-word; }
 .bulk-restore-dialog { min-width: 640px; max-width: 820px; max-height: 80vh; padding: 16px 20px; }
 .bulk-body { overflow-y: auto; flex: 1; min-height: 0; padding: 10px 0; }
@@ -1792,3 +1828,42 @@ button.pill { font-family: inherit; line-height: inherit; }
 .merge-arrows button:hover:not(:disabled) { background: var(--panel-2, rgba(127,127,127,0.08)); }
 .merge-arrows button:disabled { opacity: 0.3; cursor: not-allowed; }
 .merge-status { color: var(--muted); font-size: 11px; }
+
+/* ---- Workbench detail-pane state callout + tiered actions ---- */
+.state-callout { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 6px; margin-top: 12px; font-size: 12px; line-height: 1.5; border: 1px solid var(--border); }
+.state-callout-icon { font-size: 14px; line-height: 1; padding-top: 1px; min-width: 16px; text-align: center; }
+.state-callout-sync { background: rgba(20, 160, 80, 0.08); border-color: rgba(20, 160, 80, 0.3); }
+.state-callout-sync .state-callout-icon { color: rgb(46, 160, 67); }
+.state-callout-drift { background: rgba(230, 130, 30, 0.08); border-color: rgba(230, 130, 30, 0.4); }
+.state-callout-drift .state-callout-icon { color: rgb(225, 130, 30); }
+.state-callout-master-only { background: rgba(70, 130, 220, 0.08); border-color: rgba(70, 130, 220, 0.3); }
+.state-callout-master-only .state-callout-icon { color: rgb(70, 130, 220); }
+.state-callout-absent { background: var(--panel); }
+.state-callout-absent .state-callout-icon { color: var(--muted); }
+
+.workbench-actions-stack { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+.workbench-action-row { display: flex; flex-direction: column; gap: 6px; }
+.workbench-action-primary { flex-direction: row; flex-wrap: wrap; gap: 8px; }
+.workbench-action-primary button.primary { padding: 6px 14px; background: var(--accent, #4374f4); color: white; border: 1px solid transparent; border-radius: 5px; font-size: 13px; font-weight: 500; cursor: pointer; }
+.workbench-action-primary button.primary:hover:not(:disabled) { filter: brightness(1.08); }
+.workbench-action-primary button.primary:disabled { opacity: 0.4; cursor: not-allowed; }
+.workbench-action-primary button.primary-secondary { background: transparent; color: var(--accent, #4374f4); border-color: var(--accent, #4374f4); }
+.workbench-action-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; padding-left: 2px; }
+.workbench-action-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.workbench-action-buttons button { padding: 4px 10px; font-size: 12px; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; }
+.workbench-action-buttons button:hover:not(:disabled) { background: var(--panel-2, rgba(127,127,127,0.08)); }
+.workbench-action-buttons button:disabled { opacity: 0.4; cursor: not-allowed; }
+.workbench-action-buttons button.danger { color: var(--danger, #c00); }
+.workbench-action-muted .workbench-action-buttons button { opacity: 0.85; }
+.workbench-action-muted .workbench-action-buttons button:hover:not(:disabled) { opacity: 1; }
+
+/* ---- Inventory header overflow ---- */
+.workbench-actions-menu { position: relative; }
+.workbench-actions-menu-trigger { font-size: 12px; padding: 2px 6px; }
+.workbench-actions-menu-popover { position: absolute; top: 100%; right: 0; margin-top: 4px; min-width: 240px; max-width: 320px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 6px 20px rgba(0,0,0,0.15); padding: 4px; z-index: 50; display: flex; flex-direction: column; gap: 1px; }
+.workbench-actions-menu-item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 6px 8px; background: transparent; border: 0; border-radius: 4px; text-align: left; cursor: pointer; color: var(--text); }
+.workbench-actions-menu-item:hover:not(:disabled) { background: var(--panel-2, rgba(127,127,127,0.08)); }
+.workbench-actions-menu-item:disabled { opacity: 0.4; cursor: not-allowed; }
+.workbench-actions-menu-label { font-size: 12px; font-weight: 500; }
+.workbench-actions-menu-hint { font-size: 11px; color: var(--muted); }
+.workbench-actions-menu-sep { height: 1px; background: var(--border); margin: 4px 2px; }

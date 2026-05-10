@@ -132,7 +132,12 @@ export function BackupBrowser({ onToast }: Props) {
     resolvedTheme,
     setShowSettings,
     setSettingsScrollTarget,
+    workbenchScanNonce,
   } = useApp();
+  // Local manual-refresh tick. Bumped by the toolbar Refresh button so the
+  // load effect re-runs even when nothing else has changed (e.g. the user
+  // edited the master folder directly via Finder / git pull).
+  const [refreshTick, setRefreshTick] = useState(0);
 
   function openBackupSettings() {
     setSettingsScrollTarget("settings-backup");
@@ -275,7 +280,7 @@ export function BackupBrowser({ onToast }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [backupDestination, backupLastRun]);
+  }, [backupDestination, backupLastRun, workbenchScanNonce, refreshTick]);
 
   const toolCounts = useMemo(() => countArtifactsByTool(manifest), [manifest]);
 
@@ -808,6 +813,19 @@ export function BackupBrowser({ onToast }: Props) {
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
           />
+          <button
+            onClick={() => setRefreshTick((n) => n + 1)}
+            disabled={loading}
+            aria-label="Reload backup view"
+            title={
+              loading
+                ? "Reloading…"
+                : "Re-read the backup destination and master folder from disk"
+            }
+            data-testid="backup-browser-refresh"
+          >
+            ↻
+          </button>
         </div>
         {items.length === 0 ? (
           <div className="empty">

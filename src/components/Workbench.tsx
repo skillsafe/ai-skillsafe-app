@@ -6,7 +6,7 @@
 // master folder. PR 2 ships memory + mcp categories; later PRs will fill
 // in hooks/permissions/keybindings.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import { useApp } from "../lib/store";
 import { displayNameOf } from "../lib/agents/registry";
@@ -19,8 +19,9 @@ import {
   removeFromMaster,
   resolveMasterRoot,
   restoreSourceFromMaster,
+  unbindSource,
 } from "../lib/master/store";
-import type { MasterEntry, MasterState } from "../lib/master/types";
+import type { MasterEntry, MasterSource, MasterState } from "../lib/master/types";
 import type { InventoryItem, StateCategory } from "../lib/inventory/types";
 import { TransferDialog } from "./TransferDialog";
 
@@ -175,6 +176,10 @@ export function Workbench() {
       const root = await resolveMasterRoot(tauriPaths, masterRoot, backupDestination);
       await addToMaster(tauriFs, tauriJoiner, root, selected);
       await reloadManifestOnly();
+      // Master folder content changed — bump the scan nonce so other
+      // master-aware views (Local backup browser, master-only inventory)
+      // reload without the user clicking Refresh.
+      bumpWorkbenchScan();
       setToast({
         kind: "ok",
         text: masterState?.kind === "drifted" ? "Master updated." : "Added to master.",
@@ -193,6 +198,7 @@ export function Workbench() {
       const root = await resolveMasterRoot(tauriPaths, masterRoot, backupDestination);
       await removeFromMaster(tauriFs, tauriJoiner, root, masterState.entry.id);
       await reloadManifestOnly();
+      bumpWorkbenchScan();
       setToast({ kind: "ok", text: "Removed from master." });
     } catch (e) {
       setToast({ kind: "error", text: `Remove failed: ${errorMessage(e)}` });
@@ -220,6 +226,51 @@ export function Workbench() {
       setToast({ kind: "ok", text: "Source restored from master." });
     } catch (e) {
       setToast({ kind: "error", text: `Restore failed: ${errorMessage(e)}` });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Restore one specific bound source (called from SourcesList rows).
+  // Mirrors handleRestore but routes through the row's source instead of
+  // masterState.source so the user can pick which target to push to.
+  async function handleRestoreSource(entry: MasterEntry, src: MasterSource) {
+    setBusy(true);
+    try {
+      const root = await resolveMasterRoot(tauriPaths, masterRoot, backupDestination);
+      const itemName = lastSegment(entry.masterPath) || entry.masterPath;
+      await restoreSourceFromMaster(tauriFs, tauriJoiner, root, entry, src, itemName);
+      // Bump syncedHash so the next masterStateFor call shows in-sync.
+      await reloadManifestOnly();
+      bumpWorkbenchScan();
+      setToast({
+        kind: "ok",
+        text: `Restored ${displayNameOf(src.tool)} (${src.scope}).`,
+      });
+    } catch (e) {
+      setToast({ kind: "error", text: `Restore failed: ${errorMessage(e)}` });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleUnbindSource(entry: MasterEntry, src: MasterSource) {
+    setBusy(true);
+    try {
+      const root = await resolveMasterRoot(tauriPaths, masterRoot, backupDestination);
+      await unbindSource(tauriFs, tauriJoiner, root, entry.id, {
+        tool: src.tool,
+        scope: src.scope,
+        projectPath: src.projectPath,
+      });
+      await reloadManifestOnly();
+      bumpWorkbenchScan();
+      setToast({
+        kind: "ok",
+        text: `Unbound ${displayNameOf(src.tool)} (${src.scope}). Destination file untouched.`,
+      });
+    } catch (e) {
+      setToast({ kind: "error", text: `Unbind failed: ${errorMessage(e)}` });
     } finally {
       setBusy(false);
     }
@@ -300,9 +351,8 @@ export function Workbench() {
             : "Modification time unavailable"}
           <span className="workbench-meta-sep">·</span>
           <code className="workbench-hash">{selected.contentHash.slice(0, 12)}</code>
-          <span className="workbench-meta-sep">·</span>
-          <MasterBadge state={masterState} masterOnly={isMasterOnly} />
         </div>
+        <StateCallout state={masterState} masterOnly={isMasterOnly} />
         <MasterActions
           state={masterState}
           masterOnly={isMasterOnly}
@@ -336,8 +386,13 @@ export function Workbench() {
         ) : (
           <PayloadPreview item={selected} />
         )}
-        {isMasterOnly && masterState && masterState.kind !== "not-in-master" && (
-          <SourcesList entry={masterState.entry} />
+        {masterState && masterState.kind !== "not-in-master" && (
+          <SourcesList
+            entry={masterState.entry}
+            busy={busy}
+            onRestoreSource={(s) => handleRestoreSource(masterState.entry, s)}
+            onUnbindSource={(s) => handleUnbindSource(masterState.entry, s)}
+          />
         )}
       </div>
       {transferOpen && (
@@ -370,6 +425,59 @@ function MasterBadge({
   return <span className="badge master-drift">drift vs master</span>;
 }
 
+/**
+ * Single-sentence callout above the action buttons. Names the current
+ * state in plain English so the user doesn't have to read seven button
+ * labels and infer what's going on.
+ */
+function StateCallout({
+  state,
+  masterOnly,
+}: {
+  state: MasterState | null;
+  masterOnly: boolean;
+}) {
+  if (masterOnly) {
+    return (
+      <div className="state-callout state-callout-master-only">
+        <span className="state-callout-icon">○</span>
+        <div>
+          <strong>Master only.</strong> No live source on this machine.
+        </div>
+      </div>
+    );
+  }
+  if (!state) {
+    return null;
+  }
+  if (state.kind === "not-in-master") {
+    return (
+      <div className="state-callout state-callout-absent">
+        <span className="state-callout-icon">·</span>
+        <div>Not in master yet. Add it to keep a curated copy.</div>
+      </div>
+    );
+  }
+  if (state.kind === "in-sync") {
+    return (
+      <div className="state-callout state-callout-sync">
+        <span className="state-callout-icon">✓</span>
+        <div>
+          <strong>In master.</strong> Source matches the curated copy.
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="state-callout state-callout-drift">
+      <span className="state-callout-icon">⚠</span>
+      <div>
+        <strong>Drifted.</strong> Source has changed since it was added to master.
+      </div>
+    </div>
+  );
+}
+
 function MasterActions({
   state,
   masterOnly,
@@ -399,57 +507,145 @@ function MasterActions({
 }) {
   const isInMaster = state && state.kind !== "not-in-master";
   const drifted = state?.kind === "drifted";
-  // Memory + MCP have translators. Hooks / permissions / keybindings
-  // translators ship in later PRs.
   const transferSupported = category === "memory" || category === "mcp";
 
+  // ----- master-only items ------------------------------------------------
+  // No live source on this machine. The big move is "push this to a tool";
+  // everything else is inspection or cleanup.
   if (masterOnly) {
     return (
-      <div className="workbench-actions">
-        <button onClick={onOpenMasterFile} disabled={busy} title="Open the master payload file">
-          Open in master
-        </button>
-        {transferSupported && (
-          <button onClick={onTransfer} disabled={busy} title="Translate and copy to another tool">
-            Transfer to…
+      <div className="workbench-actions-stack">
+        <div className="workbench-action-row workbench-action-primary">
+          {transferSupported ? (
+            <button
+              className="primary"
+              onClick={onTransfer}
+              disabled={busy}
+              title="Translate and write this to a tool's config location"
+            >
+              Transfer to a tool…
+            </button>
+          ) : (
+            <div className="muted">
+              No transfer translator yet for {category}. Open the file in master
+              and copy by hand if needed.
+            </div>
+          )}
+        </div>
+        <ActionGroup label="Inspect">
+          <button onClick={onOpenMasterFile} disabled={busy}>
+            Open in master
           </button>
-        )}
-        <button onClick={onRemove} disabled={busy} className="danger">
-          Remove from master
-        </button>
+        </ActionGroup>
+        <ActionGroup label="Manage" muted>
+          <button onClick={onRemove} disabled={busy} className="danger">
+            Remove from master
+          </button>
+        </ActionGroup>
       </div>
     );
   }
 
+  // ----- live items -------------------------------------------------------
+  // Primary action depends on state:
+  //   not-in-master  → Add to master
+  //   in-sync        → Re-add (uncommon; mostly a manual refresh)
+  //   drifted        → Update master AND Restore source (real choice)
+  const primaryLabel = drifted
+    ? "Update master with source"
+    : isInMaster
+      ? "Re-add to master"
+      : "Add to master";
+
   return (
-    <div className="workbench-actions">
-      <button onClick={onAddOrUpdate} disabled={busy}>
-        {drifted ? "Update master" : isInMaster ? "Re-add to master" : "Add to master"}
-      </button>
-      {transferSupported && (
-        <button onClick={onTransfer} disabled={busy} title="Translate and copy to another tool">
-          Transfer to…
+    <div className="workbench-actions-stack">
+      <div className="workbench-action-row workbench-action-primary">
+        <button
+          className="primary"
+          onClick={onAddOrUpdate}
+          disabled={busy}
+          title={
+            drifted
+              ? "Capture the current source content into master"
+              : isInMaster
+                ? "Re-write the master copy from the current source"
+                : "Save a curated copy of the source into the master folder"
+          }
+        >
+          {primaryLabel}
         </button>
-      )}
-      <button onClick={onOpenSource} disabled={busy} title="Open the source file in your default editor">
-        Open source
-      </button>
-      {isInMaster && (
-        <>
+        {drifted && (
+          <button
+            className="primary primary-secondary"
+            onClick={onRestore}
+            disabled={busy}
+            title="Overwrite the source with the curated master content"
+          >
+            Restore source from master
+          </button>
+        )}
+      </div>
+
+      <ActionGroup label="Inspect">
+        {isInMaster && (
           <button onClick={onToggleDiff} disabled={busy}>
             {showDiff ? "Hide diff" : "Diff vs master"}
           </button>
+        )}
+        <button onClick={onOpenSource} disabled={busy} title="Open the source file in your default editor">
+          Open source
+        </button>
+        {isInMaster && (
           <button onClick={onOpenMasterFile} disabled={busy} title="Open the master payload file">
             Open in master
           </button>
-          <button onClick={onRestore} disabled={busy} title="Overwrite source with master content">
-            Restore from master
-          </button>
-          <button onClick={onRemove} disabled={busy} className="danger">
-            Remove from master
-          </button>
-        </>
+        )}
+      </ActionGroup>
+
+      {(isInMaster || transferSupported) && (
+        <ActionGroup label="Other" muted>
+          {transferSupported && (
+            <button
+              onClick={onTransfer}
+              disabled={busy}
+              title="Translate and write to another tool"
+            >
+              Transfer to another tool…
+            </button>
+          )}
+          {isInMaster && !drifted && (
+            <button
+              onClick={onRestore}
+              disabled={busy}
+              title="Overwrite source with master content"
+            >
+              Restore source from master
+            </button>
+          )}
+          {isInMaster && (
+            <button onClick={onRemove} disabled={busy} className="danger">
+              Remove from master
+            </button>
+          )}
+        </ActionGroup>
       )}
+    </div>
+  );
+}
+
+function ActionGroup({
+  label,
+  muted = false,
+  children,
+}: {
+  label: string;
+  muted?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className={`workbench-action-row ${muted ? "workbench-action-muted" : ""}`}>
+      <span className="workbench-action-label">{label}</span>
+      <div className="workbench-action-buttons">{children}</div>
     </div>
   );
 }
@@ -483,29 +679,80 @@ function MasterOnlyPreview({
   }
 }
 
-function SourcesList({ entry }: { entry: MasterEntry }) {
+function SourcesList({
+  entry,
+  busy,
+  onRestoreSource,
+  onUnbindSource,
+}: {
+  entry: MasterEntry;
+  busy: boolean;
+  onRestoreSource: (s: MasterSource) => void;
+  onUnbindSource: (s: MasterSource) => void;
+}) {
   if (entry.sources.length === 0) {
     return (
       <div className="workbench-sources">
-        <div className="workbench-sources-label">Sources</div>
-        <div className="workbench-empty">No sources recorded.</div>
+        <div className="workbench-sources-label">Bound sources</div>
+        <div className="workbench-empty">
+          No sources bound. Use <em>Transfer</em> to push the canonical body into a tool's
+          location and bind it as a source.
+        </div>
       </div>
     );
   }
   return (
     <div className="workbench-sources">
-      <div className="workbench-sources-label">Sources</div>
+      <div className="workbench-sources-label">
+        Bound sources <span className="muted">({entry.sources.length})</span>
+      </div>
       <ul className="workbench-sources-list">
-        {entry.sources.map((s, idx) => (
-          <li key={`${s.tool}-${idx}`} className="workbench-source-item">
-            <div className="workbench-source-tool">
-              {s.tool === "__master__" ? "Master" : displayNameOf(s.tool)} · {s.scope}
-            </div>
-            <div className="workbench-source-path" title={s.absPath}>
-              {s.absPath}
-            </div>
-          </li>
-        ))}
+        {entry.sources.map((s, idx) => {
+          const isMasterSentinel = s.tool === "__master__";
+          // "" + 0 lastSyncedAt = bound but not yet synced (drift expected).
+          const neverSynced = s.lastSyncedAt === 0 && s.lastSyncedHash === "";
+          return (
+            <li key={`${s.tool}-${s.scope}-${s.projectPath ?? ""}-${idx}`} className="workbench-source-item">
+              <div className="workbench-source-row">
+                <div className="workbench-source-meta">
+                  <div className="workbench-source-tool">
+                    {isMasterSentinel ? "Master" : displayNameOf(s.tool)} · {s.scope}
+                    {neverSynced && (
+                      <span className="badge master-drift" title="Bound but never synced — Restore to push the canonical body.">
+                        bound
+                      </span>
+                    )}
+                  </div>
+                  <div className="workbench-source-path" title={s.absPath}>
+                    {s.absPath}
+                  </div>
+                </div>
+                {!isMasterSentinel && (
+                  <div className="workbench-source-actions">
+                    <button
+                      type="button"
+                      onClick={() => onRestoreSource(s)}
+                      disabled={busy}
+                      title="Write the master payload into this source's path."
+                      data-testid={`restore-source-${s.tool}-${s.scope}`}
+                    >
+                      Restore
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onUnbindSource(s)}
+                      disabled={busy}
+                      title="Remove this source from the master entry. The destination file is not touched."
+                      data-testid={`unbind-source-${s.tool}-${s.scope}`}
+                    >
+                      Unbind
+                    </button>
+                  </div>
+                )}
+              </div>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

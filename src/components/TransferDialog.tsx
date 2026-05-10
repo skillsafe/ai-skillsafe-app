@@ -31,6 +31,8 @@ import {
 } from "../lib/translate/mcp";
 import type { McpServer } from "../lib/configs/schemas";
 import type { InventoryItem, WorkbenchScope } from "../lib/inventory/types";
+import { bindSource, loadManifest, resolveMasterRoot } from "../lib/master/store";
+import { sha256Hex } from "../lib/fs";
 
 interface Props {
   source: InventoryItem;
@@ -74,6 +76,16 @@ export function TransferDialog({ source, onClose, onSuccess, onError }: Props) {
   const recentProjects = useApp((s) => s.recentProjects);
   const projectRoot = useApp((s) => s.projectRoot);
   const bumpWorkbenchScan = useApp((s) => s.bumpWorkbenchScan);
+  const masterRoot = useApp((s) => s.masterRoot);
+  const masterManifest = useApp((s) => s.masterManifest);
+  const setMasterManifest = useApp((s) => s.setMasterManifest);
+  const backupDestination = useApp((s) => s.backupDestination);
+
+  // Bind the destination as an additional source of the master entry on
+  // success. Only meaningful when the source itself is in master (so the
+  // entry actually exists).
+  const sourceInMaster = !!masterManifest?.entries.find((e) => e.id === source.id);
+  const [bindOnTransfer, setBindOnTransfer] = useState<boolean>(sourceInMaster);
 
   const isMcp = source.category === "mcp";
   const supportedTargets = isMcp ? MCP_TRANSFER_TARGETS : MEMORY_TRANSFER_TARGETS;
@@ -239,6 +251,16 @@ export function TransferDialog({ source, onClose, onSuccess, onError }: Props) {
           mode: mcpMode,
         });
         bumpWorkbenchScan();
+        if (bindOnTransfer && sourceInMaster && !result.skipped) {
+          await maybeBind({
+            tool: destTool,
+            scope: destScope,
+            projectPath: destProject ?? null,
+            absPath: result.destPath,
+            // MCP: hash the JSON we just wrote so the bind starts in-sync.
+            syncedContent: JSON.stringify(sourceServer),
+          });
+        }
         const lines = [
           result.skipped
             ? `Skipped: ${result.writtenName} already exists at ${result.destPath}.`
@@ -264,6 +286,18 @@ export function TransferDialog({ source, onClose, onSuccess, onError }: Props) {
         mode: memoryMode,
       });
       bumpWorkbenchScan();
+      if (bindOnTransfer && sourceInMaster && !result.skipped) {
+        await maybeBind({
+          tool: destTool,
+          scope: destScope,
+          projectPath: destProject ?? null,
+          absPath: result.destPath,
+          // Memory: hash exactly what we wrote (post-translation), since
+          // that's what masterStateFor will compare against on the next
+          // scan.
+          syncedContent: result.written ?? "",
+        });
+      }
       const lines = [
         result.skipped
           ? `Skipped: destination already exists (${result.destPath}).`
@@ -277,6 +311,34 @@ export function TransferDialog({ source, onClose, onSuccess, onError }: Props) {
       onError(`Transfer failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function maybeBind(args: {
+    tool: string;
+    scope: WorkbenchScope;
+    projectPath: string | null;
+    absPath: string;
+    syncedContent: string;
+  }) {
+    try {
+      const root = await resolveMasterRoot(tauriPaths, masterRoot, backupDestination);
+      const syncedHash = await sha256Hex(args.syncedContent);
+      await bindSource(tauriFs, tauriJoiner, root, source.id, {
+        tool: args.tool,
+        scope: args.scope,
+        projectPath: args.projectPath,
+        absPath: args.absPath,
+        syncedHash,
+      });
+      // Refresh the manifest so the SourcesList in Workbench picks up the
+      // new bound source immediately.
+      const next = await loadManifest(tauriFs, tauriJoiner, root);
+      setMasterManifest(next);
+    } catch {
+      // Bind is opportunistic — the transfer itself already succeeded.
+      // Silently swallow so the user doesn't see a confusing "transfer
+      // worked but bind failed" toast.
     }
   }
 
@@ -434,6 +496,23 @@ export function TransferDialog({ source, onClose, onSuccess, onError }: Props) {
               )?.description}
             </div>
           </section>
+
+          {sourceInMaster && (
+            <section className="transfer-section">
+              <label
+                className="transfer-bind-row"
+                title="Records the destination as a source on the master entry so future Restore-from-master writes here too."
+              >
+                <input
+                  type="checkbox"
+                  checked={bindOnTransfer}
+                  onChange={(e) => setBindOnTransfer(e.target.checked)}
+                  data-testid="bind-on-transfer"
+                />
+                <span>Bind destination as a source of the master entry</span>
+              </label>
+            </section>
+          )}
 
           <section className="transfer-section">
             <div className="transfer-label-row">

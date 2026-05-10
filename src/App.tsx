@@ -16,6 +16,7 @@ import { ConfigsPanel } from "./components/ConfigsPanel";
 import { ConfigsList } from "./components/ConfigsList";
 import { InventoryList } from "./components/InventoryList";
 import { Workbench } from "./components/Workbench";
+import { useWorkbenchData } from "./lib/hooks/useWorkbenchData";
 import type { ArtifactType, MarkdownArtifact, Scope, Tool } from "./lib/artifacts/types";
 import { useApp } from "./lib/store";
 import { listArtifacts } from "./lib/tools";
@@ -95,6 +96,11 @@ export default function App() {
     currentVersion,
     view,
   } = useApp();
+
+  // Owns the Workbench view's scan effect. Lifted here so the right-pane
+  // Workbench component doesn't depend on InventoryList being mounted to
+  // populate the store. The hook self-gates on view === "workbench".
+  useWorkbenchData();
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", resolvedTheme);
@@ -732,8 +738,6 @@ export default function App() {
       {view === "artifacts" && (
         <>
           <ArtifactList
-            onNew={() => setShowNew(true)}
-            onConvert={() => setShowConvert(true)}
             onReload={reload}
             onDelete={(a) => setPendingDelete(a)}
             onBackup={(a) => {
@@ -772,6 +776,7 @@ export default function App() {
             onAfterInstall={reload}
             onLoadMore={loadMoreRemote}
             onAfterMutation={reloadRemote}
+            onReload={reloadRemote}
           />
           <RemoteEditor onToast={emitToast} />
         </>

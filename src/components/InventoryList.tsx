@@ -5,7 +5,7 @@
 // master-only entries with no live source. Rendered in the standard
 // list-pane shell to mirror the Skills/Agents/Commands experience.
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useApp } from "../lib/store";
 import { displayNameOf } from "../lib/agents/registry";
 import { masterStateFor } from "../lib/master/store";
@@ -25,6 +25,8 @@ export function InventoryList() {
   const masterManifest = useApp((s) => s.masterManifest);
   const masterItems = useApp((s) => s.masterItems);
   const setSelected = useApp((s) => s.setWorkbenchSelectedId);
+  const bumpWorkbenchScan = useApp((s) => s.bumpWorkbenchScan);
+  const [query, setQuery] = useState("");
 
   // Live items + master-only items with no matching live source,
   // de-duplicated by id (live wins). Then narrowed by the same Tool +
@@ -37,6 +39,7 @@ export function InventoryList() {
     const liveIds = new Set(live.map((it) => it.id));
     const masterOnly = masterItems.filter((it) => !liveIds.has(it.id));
     const merged = [...live, ...masterOnly];
+    const q = query.toLowerCase().trim();
     return merged.filter((it) => {
       if (it.tool !== MASTER_TOOL_SENTINEL && it.tool !== tool) return false;
       if (scope === "global" && it.scope !== "global") return false;
@@ -44,17 +47,42 @@ export function InventoryList() {
         if (it.scope !== "project") return false;
         if (projectFilter && it.projectPath !== projectFilter) return false;
       }
+      if (q) {
+        // Match across name, on-disk path, tool key, and category so a
+        // single typed term finds CLAUDE.md, ".mcp.json", "playwright",
+        // "memory", etc.
+        const hay = `${it.name} ${it.absPath} ${it.tool} ${it.category}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
       return true;
     });
-  }, [inventory, masterItems, tool, scope, projectFilter]);
+  }, [inventory, masterItems, tool, scope, projectFilter, query]);
 
   return (
     <section className="list-pane">
+      <div className="list-toolbar">
+        <input
+          className="search"
+          placeholder="Filter…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <button
+          onClick={() => bumpWorkbenchScan()}
+          aria-label="Rescan inventory"
+          title="Rescan tool surfaces and master folder"
+          data-testid="inventory-list-refresh"
+        >
+          ↻
+        </button>
+      </div>
       {error && <div className="empty empty-error">Scan failed: {error}</div>}
 
       {!loading && inventory && filtered.length === 0 && (
         <div className="empty">
-          Nothing on disk yet for the supported tools (Claude Code, Codex, Cursor, Cline). Try installing one and re-scanning.
+          {(inventory?.items.length ?? 0) === 0 && masterItems.length === 0
+            ? "Nothing on disk yet for the supported tools (Claude Code, Codex, Cursor, Cline). Try installing one and re-scanning."
+            : "No matches."}
         </div>
       )}
 

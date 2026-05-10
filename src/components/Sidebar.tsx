@@ -254,9 +254,13 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
           aria-selected={isConfigs || isWorkbench}
           className={`pill ${isConfigs || isWorkbench ? "active" : ""}`}
           onClick={() => setView("workbench")}
-          title="Memory, MCP, hooks, permissions, keybindings — with master ops"
+          title={
+            "Files that can be saved to your master folder — CLAUDE.md / AGENTS.md memory, " +
+            ".mcp.json servers, hooks, permissions, keybindings. " +
+            "Add the live source to master, restore the source from master, or diff the two."
+          }
         >
-          Settings
+          Master
         </button>
       </div>
 

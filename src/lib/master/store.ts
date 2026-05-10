@@ -25,6 +25,11 @@ import type { PathJoiner } from "../artifacts/skill";
 import type { PathResolverDeps } from "../paths";
 import { getHome } from "../paths";
 import type { InventoryItem, StateCategory, WorkbenchScope } from "../inventory/types";
+import {
+  parseMemoryFor,
+  renderMemoryFor,
+  MEMORY_TRANSFER_TARGETS,
+} from "../translate/memory";
 import type { Manifest, MasterEntry, MasterSource } from "./types";
 import { MANIFEST_FILE, MANIFEST_VERSION } from "./types";
 
@@ -412,7 +417,19 @@ export async function restoreSourceFromMaster(
   if (entry.category === "memory") {
     const dir = parentDir(source.absPath);
     if (dir) await ensureDir(fs, dir);
-    await atomicWrite(fs, source.absPath, body);
+    // When the source's tool differs from the entry's canonical tool
+    // (the first contributor — what the master payload was authored as),
+    // run the body through the cross-tool memory translator. This is
+    // what lets a single canonical body fan out to claude/codex/cursor/cline
+    // in their idiomatic shapes (cursor MDC frontmatter, etc.).
+    const canonicalTool = canonicalMemoryTool(entry);
+    const translated =
+      canonicalTool && canonicalTool !== source.tool && isMemoryTransferTool(source.tool)
+        ? renderMemoryFor(source.tool, parseMemoryFor(canonicalTool, body), {
+            sourceName: itemName,
+          })
+        : body;
+    await atomicWrite(fs, source.absPath, translated);
     return;
   }
   if (entry.category === "mcp") {
@@ -669,6 +686,100 @@ async function walk(
       out.push(childRel);
     }
   }
+}
+
+// ---------- bind / unbind ----------
+
+/**
+ * Describe a tool location to attach as an additional source on an
+ * existing master entry. `syncedHash` is set when the caller has just
+ * written the canonical content to `absPath` (e.g. immediately after
+ * Transfer); leave it undefined to record a "claim only" bind whose
+ * masterStateFor() will report drifted until a Restore.
+ */
+export interface BindTarget {
+  tool: string;
+  scope: WorkbenchScope;
+  projectPath: string | null;
+  absPath: string;
+  syncedHash?: string;
+}
+
+/**
+ * Attach `target` to `entryId` as an additional source. Idempotent: a
+ * source with the same (tool, scope, projectPath) is replaced. Returns
+ * the resulting MasterSource row.
+ */
+export async function bindSource(
+  fs: FsAdapter,
+  pj: PathJoiner,
+  masterRoot: string,
+  entryId: string,
+  target: BindTarget,
+): Promise<MasterSource> {
+  const manifest = await loadManifest(fs, pj, masterRoot);
+  const idx = manifest.entries.findIndex((e) => e.id === entryId);
+  if (idx < 0) throw new Error(`No master entry with id ${entryId}`);
+  const entry = manifest.entries[idx];
+  const now = Date.now();
+  const source: MasterSource = {
+    tool: target.tool,
+    scope: target.scope,
+    projectPath: target.projectPath,
+    absPath: target.absPath,
+    // "" + 0 means "bound, never synced" — masterStateFor reports drift
+    // because the source's current contentHash will not match.
+    lastSyncedHash: target.syncedHash ?? "",
+    lastSyncedAt: target.syncedHash ? now : 0,
+  };
+  const sources = [...entry.sources];
+  const matchIdx = sources.findIndex(
+    (s) => s.tool === source.tool && s.scope === source.scope && s.projectPath === source.projectPath,
+  );
+  if (matchIdx >= 0) sources[matchIdx] = source;
+  else sources.push(source);
+  manifest.entries[idx] = { ...entry, sources, updatedAt: now };
+  await saveManifest(fs, pj, masterRoot, manifest);
+  return source;
+}
+
+/**
+ * Remove a source row from `entryId`. Matches by (tool, scope,
+ * projectPath); the destination file on disk is not touched. No-op when
+ * the entry or matching source isn't found.
+ */
+export async function unbindSource(
+  fs: FsAdapter,
+  pj: PathJoiner,
+  masterRoot: string,
+  entryId: string,
+  match: { tool: string; scope: WorkbenchScope; projectPath: string | null },
+): Promise<void> {
+  const manifest = await loadManifest(fs, pj, masterRoot);
+  const idx = manifest.entries.findIndex((e) => e.id === entryId);
+  if (idx < 0) return;
+  const entry = manifest.entries[idx];
+  const filtered = entry.sources.filter(
+    (s) => !(s.tool === match.tool && s.scope === match.scope && s.projectPath === match.projectPath),
+  );
+  if (filtered.length === entry.sources.length) return;
+  manifest.entries[idx] = { ...entry, sources: filtered, updatedAt: Date.now() };
+  await saveManifest(fs, pj, masterRoot, manifest);
+}
+
+/**
+ * The tool whose body shape master is currently storing. Used to decide
+ * whether a memory restore needs cross-tool translation. Falls back to
+ * the first source's tool when the entry has no notes-based override.
+ */
+function canonicalMemoryTool(entry: MasterEntry): string | null {
+  if (entry.category !== "memory") return null;
+  const first = entry.sources[0];
+  return first?.tool ?? null;
+}
+
+function isMemoryTransferTool(tool: string): boolean {
+  return (MEMORY_TRANSFER_TARGETS as readonly string[]).includes(tool);
 }
 
 // ---------- tiny utility ----------

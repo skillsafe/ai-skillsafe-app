@@ -26,9 +26,18 @@ interface Props {
   // Fired after a destructive action (delete, yank, set-current) so the host
   // can re-fetch the cloud listing and version cache.
   onAfterMutation?: () => Promise<void> | void;
+  // Re-fetch the cloud listing. Wired to the toolbar's Refresh button so
+  // users can force a reload without changing filter/sort.
+  onReload?: () => Promise<void> | void;
 }
 
-export function RemoteList({ onToast, onAfterInstall, onLoadMore, onAfterMutation }: Props) {
+export function RemoteList({
+  onToast,
+  onAfterInstall,
+  onLoadMore,
+  onAfterMutation,
+  onReload,
+}: Props) {
   const {
     remoteArtifacts,
     remoteSelectedId,
@@ -300,6 +309,17 @@ export function RemoteList({ onToast, onAfterInstall, onLoadMore, onAfterMutatio
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
+        <button
+          onClick={() => {
+            if (onReload) void onReload();
+          }}
+          disabled={!onReload || remoteLoading}
+          aria-label="Reload remote skills"
+          title={remoteLoading ? "Loading…" : "Reload remote skills"}
+          data-testid="remote-list-refresh"
+        >
+          ↻
+        </button>
       </div>
       {remoteLoading && filtered.length === 0 ? (
         <div className="empty">Loading…</div>

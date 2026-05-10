@@ -5,8 +5,6 @@ import { ArchiveIcon, TrashIcon, UploadCloudIcon } from "./icons";
 import type { MarkdownArtifact } from "../lib/artifacts/types";
 
 interface Props {
-  onNew: () => void;
-  onConvert: () => void;
   onReload: () => void;
   onDelete: (artifact: MarkdownArtifact) => void;
   onBackup: (artifact: MarkdownArtifact) => void;
@@ -14,8 +12,6 @@ interface Props {
 }
 
 export function ArtifactList({
-  onNew,
-  onConvert,
   onReload,
   onDelete,
   onBackup,
@@ -72,15 +68,6 @@ export function ArtifactList({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <button onClick={onNew} title="Create artifact">+ New</button>
-        <button
-          onClick={onConvert}
-          disabled={!selectedId}
-          aria-label="Convert selected artifact to another tool"
-          title="Convert to other tool"
-        >
-          →
-        </button>
         <button onClick={onReload} aria-label="Reload artifact list" title="Reload">
           ↻
         </button>

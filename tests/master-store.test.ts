@@ -3,6 +3,7 @@ import * as fs from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   addToMaster,
+  bindSource,
   encodeProjectPath,
   listMasterFiles,
   loadManifest,
@@ -11,6 +12,7 @@ import {
   removeFromMaster,
   resolveMasterRoot,
   restoreSourceFromMaster,
+  unbindSource,
 } from "../src/lib/master/store";
 import { sha256Hex } from "../src/lib/fs";
 import type { InventoryItem } from "../src/lib/inventory/types";
@@ -206,6 +208,230 @@ describe("master/store manifest CRUD", () => {
     expect(after.mcpServers.sibling.command).toBe("echo");
     expect(after.mcpServers.playwright.command).toBe("npx");
     expect(after.mcpServers.playwright.args).toEqual(["npx", "@playwright/mcp"].slice(1));
+  });
+});
+
+describe("bindSource / unbindSource", () => {
+  let masterRoot: string;
+  let sourceDir: string;
+
+  beforeEach(async () => {
+    masterRoot = await makeTmp("master-bind");
+    sourceDir = await makeTmp("source-bind");
+  });
+
+  afterEach(async () => {
+    await rmrf(masterRoot);
+    await rmrf(sourceDir);
+  });
+
+  it("appends a new source to an existing entry without writing the destination", async () => {
+    // Seed master from a Claude source.
+    const claudePath = path.join(sourceDir, "CLAUDE.md");
+    await fs.writeFile(claudePath, "# rules");
+    const claude = await memoryItem("claude", "global", null, "CLAUDE.md", "# rules", claudePath);
+    const entry = await addToMaster(nodeFs, nodeJoiner, masterRoot, claude);
+
+    // Bind a Codex destination — file does not exist yet on disk; bind
+    // should not create it.
+    const codexPath = path.join(sourceDir, "AGENTS.md");
+    const bound = await bindSource(nodeFs, nodeJoiner, masterRoot, entry.id, {
+      tool: "codex",
+      scope: "global",
+      projectPath: null,
+      absPath: codexPath,
+    });
+    expect(bound.tool).toBe("codex");
+    expect(bound.lastSyncedHash).toBe("");
+    expect(bound.lastSyncedAt).toBe(0);
+    await expect(fs.access(codexPath)).rejects.toThrow();
+
+    const manifest = await loadManifest(nodeFs, nodeJoiner, masterRoot);
+    const updated = manifest.entries.find((e) => e.id === entry.id)!;
+    expect(updated.sources.map((s) => s.tool).sort()).toEqual(["claude", "codex"]);
+  });
+
+  it("re-binding the same (tool, scope, projectPath) replaces the existing row", async () => {
+    const claudePath = path.join(sourceDir, "CLAUDE.md");
+    await fs.writeFile(claudePath, "x");
+    const claude = await memoryItem("claude", "global", null, "CLAUDE.md", "x", claudePath);
+    const entry = await addToMaster(nodeFs, nodeJoiner, masterRoot, claude);
+
+    const codex1 = path.join(sourceDir, "AGENTS.md");
+    const codex2 = path.join(sourceDir, "AGENTS-other.md");
+    await bindSource(nodeFs, nodeJoiner, masterRoot, entry.id, {
+      tool: "codex",
+      scope: "global",
+      projectPath: null,
+      absPath: codex1,
+    });
+    await bindSource(nodeFs, nodeJoiner, masterRoot, entry.id, {
+      tool: "codex",
+      scope: "global",
+      projectPath: null,
+      absPath: codex2,
+    });
+    const manifest = await loadManifest(nodeFs, nodeJoiner, masterRoot);
+    const updated = manifest.entries.find((e) => e.id === entry.id)!;
+    const codexSources = updated.sources.filter((s) => s.tool === "codex");
+    expect(codexSources).toHaveLength(1);
+    expect(codexSources[0].absPath).toBe(codex2);
+  });
+
+  it("syncedHash records the bound source as in-sync against its current content", async () => {
+    const claudePath = path.join(sourceDir, "CLAUDE.md");
+    const body = "# memory";
+    await fs.writeFile(claudePath, body);
+    const claude = await memoryItem("claude", "global", null, "CLAUDE.md", body, claudePath);
+    const entry = await addToMaster(nodeFs, nodeJoiner, masterRoot, claude);
+
+    const codexPath = path.join(sourceDir, "AGENTS.md");
+    await fs.writeFile(codexPath, body); // simulate post-transfer state
+    const hash = await sha256Hex(body);
+    const bound = await bindSource(nodeFs, nodeJoiner, masterRoot, entry.id, {
+      tool: "codex",
+      scope: "global",
+      projectPath: null,
+      absPath: codexPath,
+      syncedHash: hash,
+    });
+    expect(bound.lastSyncedHash).toBe(hash);
+    expect(bound.lastSyncedAt).toBeGreaterThan(0);
+  });
+
+  it("unbindSource removes the matching source and leaves siblings + destination file untouched", async () => {
+    const claudePath = path.join(sourceDir, "CLAUDE.md");
+    await fs.writeFile(claudePath, "x");
+    const claude = await memoryItem("claude", "global", null, "CLAUDE.md", "x", claudePath);
+    const entry = await addToMaster(nodeFs, nodeJoiner, masterRoot, claude);
+
+    const codexPath = path.join(sourceDir, "AGENTS.md");
+    await fs.writeFile(codexPath, "x");
+    await bindSource(nodeFs, nodeJoiner, masterRoot, entry.id, {
+      tool: "codex",
+      scope: "global",
+      projectPath: null,
+      absPath: codexPath,
+    });
+
+    await unbindSource(nodeFs, nodeJoiner, masterRoot, entry.id, {
+      tool: "codex",
+      scope: "global",
+      projectPath: null,
+    });
+
+    const manifest = await loadManifest(nodeFs, nodeJoiner, masterRoot);
+    const updated = manifest.entries.find((e) => e.id === entry.id)!;
+    expect(updated.sources.map((s) => s.tool)).toEqual(["claude"]);
+    // Destination file must still be on disk.
+    expect(await fs.readFile(codexPath, "utf8")).toBe("x");
+  });
+
+  it("unbindSource is a no-op when entry / source isn't found", async () => {
+    const claudePath = path.join(sourceDir, "CLAUDE.md");
+    await fs.writeFile(claudePath, "x");
+    const claude = await memoryItem("claude", "global", null, "CLAUDE.md", "x", claudePath);
+    await addToMaster(nodeFs, nodeJoiner, masterRoot, claude);
+
+    // Wrong id — silent no-op.
+    await unbindSource(nodeFs, nodeJoiner, masterRoot, "no-such-id", {
+      tool: "codex",
+      scope: "global",
+      projectPath: null,
+    });
+    // Right id, wrong tool — silent no-op.
+    await unbindSource(nodeFs, nodeJoiner, masterRoot, claude.id, {
+      tool: "codex",
+      scope: "global",
+      projectPath: null,
+    });
+    const manifest = await loadManifest(nodeFs, nodeJoiner, masterRoot);
+    expect(manifest.entries[0].sources).toHaveLength(1);
+  });
+
+  it("bindSource throws when the entry id is unknown", async () => {
+    await expect(
+      bindSource(nodeFs, nodeJoiner, masterRoot, "no-such-id", {
+        tool: "codex",
+        scope: "global",
+        projectPath: null,
+        absPath: "/whatever",
+      }),
+    ).rejects.toThrow(/No master entry/);
+  });
+});
+
+describe("restoreSourceFromMaster cross-tool memory translation", () => {
+  let masterRoot: string;
+  let sourceDir: string;
+
+  beforeEach(async () => {
+    masterRoot = await makeTmp("master-translate");
+    sourceDir = await makeTmp("source-translate");
+  });
+
+  afterEach(async () => {
+    await rmrf(masterRoot);
+    await rmrf(sourceDir);
+  });
+
+  it("renders cursor MDC frontmatter when restoring to a cursor source from a claude-authored entry", async () => {
+    // Master is authored from Claude (plain markdown, no frontmatter).
+    const claudePath = path.join(sourceDir, "CLAUDE.md");
+    const body = "# rules\n\nbe terse.\n";
+    await fs.writeFile(claudePath, body);
+    const claude = await memoryItem("claude", "global", null, "CLAUDE.md", body, claudePath);
+    const entry = await addToMaster(nodeFs, nodeJoiner, masterRoot, claude);
+
+    // Bind a cursor destination, then restore.
+    const cursorPath = path.join(sourceDir, ".cursor", "rules", "memory.mdc");
+    const bound = await bindSource(nodeFs, nodeJoiner, masterRoot, entry.id, {
+      tool: "cursor",
+      scope: "project",
+      projectPath: sourceDir,
+      absPath: cursorPath,
+    });
+    await restoreSourceFromMaster(nodeFs, nodeJoiner, masterRoot, entry, bound, "memory.mdc");
+    const written = await fs.readFile(cursorPath, "utf8");
+    // Cursor expects `---` fenced frontmatter at the top.
+    expect(written.startsWith("---\n")).toBe(true);
+    // Body must still contain the original Claude markdown.
+    expect(written).toContain("be terse.");
+  });
+
+  it("strips MDC frontmatter when the canonical was authored as cursor and restore target is claude", async () => {
+    // Master is authored from cursor with frontmatter.
+    const cursorPath = path.join(sourceDir, "memory.mdc");
+    const cursorBody = "---\ndescription: rules\n---\n\nbe terse.\n";
+    await fs.writeFile(cursorPath, cursorBody);
+    const cursor = await memoryItem("cursor", "project", sourceDir, "memory.mdc", cursorBody, cursorPath);
+    const entry = await addToMaster(nodeFs, nodeJoiner, masterRoot, cursor);
+
+    // Bind claude project memory and restore.
+    const claudePath = path.join(sourceDir, "CLAUDE.md");
+    const bound = await bindSource(nodeFs, nodeJoiner, masterRoot, entry.id, {
+      tool: "claude",
+      scope: "project",
+      projectPath: sourceDir,
+      absPath: claudePath,
+    });
+    await restoreSourceFromMaster(nodeFs, nodeJoiner, masterRoot, entry, bound, "CLAUDE.md");
+    const written = await fs.readFile(claudePath, "utf8");
+    // Claude doesn't use frontmatter — the `---` fence must not appear at
+    // the top.
+    expect(written.startsWith("---")).toBe(false);
+    expect(written).toContain("be terse.");
+  });
+
+  it("restoring a same-tool source still writes the body verbatim (no translation regression)", async () => {
+    const claudePath = path.join(sourceDir, "CLAUDE.md");
+    const body = "# only\n";
+    await fs.writeFile(claudePath, body);
+    const claude = await memoryItem("claude", "global", null, "CLAUDE.md", body, claudePath);
+    const entry = await addToMaster(nodeFs, nodeJoiner, masterRoot, claude);
+    await fs.writeFile(claudePath, "garbled");
+    await restoreSourceFromMaster(nodeFs, nodeJoiner, masterRoot, entry, entry.sources[0], "CLAUDE.md");
+    expect(await fs.readFile(claudePath, "utf8")).toBe(body);
   });
 });
 
