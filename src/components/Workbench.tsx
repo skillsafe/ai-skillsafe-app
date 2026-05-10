@@ -20,8 +20,9 @@ import {
   resolveMasterRoot,
   restoreSourceFromMaster,
   unbindSource,
+  type MasterState,
 } from "../lib/master/store";
-import type { MasterEntry, MasterSource, MasterState } from "../lib/master/types";
+import type { MasterEntry, MasterSource } from "../lib/master/types";
 import type { InventoryItem, StateCategory } from "../lib/inventory/types";
 import { TransferDialog } from "./TransferDialog";
 
@@ -405,24 +406,6 @@ export function Workbench() {
       )}
     </section>
   );
-}
-
-function MasterBadge({
-  state,
-  masterOnly,
-}: {
-  state: MasterState | null;
-  masterOnly: boolean;
-}) {
-  if (masterOnly) return <span className="badge master-in-sync">master only</span>;
-  if (!state) return <span className="badge muted">checking…</span>;
-  if (state.kind === "not-in-master") {
-    return <span className="badge muted">not in master</span>;
-  }
-  if (state.kind === "in-sync") {
-    return <span className="badge master-in-sync">in master</span>;
-  }
-  return <span className="badge master-drift">drift vs master</span>;
 }
 
 /**

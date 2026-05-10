@@ -27,7 +27,6 @@ import {
   transferMcp,
   type McpDestination,
   type McpTransferMode,
-  type McpTransferTool,
 } from "../lib/translate/mcp";
 import type { McpServer } from "../lib/configs/schemas";
 import type { InventoryItem, WorkbenchScope } from "../lib/inventory/types";

@@ -19,6 +19,7 @@ import { loadKeybindings, saveKeybindings } from "../configs/keybindings";
 import type {
   Hooks,
   Keybinding,
+  McpServer,
   Permissions,
 } from "../configs/schemas";
 import type { PathJoiner } from "../artifacts/skill";
@@ -441,7 +442,7 @@ export async function restoreSourceFromMaster(
       throw new Error(`Master MCP payload is not valid JSON: ${entry.masterPath}`);
     }
     const next = doc.servers.filter((s) => s.name !== itemName);
-    next.push({ name: itemName, server: payload as Record<string, unknown> });
+    next.push({ name: itemName, server: payload as McpServer });
     const reloaded = doc.exists
       ? doc
       : { path: source.absPath, exists: false, servers: [], rest: {}, mtimeMs: null };
