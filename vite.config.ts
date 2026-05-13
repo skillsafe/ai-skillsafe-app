@@ -9,8 +9,13 @@ const pkg = JSON.parse(
   readFileSync(fileURLToPath(new URL("./package.json", import.meta.url)), "utf8"),
 ) as { version: string };
 
-export default defineConfig({
-  plugins: [react()],
+export default defineConfig(async () => ({
+  plugins: [
+    react(),
+    ...(process.env.UI_DRIVER === "1"
+      ? [(await import("./scripts/ui-driver/plugin.mjs")).uiDriver()]
+      : []),
+  ],
   clearScreen: false,
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
@@ -59,4 +64,4 @@ export default defineConfig({
     globals: true,
     include: ["tests/**/*.test.ts"],
   },
-});
+}));
