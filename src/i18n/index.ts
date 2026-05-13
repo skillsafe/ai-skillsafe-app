@@ -90,6 +90,18 @@ export async function initI18n(): Promise<Locale> {
         "zh-CN": { translation: zhCN },
         ja: { translation: ja },
       },
+      // Index resources synchronously inside init() so the awaited promise
+      // doesn't resolve before the resource store is ready. Default (true)
+      // schedules indexing on the event loop, which created a race where
+      // React mounted before t() could resolve keys — users saw the raw
+      // dotted key strings render. See v0.2.11 i18n regression.
+      initImmediate: false,
+      // Defensive: disable react-i18next's Suspense path. Even if the very
+      // first render somehow lands before `ready` flips, useTranslation
+      // falls back to a re-render once resources land instead of suspending
+      // (and we have no Suspense boundary in App). The trade is one extra
+      // render on cold start, which is invisible at this app's scale.
+      react: { useSuspense: false },
       interpolation: { escapeValue: false },
       returnEmptyString: false,
     });
