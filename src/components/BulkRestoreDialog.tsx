@@ -4,6 +4,8 @@
 // backup folder, then bulk-restore every master entry into place.
 
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { useApp } from "../lib/store";
 import { displayNameOf } from "../lib/agents/registry";
 import { tauriFs, tauriJoiner, tauriPaths } from "../lib/tauriAdapters";
@@ -23,6 +25,7 @@ interface Props {
 }
 
 export function BulkRestoreDialog({ manifest, onClose, onSuccess, onError }: Props) {
+  const { t } = useTranslation();
   const masterRoot = useApp((s) => s.masterRoot);
   const backupDestination = useApp((s) => s.backupDestination);
 
@@ -59,20 +62,18 @@ export function BulkRestoreDialog({ manifest, onClose, onSuccess, onError }: Pro
       const root = await resolveMasterRoot(tauriPaths, masterRoot, backupDestination);
       const targets = restorable.filter((r) => selected.has(r.entry.id));
       if (targets.length === 0) {
-        onError("Nothing selected.");
+        onError(t("bulkRestore.nothingSelected"));
         return;
       }
       const result = await applyBulkRestore(tauriFs, tauriJoiner, root, targets);
       const parts = [
-        `Restored ${result.succeeded.length} of ${targets.length} master entr${
-          targets.length === 1 ? "y" : "ies"
-        }.`,
+        t("bulkRestore.restoredCount", { succeeded: result.succeeded.length, total: targets.length }),
       ];
       if (result.failed.length > 0) {
-        parts.push(`${result.failed.length} failed.`);
+        parts.push(t("bulkRestore.failedCount", { count: result.failed.length }));
       }
       if (result.skipped.length > 0) {
-        parts.push(`${result.skipped.length} skipped.`);
+        parts.push(t("bulkRestore.skippedCount", { count: result.skipped.length }));
       }
       if (result.failed.length > 0 || result.skipped.length > 0) {
         onError(
@@ -86,7 +87,7 @@ export function BulkRestoreDialog({ manifest, onClose, onSuccess, onError }: Pro
       }
       onClose();
     } catch (e) {
-      onError(`Bulk restore failed: ${e instanceof Error ? e.message : String(e)}`);
+      onError(t("bulkRestore.bulkRestoreFailed", { message: e instanceof Error ? e.message : String(e) }));
     } finally {
       setBusy(false);
     }
@@ -104,16 +105,15 @@ export function BulkRestoreDialog({ manifest, onClose, onSuccess, onError }: Pro
     >
       <div className="dialog bulk-restore-dialog" onClick={(e) => e.stopPropagation()}>
         <header className="transfer-header">
-          <h3 style={{ margin: 0 }}>Bulk restore from master</h3>
-          <button className="icon-btn" aria-label="Close" onClick={onClose} disabled={busy}>
+          <h3 style={{ margin: 0 }}>{t("bulkRestore.title")}</h3>
+          <button className="icon-btn" aria-label={t("bulkRestore.closeAria")} onClick={onClose} disabled={busy}>
             ×
           </button>
         </header>
         <div className="bulk-body">
           {restorable.length === 0 ? (
             <div className="muted bulk-empty">
-              No master entries have a recorded source on this machine. Use Workbench →
-              Transfer to push individual entries to a tool.
+              {t("bulkRestore.emptyState")}
             </div>
           ) : (
             <>
@@ -125,11 +125,11 @@ export function BulkRestoreDialog({ manifest, onClose, onSuccess, onError }: Pro
                   }}
                   checked={allChecked}
                   onChange={toggleAll}
-                  aria-label="Select all"
+                  aria-label={t("bulkRestore.selectAllAria")}
                 />
-                <div className="bulk-col-name">Item</div>
-                <div className="bulk-col-cat">Category</div>
-                <div className="bulk-col-target">Restore target</div>
+                <div className="bulk-col-name">{t("bulkRestore.itemCol")}</div>
+                <div className="bulk-col-cat">{t("bulkRestore.categoryCol")}</div>
+                <div className="bulk-col-target">{t("bulkRestore.restoreTargetCol")}</div>
               </div>
               <div className="bulk-list">
                 {restorable.map((r) => (
@@ -138,6 +138,7 @@ export function BulkRestoreDialog({ manifest, onClose, onSuccess, onError }: Pro
                     row={r}
                     checked={selected.has(r.entry.id)}
                     onToggle={() => toggle(r.entry.id)}
+                    t={t}
                   />
                 ))}
               </div>
@@ -146,11 +147,10 @@ export function BulkRestoreDialog({ manifest, onClose, onSuccess, onError }: Pro
           {orphans.length > 0 && (
             <div className="bulk-orphans">
               <div className="transfer-label" style={{ marginTop: 8 }}>
-                Skipped ({orphans.length})
+                {t("bulkRestore.skippedSection", { count: orphans.length })}
               </div>
               <div className="muted" style={{ fontSize: 11, marginBottom: 6 }}>
-                These master entries have no recorded source. Use Workbench → Transfer
-                to push them to a tool.
+                {t("bulkRestore.skippedHint")}
               </div>
               <ul className="bulk-orphan-list">
                 {orphans.map((r) => (
@@ -165,14 +165,14 @@ export function BulkRestoreDialog({ manifest, onClose, onSuccess, onError }: Pro
         </div>
         <div className="dialog-row">
           <button onClick={onClose} disabled={busy}>
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             className="primary"
             onClick={handleApply}
             disabled={busy || selected.size === 0}
           >
-            {busy ? "Restoring…" : `Restore ${selected.size} item${selected.size === 1 ? "" : "s"}`}
+            {busy ? t("bulkRestore.restoringButton") : t("bulkRestore.restoreButton", { count: selected.size })}
           </button>
         </div>
       </div>
@@ -188,6 +188,7 @@ function BulkRow({
   row: BulkRestorePlanRow;
   checked: boolean;
   onToggle: () => void;
+  t: TFunction;
 }) {
   const target = row.source?.absPath ?? "";
   return (

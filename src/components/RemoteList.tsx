@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useApp } from "../lib/store";
 import { tauriFs, tauriJoiner, tauriPaths } from "../lib/tauriAdapters";
 import { installSkill } from "../lib/skillsafe/install";
@@ -38,6 +39,7 @@ export function RemoteList({
   onAfterMutation,
   onReload,
 }: Props) {
+  const { t } = useTranslation();
   const {
     remoteArtifacts,
     remoteSelectedId,
@@ -137,7 +139,7 @@ export function RemoteList({
     const ns = a.frontmatter.namespace as string | undefined;
     const version = a.frontmatter.version as string | undefined;
     if (!ns || !version) {
-      onToast("error", "Skill is missing namespace or version.");
+      onToast("error", t("remoteList.missingMeta"));
       setPendingInstallId(null);
       return;
     }
@@ -154,11 +156,11 @@ export function RemoteList({
         scope: choice.scope,
         projectRoot: choice.scope === "project" ? choice.projectRoot : undefined,
       });
-      onToast("ok", `Installed ${ns}/${a.name} → ${result.targetDir}`);
+      onToast("ok", t("remoteList.installedToast", { ns, name: a.name, path: result.targetDir }));
       markRemoteInstalled(id);
       await onAfterInstall();
     } catch (e) {
-      onToast("error", `Install failed: ${describeError(e)}`);
+      onToast("error", t("remoteList.installFailedToast", { message: describeError(e) }));
     } finally {
       setInstalling(null);
       setPendingInstallId(null);
@@ -167,7 +169,7 @@ export function RemoteList({
 
   async function handleStarToggle(id: string) {
     if (!cloudApiKey) {
-      onToast("error", "Sign in to star skills.");
+      onToast("error", t("remoteList.signInToStarToast"));
       return;
     }
     const a = remoteArtifacts.find((r) => r.id === id);
@@ -184,14 +186,15 @@ export function RemoteList({
           next.delete(id);
           return next;
         });
-        onToast("ok", `Unstarred ${ns}/${a.name}.`);
+        onToast("ok", t("remoteList.unstarredToast", { ns, name: a.name }));
       } else {
         await starSkill(cloudApiKey, ns, a.name);
         setStarredIds((prev) => new Set(prev).add(id));
-        onToast("ok", `Starred ${ns}/${a.name}.`);
+        onToast("ok", t("remoteList.starredToast", { ns, name: a.name }));
       }
     } catch (e) {
-      onToast("error", `${wasStarred ? "Unstar" : "Star"} failed: ${describeError(e)}`);
+      const key = wasStarred ? "remoteList.unstarFailedToast" : "remoteList.starFailedToast";
+      onToast("error", t(key, { message: describeError(e) }));
     } finally {
       setBusyId(null);
     }
@@ -207,11 +210,11 @@ export function RemoteList({
     setBusyId(id);
     try {
       await deleteSkill(cloudApiKey, ns, a.name);
-      onToast("ok", `Deleted ${ns}/${a.name}.`);
+      onToast("ok", t("remoteList.deletedToast", { ns, name: a.name }));
       setPendingDeleteId(null);
       if (onAfterMutation) await onAfterMutation();
     } catch (e) {
-      onToast("error", `Delete failed: ${describeError(e)}`);
+      onToast("error", t("remoteList.deleteFailedToast", { message: describeError(e) }));
     } finally {
       setBusyId(null);
     }
@@ -228,16 +231,16 @@ export function RemoteList({
     try {
       if (pendingVersionActionKind === "yank") {
         await yankSkillVersion(cloudApiKey, ns, a.name, choice.version, choice.reason);
-        onToast("ok", `Yanked ${ns}/${a.name} v${choice.version}.`);
+        onToast("ok", t("remoteList.yankedToast", { ns, name: a.name, version: choice.version }));
       } else {
         await setCurrentVersion(cloudApiKey, ns, a.name, choice.version);
-        onToast("ok", `Set current version of ${ns}/${a.name} to v${choice.version}.`);
+        onToast("ok", t("remoteList.setCurrentToast", { ns, name: a.name, version: choice.version }));
       }
       setPendingVersionActionId(null);
       if (onAfterMutation) await onAfterMutation();
     } catch (e) {
-      const verb = pendingVersionActionKind === "yank" ? "Yank" : "Set current";
-      onToast("error", `${verb} failed: ${describeError(e)}`);
+      const key = pendingVersionActionKind === "yank" ? "remoteList.yankFailedToast" : "remoteList.setCurrentFailedToast";
+      onToast("error", t(key, { message: describeError(e) }));
     } finally {
       setBusyId(null);
     }
@@ -249,31 +252,31 @@ export function RemoteList({
     const starred = starredIds.has(a.id);
     const ns = a.frontmatter.namespace as string | undefined;
     items.push({
-      label: starred ? "Unstar" : "Star",
+      label: starred ? t("remoteList.menuUnstar") : t("remoteList.menuStar"),
       onClick: () => handleStarToggle(a.id),
       disabled: !cloudApiKey || busyId === a.id,
     });
     if (owned && ns) {
       items.push({
-        label: "Manage share links…",
+        label: t("remoteList.menuManageShare"),
         onClick: () => setPendingShareId(a.id),
       });
       items.push({
-        label: "Set current version…",
+        label: t("remoteList.menuSetCurrent"),
         onClick: () => {
           setPendingVersionActionKind("set-current");
           setPendingVersionActionId(a.id);
         },
       });
       items.push({
-        label: "Yank a version…",
+        label: t("remoteList.menuYank"),
         onClick: () => {
           setPendingVersionActionKind("yank");
           setPendingVersionActionId(a.id);
         },
       });
       items.push({
-        label: "Delete skill…",
+        label: t("remoteList.menuDelete"),
         danger: true,
         onClick: () => setPendingDeleteId(a.id),
       });
@@ -305,7 +308,7 @@ export function RemoteList({
       <div className="list-toolbar">
         <input
           className="search"
-          placeholder="Filter remote…"
+          placeholder={t("remoteList.filterPlaceholder")}
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
@@ -314,18 +317,18 @@ export function RemoteList({
             if (onReload) void onReload();
           }}
           disabled={!onReload || remoteLoading}
-          aria-label="Reload remote skills"
-          title={remoteLoading ? "Loading…" : "Reload remote skills"}
+          aria-label={t("remoteList.reloadAria")}
+          title={remoteLoading ? t("common.loading") : t("remoteList.reloadTitleIdle")}
           data-testid="remote-list-refresh"
         >
           ↻
         </button>
       </div>
       {remoteLoading && filtered.length === 0 ? (
-        <div className="empty">Loading…</div>
+        <div className="empty">{t("common.loading")}</div>
       ) : filtered.length === 0 ? (
         <div className="empty">
-          {remoteArtifacts.length === 0 ? "No remote skills found." : "No matches."}
+          {remoteArtifacts.length === 0 ? t("remoteList.empty") : t("remoteList.noMatches")}
           {remoteError && <div className="empty-error">{remoteError}</div>}
         </div>
       ) : (
@@ -348,10 +351,10 @@ export function RemoteList({
                   {a.name}
                   {version && <span className="badge">v{version}</span>}
                   {a.frontmatter.visibility === "private" && (
-                    <span className="badge drift">private</span>
+                    <span className="badge drift">{t("remoteList.privateBadge")}</span>
                   )}
-                  {owned && <span className="badge bundle">mine</span>}
-                  {isLocal && <span className="badge bundle">local ✓</span>}
+                  {owned && <span className="badge bundle">{t("remoteList.mineBadge")}</span>}
+                  {isLocal && <span className="badge bundle">{t("remoteList.localBadge")}</span>}
                 </div>
                 {desc && <div className="artifact-desc">{truncate(desc, 160)}</div>}
                 <div className="artifact-meta">
@@ -366,11 +369,11 @@ export function RemoteList({
                 <div className="card-actions">
                   <button
                     className="icon-btn"
-                    aria-label={starred ? `Unstar ${a.name}` : `Star ${a.name}`}
+                    aria-label={starred ? t("remoteList.unstarAria", { name: a.name }) : t("remoteList.starAria", { name: a.name })}
                     title={
                       cloudApiKey
-                        ? (starred ? "Unstar" : "Star")
-                        : "Sign in to star"
+                        ? (starred ? t("remoteList.unstarTitle") : t("remoteList.starTitle"))
+                        : t("remoteList.signInToStar")
                     }
                     disabled={!cloudApiKey || busyId === a.id}
                     onClick={(e) => {
@@ -385,11 +388,11 @@ export function RemoteList({
                     onClick={(e) => { e.stopPropagation(); startInstall(a.id); }}
                     disabled={installing === a.id || isInstalled}
                   >
-                    {installing === a.id ? "Installing…" : isInstalled ? "Installed ✓" : "Install"}
+                    {installing === a.id ? t("remoteList.installing") : isInstalled ? t("remoteList.installed") : t("remoteList.installButton")}
                   </button>
                   <RemoteRowMenu
                     items={buildMenuItems(a)}
-                    ariaLabel={`Manage ${a.name}`}
+                    ariaLabel={t("remoteList.manageAria", { name: a.name })}
                   />
                 </div>
               </div>
@@ -424,7 +427,7 @@ export function RemoteList({
       )}
       {remoteHasMore && (
         <div className="remote-load-more">
-          {remoteLoadingMore ? "Loading more…" : "Scroll for more"}
+          {remoteLoadingMore ? t("remoteList.loadingMore") : t("remoteList.scrollForMore")}
         </div>
       )}
       {pendingArtifact && (
@@ -444,24 +447,20 @@ export function RemoteList({
       )}
       {pendingDeleteArtifact && (
         <ConfirmDialog
-          title={`Delete ${pendingDeleteArtifact.name}?`}
+          title={t("remoteList.deleteTitle", { name: pendingDeleteArtifact.name })}
           message={
             <>
-              <div>
-                This soft-deletes the skill on skillsafe.ai, revoking its share
-                links and all versions:
-              </div>
+              <div>{t("remoteList.deleteDescription")}</div>
               <div className="confirm-target-path">
                 {pendingDeleteArtifact.frontmatter.namespace as string}
                 /{pendingDeleteArtifact.name}
               </div>
               <div className="confirm-warning">
-                ⚠ Existing installs will keep working, but no one will be able
-                to install or browse this skill again.
+                {t("remoteList.deleteWarning")}
               </div>
             </>
           }
-          confirmLabel="Delete"
+          confirmLabel={t("remoteList.deleteConfirm")}
           danger
           busy={busyId === pendingDeleteArtifact.id}
           onConfirm={confirmDelete}

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { marked } from "marked";
+import { useTranslation } from "react-i18next";
 import { useApp } from "../lib/store";
 import { CloseIcon } from "./icons";
 
@@ -12,6 +13,7 @@ interface Props {
 // Prompt-flow modal: only shown when autoUpdate === false. Renders release
 // notes (markdown) and lets the user start a download → install → relaunch.
 export function UpdateDialog({ onAccept, onLater, onSkip }: Props) {
+  const { t } = useTranslation();
   const { availableUpdate, currentVersion, updateProgress, updateError } = useApp();
   const [installing, setInstalling] = useState(false);
 
@@ -19,7 +21,7 @@ export function UpdateDialog({ onAccept, onLater, onSkip }: Props) {
 
   const notesHtml = (() => {
     try {
-      return marked.parse(availableUpdate.notes || "_No release notes._", { async: false }) as string;
+      return marked.parse(availableUpdate.notes || t("updateDialog.noNotes"), { async: false }) as string;
     } catch {
       return availableUpdate.notes || "";
     }
@@ -44,9 +46,9 @@ export function UpdateDialog({ onAccept, onLater, onSkip }: Props) {
     <div className="dialog-backdrop" onClick={installing ? undefined : onLater}>
       <div className="dialog update-dialog" onClick={(e) => e.stopPropagation()}>
         <header className="settings-header">
-          <h3>Update available</h3>
+          <h3>{t("updateDialog.title")}</h3>
           {!installing && (
-            <button className="settings-close icon-btn" aria-label="Close" onClick={onLater}>
+            <button className="settings-close icon-btn" aria-label={t("updateDialog.closeAria")} onClick={onLater}>
               <CloseIcon size={14} />
             </button>
           )}
@@ -62,10 +64,10 @@ export function UpdateDialog({ onAccept, onLater, onSkip }: Props) {
             <div className="update-installing">
               <div className="update-installing-label">
                 {updateProgress?.phase === "installing"
-                  ? "Installing…"
+                  ? t("updateDialog.installing")
                   : updateProgress?.phase === "done"
-                  ? "Restarting…"
-                  : `Downloading${pct !== null ? ` — ${pct}%` : "…"}`}
+                  ? t("updateDialog.restarting")
+                  : t("updateDialog.downloading", { percentSuffix: pct !== null ? ` — ${pct}%` : "…" })}
               </div>
               {pct !== null && updateProgress?.phase === "downloading" && (
                 <div className="update-progress">
@@ -80,13 +82,13 @@ export function UpdateDialog({ onAccept, onLater, onSkip }: Props) {
         </div>
         <footer className="update-dialog-footer">
           <button onClick={onSkip} disabled={installing}>
-            Skip this version
+            {t("updateDialog.skipThisVersion")}
           </button>
           <button onClick={onLater} disabled={installing}>
-            Later
+            {t("updateDialog.later")}
           </button>
           <button className="primary" onClick={handleAccept} disabled={installing}>
-            {installing ? "Working…" : "Update now"}
+            {installing ? t("common.working") : t("updateDialog.updateNow")}
           </button>
         </footer>
       </div>

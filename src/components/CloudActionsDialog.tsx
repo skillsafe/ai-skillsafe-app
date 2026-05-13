@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { useApp } from "../lib/store";
 import { tauriFs, tauriJoiner } from "../lib/tauriAdapters";
 import {
@@ -25,6 +27,7 @@ interface Props {
 }
 
 export function CloudActionsDialog({ onClose, onToast, presetArtifactId, onAfterSave }: Props) {
+  const { t } = useTranslation();
   const { cloudApiKey, cloudAccount, artifacts } = useApp();
   const [tab, setTab] = useState<Tab>("save");
 
@@ -33,13 +36,13 @@ export function CloudActionsDialog({ onClose, onToast, presetArtifactId, onAfter
       <div className="dialog-backdrop" onClick={onClose}>
         <div className="dialog cloud-dialog" onClick={(e) => e.stopPropagation()}>
           <div className="cloud-header">
-            <h3>Cloud actions</h3>
+            <h3>{t("cloudActions.title")}</h3>
           </div>
           <div className="cloud-panel">
-            <div className="cloud-hint">Sign in via the Settings gear to save or share skills.</div>
+            <div className="cloud-hint">{t("cloudActions.signInHint")}</div>
           </div>
           <div className="dialog-row">
-            <button onClick={onClose}>Close</button>
+            <button onClick={onClose}>{t("common.close")}</button>
           </div>
         </div>
       </div>
@@ -52,10 +55,10 @@ export function CloudActionsDialog({ onClose, onToast, presetArtifactId, onAfter
     <div className="dialog-backdrop" onClick={onClose}>
       <div className="dialog cloud-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="cloud-header">
-          <h3>Cloud actions</h3>
+          <h3>{t("cloudActions.title")}</h3>
           <div className="cloud-tabs">
-            <TabButton active={tab === "save"} onClick={() => setTab("save")}>Save</TabButton>
-            <TabButton active={tab === "share"} onClick={() => setTab("share")}>Share</TabButton>
+            <TabButton active={tab === "save"} onClick={() => setTab("save")}>{t("cloudActions.tabSave")}</TabButton>
+            <TabButton active={tab === "share"} onClick={() => setTab("share")}>{t("cloudActions.tabShare")}</TabButton>
           </div>
         </div>
 
@@ -67,14 +70,15 @@ export function CloudActionsDialog({ onClose, onToast, presetArtifactId, onAfter
             onToast={onToast}
             presetArtifactId={presetArtifactId}
             onAfterSave={onAfterSave}
+            t={t}
           />
         )}
         {tab === "share" && (
-          <SharePanel cloudApiKey={cloudApiKey} namespace={namespace} onToast={onToast} />
+          <SharePanel cloudApiKey={cloudApiKey} namespace={namespace} onToast={onToast} t={t} />
         )}
 
         <div className="dialog-row">
-          <button onClick={onClose}>Close</button>
+          <button onClick={onClose}>{t("common.close")}</button>
         </div>
       </div>
     </div>
@@ -96,6 +100,7 @@ function SavePanel({
   onToast,
   presetArtifactId,
   onAfterSave,
+  t,
 }: {
   cloudApiKey: string;
   namespace: string;
@@ -103,6 +108,7 @@ function SavePanel({
   onToast: (kind: "ok" | "error", text: string) => void;
   presetArtifactId?: string;
   onAfterSave?: () => Promise<void> | void;
+  t: TFunction;
 }) {
   const bundles = useMemo(
     () => artifacts.filter((a) => a.isBundle && a.bundleDir),
@@ -163,7 +169,7 @@ function SavePanel({
           file_manifest: manifest,
         },
       );
-      onToast("ok", `Saved ${namespace}/${selected.name} v${data.version}`);
+      onToast("ok", t("cloudActions.savedToast", { namespace, name: selected.name, version: data.version }));
       // Reflect the version that actually got published, so the field is in
       // sync if the user immediately re-saves.
       setVersion(data.version);
@@ -171,7 +177,7 @@ function SavePanel({
       // in "Mine" without the user having to manually re-search.
       if (onAfterSave) await onAfterSave();
     } catch (e) {
-      onToast("error", `Save failed: ${describeError(e)}`);
+      onToast("error", t("cloudActions.saveFailedToast", { message: describeError(e) }));
     } finally {
       setBusy(false);
     }
@@ -180,11 +186,11 @@ function SavePanel({
   return (
     <div className="cloud-panel">
       {bundles.length === 0 ? (
-        <div className="cloud-empty">No skill bundles loaded. Switch to a tool with bundles in the sidebar.</div>
+        <div className="cloud-empty">{t("cloudActions.noBundles")}</div>
       ) : (
         <>
           <div className="fm-field">
-            <label className="fm-label">skill bundle</label>
+            <label className="fm-label">{t("cloudActions.skillBundle")}</label>
             <select
               value={bundleId}
               onChange={(e) => setBundleId(e.target.value)}
@@ -192,38 +198,38 @@ function SavePanel({
             >
               {bundles.map((b) => (
                 <option key={b.id} value={b.id}>
-                  {b.name}{b.scope === "project" ? "  (project)" : ""}
+                  {b.name}{b.scope === "project" ? t("cloudActions.projectSuffix") : ""}
                 </option>
               ))}
             </select>
           </div>
           <div className="fm-field">
-            <label className="fm-label">target</label>
-            <div className="cloud-static">{namespace || "(unknown namespace)"}/{selected?.name ?? ""}</div>
+            <label className="fm-label">{t("cloudActions.target")}</label>
+            <div className="cloud-static">{namespace || t("cloudActions.unknownNamespace")}/{selected?.name ?? ""}</div>
           </div>
           <div className="fm-field">
-            <label className="fm-label">version (semver — auto-filled if blank)</label>
-            <input value={version} onChange={(e) => setVersion(e.target.value)} placeholder="0.1.0" />
+            <label className="fm-label">{t("cloudActions.versionLabel")}</label>
+            <input value={version} onChange={(e) => setVersion(e.target.value)} placeholder={t("cloudActions.versionPlaceholder")} />
           </div>
           <div className="fm-field">
-            <label className="fm-label">description</label>
+            <label className="fm-label">{t("cloudActions.description")}</label>
             <input value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
           <div className="fm-field">
-            <label className="fm-label">category</label>
+            <label className="fm-label">{t("cloudActions.category")}</label>
             <input value={category} onChange={(e) => setCategory(e.target.value)} />
           </div>
           <div className="fm-field">
-            <label className="fm-label">tags (comma-separated)</label>
-            <input value={tagsText} onChange={(e) => setTagsText(e.target.value)} placeholder="rag, eval" />
+            <label className="fm-label">{t("cloudActions.tagsLabel")}</label>
+            <input value={tagsText} onChange={(e) => setTagsText(e.target.value)} placeholder={t("cloudActions.tagsPlaceholder")} />
           </div>
           <div className="fm-field">
-            <label className="fm-label">changelog</label>
+            <label className="fm-label">{t("cloudActions.changelog")}</label>
             <textarea value={changelog} onChange={(e) => setChangelog(e.target.value)} rows={3} />
           </div>
           <div className="dialog-row">
             <button className="primary" onClick={handleSave} disabled={busy || !selected}>
-              {busy ? "Saving…" : "Save to skillsafe.ai"}
+              {busy ? t("cloudActions.saving") : t("cloudActions.saveButton")}
             </button>
           </div>
         </>
@@ -236,10 +242,12 @@ function SharePanel({
   cloudApiKey,
   namespace,
   onToast,
+  t,
 }: {
   cloudApiKey: string;
   namespace: string;
   onToast: (kind: "ok" | "error", text: string) => void;
+  t: TFunction;
 }) {
   const [name, setName] = useState("");
   const [version, setVersion] = useState("");
@@ -254,7 +262,7 @@ function SharePanel({
       const { data } = await getSkill(namespace, name, cloudApiKey);
       if (data.latest_version) setVersion(data.latest_version);
     } catch (e) {
-      onToast("error", `Lookup failed: ${describeError(e)}`);
+      onToast("error", t("cloudActions.lookupFailed", { message: describeError(e) }));
     }
   }
 
@@ -267,9 +275,9 @@ function SharePanel({
         expires_in: expiresIn,
       });
       setLink(data);
-      onToast("ok", "Share link created.");
+      onToast("ok", t("cloudActions.shareLinkCreatedToast"));
     } catch (e) {
-      onToast("error", `Share failed: ${describeError(e)}`);
+      onToast("error", t("cloudActions.shareFailedToast", { message: describeError(e) }));
     } finally {
       setBusy(false);
     }
@@ -280,46 +288,46 @@ function SharePanel({
   return (
     <div className="cloud-panel">
       <div className="fm-field">
-        <label className="fm-label">skill (namespace prefilled)</label>
+        <label className="fm-label">{t("cloudActions.skillLabel")}</label>
         <div className="cloud-row">
           <span className="cloud-static">{namespace}/</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="skill-name" />
-          <button onClick={fillCurrentVersion} disabled={!name}>latest</button>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("cloudActions.skillPlaceholder")} />
+          <button onClick={fillCurrentVersion} disabled={!name}>{t("cloudActions.latestButton")}</button>
         </div>
       </div>
       <div className="fm-field">
-        <label className="fm-label">version</label>
-        <input value={version} onChange={(e) => setVersion(e.target.value)} placeholder="0.1.0" />
+        <label className="fm-label">{t("versionAction.versionLabel")}</label>
+        <input value={version} onChange={(e) => setVersion(e.target.value)} placeholder={t("cloudActions.versionPlaceholder")} />
       </div>
       <div className="fm-field">
-        <label className="fm-label">visibility</label>
+        <label className="fm-label">{t("cloudActions.visibility")}</label>
         <select value={visibility} onChange={(e) => setVisibility(e.target.value as "private" | "public")}>
-          <option value="private">private (link only)</option>
-          <option value="public">public (discoverable)</option>
+          <option value="private">{t("cloudActions.visibilityPrivate")}</option>
+          <option value="public">{t("cloudActions.visibilityPublic")}</option>
         </select>
       </div>
       <div className="fm-field">
-        <label className="fm-label">expires in</label>
+        <label className="fm-label">{t("cloudActions.expiresIn")}</label>
         <select value={expiresIn} onChange={(e) => setExpiresIn(e.target.value as typeof expiresIn)}>
-          <option value="never">never</option>
-          <option value="1d">1 day</option>
-          <option value="7d">7 days</option>
-          <option value="30d">30 days</option>
+          <option value="never">{t("cloudActions.expiresNever")}</option>
+          <option value="1d">{t("cloudActions.expires1d")}</option>
+          <option value="7d">{t("cloudActions.expires7d")}</option>
+          <option value="30d">{t("cloudActions.expires30d")}</option>
         </select>
       </div>
       <div className="dialog-row">
         <button className="primary" onClick={handleCreate} disabled={busy || !name || !version}>
-          {busy ? "Creating…" : "Create share link"}
+          {busy ? t("cloudActions.creating") : t("cloudActions.createShareLink")}
         </button>
       </div>
       {link && (
         <div className="cloud-share-result">
           <div className="cloud-share-url">{shareUrl}</div>
           <div className="cloud-row">
-            <button onClick={() => navigator.clipboard.writeText(shareUrl).then(() => onToast("ok", "Copied."))}>
-              Copy
+            <button onClick={() => navigator.clipboard.writeText(shareUrl).then(() => onToast("ok", t("cloudActions.copiedToast")))}>
+              {t("common.copy")}
             </button>
-            <button onClick={() => shellOpen(shareUrl).catch(() => {})}>Open</button>
+            <button onClick={() => shellOpen(shareUrl).catch(() => {})}>{t("common.open")}</button>
           </div>
         </div>
       )}

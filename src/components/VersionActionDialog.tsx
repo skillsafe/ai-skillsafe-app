@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { listSkillVersions, SkillSafeError } from "../lib/skillsafe/client";
 
 export type VersionAction = "set-current" | "yank";
@@ -28,6 +29,7 @@ export function VersionActionDialog({
   onConfirm,
   onCancel,
 }: Props) {
+  const { t } = useTranslation();
   const [versions, setVersions] = useState<string[] | null>(
     versionsProp ? [...versionsProp] : null,
   );
@@ -50,15 +52,14 @@ export function VersionActionDialog({
       }
     })();
     return () => { cancelled = true; };
-    // versionsProp is intentionally constant here; defaultVersion handled by initial state.
   }, [ns, name, apiKey, versionsProp, version]);
 
   const isYank = action === "yank";
-  const title = isYank ? `Yank a version of ${ns}/${name}` : `Set current version of ${ns}/${name}`;
-  const confirmLabel = isYank ? "Yank" : "Set current";
-  const explanation = isYank
-    ? "Yanked versions stay downloadable for installs that already pin them, but disappear from default resolution."
-    : "Pinning a version sets the default that install / search surfaces for new users.";
+  const title = isYank
+    ? t("versionAction.titleYank", { ns, name })
+    : t("versionAction.titleSetCurrent", { ns, name });
+  const confirmLabel = isYank ? t("versionAction.confirmYank") : t("versionAction.confirmSetCurrent");
+  const explanation = isYank ? t("versionAction.explainYank") : t("versionAction.explainSetCurrent");
 
   const canConfirm = !busy && !!version;
 
@@ -69,9 +70,9 @@ export function VersionActionDialog({
         <div className="confirm-message">{explanation}</div>
 
         <div className="fm-field">
-          <label className="fm-label">version</label>
+          <label className="fm-label">{t("versionAction.versionLabel")}</label>
           {versions === null && !loadError ? (
-            <div className="cloud-static">Loading versions…</div>
+            <div className="cloud-static">{t("versionAction.loadingVersions")}</div>
           ) : loadError ? (
             <div className="empty-error">{loadError}</div>
           ) : (
@@ -89,25 +90,25 @@ export function VersionActionDialog({
 
         {isYank && (
           <div className="fm-field">
-            <label className="fm-label">reason (optional)</label>
+            <label className="fm-label">{t("versionAction.reasonLabel")}</label>
             <textarea
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               rows={2}
-              placeholder="e.g. broken on macOS sequoia"
+              placeholder={t("versionAction.reasonPlaceholder")}
               disabled={busy}
             />
           </div>
         )}
 
         <div className="dialog-row">
-          <button onClick={onCancel} disabled={busy}>Cancel</button>
+          <button onClick={onCancel} disabled={busy}>{t("common.cancel")}</button>
           <button
             className={isYank ? "danger" : "primary"}
             onClick={() => onConfirm({ version, reason: isYank ? reason : undefined })}
             disabled={!canConfirm}
           >
-            {busy ? "Working…" : confirmLabel}
+            {busy ? t("common.working") : confirmLabel}
           </button>
         </div>
       </div>

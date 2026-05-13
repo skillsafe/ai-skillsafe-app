@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { Sidebar } from "./components/Sidebar";
 import { ArtifactList } from "./components/ArtifactList";
 import { Editor } from "./components/Editor";
@@ -45,6 +47,7 @@ import { parseDeepLink, type DeepLinkInstall } from "./lib/deepLink";
 import { getCurrent as getCurrentDeepLinks, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 
 export default function App() {
+  const { t } = useTranslation();
   const {
     tool,
     scope,
@@ -116,7 +119,7 @@ export default function App() {
       try {
         const { getCurrentWindow } = await import("@tauri-apps/api/window");
         if (cancelled) return;
-        await getCurrentWindow().setTitle(`AI SkillSafe v${currentVersion}`);
+        await getCurrentWindow().setTitle(t("app.windowTitle", { version: currentVersion }));
       } catch {
         // Non-Tauri context (e.g. vitest) — nothing to do.
       }
@@ -124,7 +127,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [currentVersion]);
+  }, [currentVersion, t]);
 
   // When theme === "system", track OS preference changes live.
   useEffect(() => {
@@ -359,7 +362,7 @@ export default function App() {
       .catch((e) => {
         if (cancelled) return;
         const msg = e instanceof SkillSafeError ? `${e.code}: ${e.message}` : String(e);
-        emitToast("error", `Cloud sign-in expired or invalid: ${msg}. Sign in again from settings.`);
+        emitToast("error", t("app.toastCloudSignInExpired", { message: msg }));
         setCloudAuth(null, null);
       });
     return () => { cancelled = true; };
@@ -490,7 +493,7 @@ export default function App() {
       setRemoteNextCursor(res.meta?.pagination?.next_cursor ?? null);
     } catch (e) {
       const msg = e instanceof SkillSafeError ? `${e.code}: ${e.message}` : String(e);
-      emitToast("error", `Couldn't load more skills: ${msg}`);
+      emitToast("error", t("app.toastLoadMoreFailed", { message: msg }));
     } finally {
       setRemoteLoadingMore(false);
     }
@@ -527,7 +530,7 @@ export default function App() {
           const meta = await getSkill(intent.ns, intent.name, cloudApiKey);
           version = meta.data.latest_version;
           if (!version) {
-            throw new Error(`Skill ${intent.ns}/${intent.name} has no published version yet.`);
+            throw new Error(t("app.errorNoPublishedVersion", { ns: intent.ns, name: intent.name }));
           }
         }
         const result = await installSkill(tauriFs, tauriPaths, tauriJoiner, {
@@ -542,7 +545,7 @@ export default function App() {
         });
         emitToast(
           "ok",
-          `Installed ${intent.ns}/${intent.name}@${version} → ${result.targetDir}`,
+          t("app.toastInstalled", { ns: intent.ns, name: intent.name, version, targetDir: result.targetDir }),
         );
         setDeepLinkInstall(null);
         await reload();
@@ -554,12 +557,12 @@ export default function App() {
             : e instanceof Error
               ? e.message
               : String(e);
-        emitToast("error", `Install failed: ${msg}`);
+        emitToast("error", t("app.toastInstallFailed", { message: msg }));
       } finally {
         setDeepLinkBusy(false);
       }
     },
-    [deepLinkInstall, cloudApiKey, tool, emitToast, reload, reloadRemote, cloudOpen],
+    [deepLinkInstall, cloudApiKey, tool, emitToast, reload, reloadRemote, cloudOpen, t],
   );
 
   useEffect(() => {
@@ -610,10 +613,10 @@ export default function App() {
       setShowNew(false);
       await reload();
       setSelectedId(newArtifact.id);
-      setToast({ kind: "ok", text: "Created." });
+      setToast({ kind: "ok", text: t("app.toastCreated") });
       setTimeout(() => setToast(null), 2500);
     } catch (e) {
-      setToast({ kind: "error", text: `Create failed: ${e}` });
+      setToast({ kind: "error", text: t("app.toastCreateFailed", { message: String(e) }) });
     }
   }
 
@@ -634,7 +637,7 @@ export default function App() {
 
   async function handleBackupFromRow(a: MarkdownArtifact) {
     if (!backupDestination) {
-      emitToast("error", "Set a backup folder in Settings → Local Backup first.");
+      emitToast("error", t("app.toastSetBackupFolder"));
       return;
     }
     setBackingUpId(a.id);
@@ -651,12 +654,12 @@ export default function App() {
       const { added, changed, unchanged } = stats.counts;
       const wrote = added + changed;
       if (wrote === 0) {
-        emitToast("ok", `${a.name}: already up to date (${unchanged} files unchanged).`);
+        emitToast("ok", t("app.toastBackupUpToDate", { name: a.name, unchanged }));
       } else {
-        emitToast("ok", `Backed up ${a.name}: +${added} ~${changed}.`);
+        emitToast("ok", t("app.toastBackedUp", { name: a.name, added, changed }));
       }
     } catch (e) {
-      emitToast("error", `Backup failed: ${e instanceof Error ? e.message : String(e)}`);
+      emitToast("error", t("app.toastBackupFailed", { message: e instanceof Error ? e.message : String(e) }));
     } finally {
       setBackingUpId(null);
     }
@@ -673,11 +676,11 @@ export default function App() {
         await deleteMarkdownFile(tauriFs, a);
       }
       removeArtifact(a.id);
-      emitToast("ok", `Deleted ${a.name}.`);
+      emitToast("ok", t("app.toastDeleted", { name: a.name }));
       setPendingDelete(null);
       await reload();
     } catch (e) {
-      emitToast("error", `Delete failed: ${e instanceof Error ? e.message : String(e)}`);
+      emitToast("error", t("app.toastDeleteFailed", { message: e instanceof Error ? e.message : String(e) }));
     } finally {
       setDeleteBusy(false);
     }
@@ -700,10 +703,10 @@ export default function App() {
       const raw = stringifyFrontmatter(converted.frontmatter, converted.body);
       await atomicWrite(tauriFs, filePath, raw);
       setShowConvert(false);
-      setToast({ kind: "ok", text: `Converted → ${filePath}` });
+      setToast({ kind: "ok", text: t("app.toastConverted", { path: filePath }) });
       setTimeout(() => setToast(null), 4000);
     } catch (e) {
-      setToast({ kind: "error", text: `Convert failed: ${e}` });
+      setToast({ kind: "error", text: t("app.toastConvertFailed", { message: String(e) }) });
     }
   }
 
@@ -711,11 +714,11 @@ export default function App() {
     try {
       await orchestrator.installPendingNow((p) => useApp.getState().setUpdateProgress(p));
     } catch (e) {
-      emitToast("error", `Install failed: ${e instanceof Error ? e.message : String(e)}`);
+      emitToast("error", t("app.toastInstallFailed", { message: e instanceof Error ? e.message : String(e) }));
     } finally {
       useApp.getState().setUpdateProgress(null);
     }
-  }, [orchestrator, emitToast]);
+  }, [orchestrator, emitToast, t]);
 
   return (
     <div className="app-root">
@@ -792,7 +795,7 @@ export default function App() {
         min={160}
         max={480}
         style={{ left: `${layout.col1}px` }}
-        ariaLabel="Resize sidebar"
+        ariaLabel={t("app.resizeSidebar")}
         onChange={(v) => setLayout({ col1: v })}
       />
       <ResizeHandle
@@ -803,10 +806,10 @@ export default function App() {
         style={{ left: `calc(${layout.col1}px + ${layout.col2}px)` }}
         ariaLabel={
           view === "artifacts"
-            ? "Resize artifact list"
+            ? t("app.resizeArtifactList")
             : view === "workbench"
-              ? "Resize inventory list"
-              : "Resize configs list"
+              ? t("app.resizeInventoryList")
+              : t("app.resizeConfigsList")
         }
         onChange={(v) => setLayout({ col2: v })}
       />
@@ -817,7 +820,7 @@ export default function App() {
           min={18}
           max={82}
           style={{ top: `${layout.rowPct}%` }}
-          ariaLabel="Resize bottom panel"
+          ariaLabel={t("app.resizeBottomPanel")}
           onChange={(v) => setLayout({ rowPct: v })}
         />
       )}
@@ -845,9 +848,9 @@ export default function App() {
       )}
       {pendingDelete && (
         <ConfirmDialog
-          title={`Delete ${pendingDelete.name}?`}
-          message={renderDeleteMessage(pendingDelete, deletePreview)}
-          confirmLabel="Delete"
+          title={t("app.deleteTitle", { name: pendingDelete.name })}
+          message={renderDeleteMessage(pendingDelete, deletePreview, t)}
+          confirmLabel={t("app.deleteConfirmLabel")}
           danger
           busy={deleteBusy}
           onConfirm={confirmDelete}
@@ -881,7 +884,7 @@ export default function App() {
           {toast.kind === "error" && (
             <button
               className="toast-close"
-              aria-label="Dismiss"
+              aria-label={t("app.toastDismissAria")}
               onClick={() => setToast(null)}
             >
               ×
@@ -910,16 +913,16 @@ export default function App() {
 function renderDeleteMessage(
   artifact: MarkdownArtifact,
   preview: DeletePreview | null,
+  t: TFunction,
 ): ReactNode {
+  const introKey = artifact.isBundle ? "app.deleteDescriptionBundle" : "app.deleteDescriptionFile";
   // No preview yet — keep the dialog responsive while the cascade resolver
   // runs. The single-path fallback matches the conservative behavior even
   // if the user hits "Delete" before the resolver returns.
   if (!preview) {
     return (
       <>
-        <div>
-          This will remove the {artifact.isBundle ? "skill bundle" : "file"} from disk:
-        </div>
+        <div>{t(introKey)}</div>
         <div className="confirm-target-path">{artifact.bundleDir ?? artifact.path}</div>
       </>
     );
@@ -931,10 +934,12 @@ function renderDeleteMessage(
   if (preview.primaryIsSymlink) {
     return (
       <>
-        <div>This entry is a symlink. Deleting it will only remove the link:</div>
+        <div>{t("app.deleteSymlinkIntro")}</div>
         <div className="confirm-target-path">{preview.primaryPath}</div>
         <div className="confirm-note">
-          The underlying skill bundle that this symlink points to will <strong>not</strong> be removed.
+          {t("app.deleteSymlinkNotePrefix")}
+          <strong>{t("app.deleteSymlinkNoteEmphasis")}</strong>
+          {t("app.deleteSymlinkNoteSuffix")}
         </div>
       </>
     );
@@ -945,14 +950,18 @@ function renderDeleteMessage(
   if (preview.bridgeSymlinkPath) {
     return (
       <>
-        <div>This will remove <strong>2 paths</strong> from disk:</div>
+        <div>
+          {t("app.deleteCascadeIntroPrefix")}
+          <strong>{t("app.deleteCascadeIntroEmphasis")}</strong>
+          {t("app.deleteCascadeIntroSuffix")}
+        </div>
         <ol className="confirm-path-list">
           <li>
-            <span className="confirm-path-label">Skill bundle:</span>
+            <span className="confirm-path-label">{t("app.deleteCascadeBundleLabel")}</span>
             <div className="confirm-target-path">{preview.primaryPath}</div>
           </li>
           <li>
-            <span className="confirm-path-label">Symlink for Claude Code:</span>
+            <span className="confirm-path-label">{t("app.deleteCascadeSymlinkLabel")}</span>
             <div className="confirm-target-path">{preview.bridgeSymlinkPath}</div>
           </li>
         </ol>
@@ -963,9 +972,7 @@ function renderDeleteMessage(
   // Case 1: a single real bundle/file, no cascade.
   return (
     <>
-      <div>
-        This will remove the {artifact.isBundle ? "skill bundle" : "file"} from disk:
-      </div>
+      <div>{t(introKey)}</div>
       <div className="confirm-target-path">{preview.primaryPath}</div>
     </>
   );

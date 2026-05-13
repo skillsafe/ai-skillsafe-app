@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
+import { useTranslation } from "react-i18next";
 import { fetchAccount, runDeviceFlow } from "../lib/skillsafe/auth";
 import { SkillSafeError } from "../lib/skillsafe/client";
 import { useApp } from "../lib/store";
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export function AccountPanel({ onToast }: Props) {
+  const { t } = useTranslation();
   const { cloudApiKey, cloudAccount, setCloudAuth } = useApp();
   const [signingIn, setSigningIn] = useState(false);
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
@@ -20,19 +22,19 @@ export function AccountPanel({ onToast }: Props) {
       const apiKey = await runDeviceFlow({
         onAuthUrl: (url) => {
           shellOpen(url).then(
-            () => onToast("ok", "Approve sign-in in your browser…"),
+            () => onToast("ok", t("toast.openBrowser")),
             (e) => {
               console.error("shell.open failed:", e);
-              onToast("error", `Couldn't open browser (${describeError(e)}). Open manually: ${url}`);
+              onToast("error", t("toast.couldNotOpenBrowser", { reason: describeError(e), url }));
             },
           );
         },
       });
       const account = await fetchAccount(apiKey);
       setCloudAuth(apiKey, account);
-      onToast("ok", `Signed in as ${account.namespace}`);
+      onToast("ok", t("toast.signedInAs", { namespace: account.namespace }));
     } catch (e) {
-      onToast("error", `Sign-in failed: ${describeError(e)}`);
+      onToast("error", t("toast.signInFailed", { message: describeError(e) }));
     } finally {
       setSigningIn(false);
     }
@@ -41,16 +43,16 @@ export function AccountPanel({ onToast }: Props) {
   function handleLogout() {
     setCloudAuth(null, null);
     setConfirmingSignOut(false);
-    onToast("ok", "Signed out.");
+    onToast("ok", t("toast.signOutDone"));
   }
 
   if (!cloudApiKey) {
     return (
       <div className="cloud-panel cloud-account">
-        <p>Sign in to save, share, and install private skills via skillsafe.ai. Public skills can be installed without signing in.</p>
+        <p>{t("accountPanel.signedOutHint")}</p>
         <div className="dialog-row">
           <button className="primary" onClick={handleSignIn} disabled={signingIn}>
-            {signingIn ? "Waiting for browser approval…" : "Sign in with skillsafe.ai"}
+            {signingIn ? t("accountPanel.waitingApproval") : t("accountPanel.signInWith")}
           </button>
         </div>
       </div>
@@ -59,40 +61,37 @@ export function AccountPanel({ onToast }: Props) {
   return (
     <div className="cloud-panel cloud-account">
       <div className="fm-field">
-        <label className="fm-label">namespace</label>
+        <label className="fm-label">{t("accountPanel.namespace")}</label>
         <div className="cloud-static">{cloudAccount?.namespace ?? "—"}</div>
       </div>
       <div className="fm-field">
-        <label className="fm-label">email</label>
+        <label className="fm-label">{t("accountPanel.email")}</label>
         <div className="cloud-static">
           {cloudAccount?.email ?? "—"}
           {cloudAccount && !cloudAccount.email_verified && (
-            <span className="badge drift" style={{ marginLeft: 8 }}>unverified</span>
+            <span className="badge drift" style={{ marginLeft: 8 }}>{t("settings.account.unverified")}</span>
           )}
         </div>
       </div>
       <div className="fm-field">
-        <label className="fm-label">tier</label>
+        <label className="fm-label">{t("accountPanel.tier")}</label>
         <div className="cloud-static">{cloudAccount?.tier ?? "—"}</div>
       </div>
       <div className="dialog-row">
-        <button onClick={() => setConfirmingSignOut(true)}>Sign out</button>
+        <button onClick={() => setConfirmingSignOut(true)}>{t("accountPanel.signOut")}</button>
       </div>
       {confirmingSignOut && (
         <ConfirmDialog
-          title="Sign out of skillsafe.ai?"
+          title={t("accountPanel.signOutDialogTitle")}
           message={
             <>
-              <div>
-                You'll lose access to your private skills, share links, and
-                the ability to upload until you sign back in.
-              </div>
+              <div>{t("accountPanel.signOutDialogMessage")}</div>
               <div className="confirm-warning" style={{ marginTop: 8 }}>
-                Local skills on disk are unaffected.
+                {t("accountPanel.signOutDialogNote")}
               </div>
             </>
           }
-          confirmLabel="Sign out"
+          confirmLabel={t("accountPanel.signOut")}
           danger
           onConfirm={handleLogout}
           onCancel={() => setConfirmingSignOut(false)}

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 export interface RemoteRowMenuItem {
   label: string;
@@ -17,7 +18,9 @@ interface Props {
 // outside click or Escape. The popover is positioned above the menu trigger
 // (`bottom: 100%`) so it stays inside the artifact card without clipping the
 // scroll container.
-export function RemoteRowMenu({ items, ariaLabel = "More actions" }: Props) {
+export function RemoteRowMenu({ items, ariaLabel }: Props) {
+  const { t } = useTranslation();
+  const effectiveAriaLabel = ariaLabel ?? t("remoteRowMenu.moreActions");
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -45,7 +48,7 @@ export function RemoteRowMenu({ items, ariaLabel = "More actions" }: Props) {
         className="row-menu-trigger"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={ariaLabel}
+        aria-label={effectiveAriaLabel}
         onClick={(e) => {
           e.stopPropagation();
           setOpen((o) => !o);

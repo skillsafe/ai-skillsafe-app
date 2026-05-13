@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useApp } from "../lib/store";
 import { CloseIcon, DownloadIcon } from "./icons";
 
@@ -12,6 +13,7 @@ interface Props {
 // is intentionally surfaced in Settings → About instead, to keep the main
 // window quiet while a background download is in flight.
 export function UpdateBanner({ onRestartNow }: Props) {
+  const { t } = useTranslation();
   const {
     autoUpdate,
     availableUpdate,
@@ -28,24 +30,25 @@ export function UpdateBanner({ onRestartNow }: Props) {
   }
 
   const version = availableUpdate?.version ?? "";
+  const label = t("updateBanner.restartToUpdate", { version });
   return (
     <div className="update-pill update-pill-ready" role="status">
       <button
         className="update-pill-action"
         onClick={onRestartNow}
-        title={`Restart to update to v${version}`}
+        title={label}
       >
         <DownloadIcon size={14} />
-        <span className="update-pill-text">Restart to update to v{version}</span>
+        <span className="update-pill-text">{label}</span>
       </button>
       <button
         className="update-pill-dismiss icon-btn"
-        aria-label="Dismiss update notification for this version"
+        aria-label={t("updateBanner.dismissAria")}
         onClick={() => {
           if (version) setDismissedUpdateVersion(version);
           setUpdateReadyToInstall(false);
         }}
-        title="Hide — won't show again for this version"
+        title={t("updateBanner.dismissTitle")}
       >
         <CloseIcon size={12} />
       </button>

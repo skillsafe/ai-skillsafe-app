@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useApp } from "../lib/store";
 import { AttachmentTree } from "./AttachmentTree";
 import { ArchiveIcon, TrashIcon, UploadCloudIcon } from "./icons";
@@ -17,6 +18,7 @@ export function ArtifactList({
   onBackup,
   onUpload,
 }: Props) {
+  const { t } = useTranslation();
   const {
     artifacts,
     selectedId,
@@ -64,17 +66,17 @@ export function ArtifactList({
       <div className="list-toolbar">
         <input
           className="search"
-          placeholder="Filter…"
+          placeholder={t("artifactList.filterPlaceholder")}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <button onClick={onReload} aria-label="Reload artifact list" title="Reload">
+        <button onClick={onReload} aria-label={t("artifactList.reloadAria")} title={t("artifactList.reloadTitle")}>
           ↻
         </button>
       </div>
       {filtered.length === 0 ? (
         <div className="empty">
-          {artifacts.length === 0 ? "No artifacts in this scope yet." : "No matches."}
+          {artifacts.length === 0 ? t("artifactList.noArtifacts") : t("artifactList.noMatches")}
           {error && <div className="empty-error">{error}</div>}
         </div>
       ) : (
@@ -91,7 +93,7 @@ export function ArtifactList({
               >
                 <div className="artifact-name">
                   {a.name}
-                  {drift && <span className="badge drift">drift</span>}
+                  {drift && <span className="badge drift">{t("artifactList.driftBadge")}</span>}
                 </div>
                 {desc && <div className="artifact-desc">{truncate(desc, 160)}</div>}
                 <div className="artifact-meta">
@@ -116,11 +118,11 @@ export function ArtifactList({
                 <div className="card-actions">
                   <button
                     className="icon-btn"
-                    aria-label={`Back up ${a.name}`}
+                    aria-label={t("artifactList.backupAria", { name: a.name })}
                     title={
                       backupDestination
-                        ? "Back up this skill to the backup folder"
-                        : "Set a backup folder in Settings → Local Backup first"
+                        ? t("artifactList.backupTitleReady")
+                        : t("artifactList.backupTitleNeedsSetup")
                     }
                     disabled={!backupDestination}
                     onClick={(e) => { e.stopPropagation(); onBackup(a); }}
@@ -129,13 +131,13 @@ export function ArtifactList({
                   </button>
                   <button
                     className="icon-btn"
-                    aria-label={`Upload ${a.name} to skillsafe.ai`}
+                    aria-label={t("artifactList.uploadAria", { name: a.name })}
                     title={
                       !canUpload
-                        ? "Only bundle skills (with SKILL.md) can be uploaded"
+                        ? t("artifactList.uploadTitleNotBundle")
                         : !cloudApiKey
-                          ? "Sign in via Settings to upload"
-                          : "Upload to skillsafe.ai"
+                          ? t("artifactList.uploadTitleNotSignedIn")
+                          : t("artifactList.uploadTitleReady")
                     }
                     disabled={!canUpload || !cloudApiKey}
                     onClick={(e) => { e.stopPropagation(); onUpload(a); }}
@@ -144,8 +146,8 @@ export function ArtifactList({
                   </button>
                   <button
                     className="icon-btn danger"
-                    aria-label={`Delete ${a.name}`}
-                    title="Delete from disk"
+                    aria-label={t("artifactList.deleteAria", { name: a.name })}
+                    title={t("artifactList.deleteTitle")}
                     onClick={(e) => { e.stopPropagation(); onDelete(a); }}
                   >
                     <TrashIcon size={14} />

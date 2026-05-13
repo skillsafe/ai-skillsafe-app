@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useApp } from "../lib/store";
 import { AccountPanel } from "./AccountPanel";
 import { GlobeIcon } from "./icons";
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export function CloudInfoPane({ onToast, onReload, onOpenActions }: Props) {
+  const { t } = useTranslation();
   const {
     cloudApiKey,
     cloudAccount,
@@ -32,7 +34,7 @@ export function CloudInfoPane({ onToast, onReload, onOpenActions }: Props) {
         <AccountPanel onToast={onToast} />
       ) : (
         <>
-          <div className="section-label">Account</div>
+          <div className="section-label">{t("cloudInfo.account")}</div>
           <div className="cloud-account-summary">
             <div className="cloud-account-line">
               <span className="cloud-account-ns">{cloudAccount?.namespace ?? "…"}</span>
@@ -49,7 +51,7 @@ export function CloudInfoPane({ onToast, onReload, onOpenActions }: Props) {
 
       {cloudApiKey && (
         <>
-          <div className="section-label" id="cloud-filter-label">Filter</div>
+          <div className="section-label" id="cloud-filter-label">{t("cloudInfo.filter")}</div>
           <div className="pill-row" role="tablist" aria-labelledby="cloud-filter-label">
             <button
               type="button"
@@ -57,9 +59,9 @@ export function CloudInfoPane({ onToast, onReload, onOpenActions }: Props) {
               aria-selected={remoteFilter === "all"}
               className={`pill ${remoteFilter === "all" ? "active" : ""}`}
               onClick={() => setRemoteFilter("all")}
-              title="All your skills (private + shared)"
+              title={t("cloudInfo.allTitle")}
             >
-              All
+              {t("cloudInfo.all")}
             </button>
             <button
               type="button"
@@ -67,9 +69,9 @@ export function CloudInfoPane({ onToast, onReload, onOpenActions }: Props) {
               aria-selected={remoteFilter === "private"}
               className={`pill ${remoteFilter === "private" ? "active" : ""}`}
               onClick={() => setRemoteFilter("private")}
-              title="Your skills that are not shared"
+              title={t("cloudInfo.privateTitle")}
             >
-              Private
+              {t("cloudInfo.private")}
             </button>
             <button
               type="button"
@@ -77,9 +79,9 @@ export function CloudInfoPane({ onToast, onReload, onOpenActions }: Props) {
               aria-selected={remoteFilter === "shared"}
               className={`pill ${remoteFilter === "shared" ? "active" : ""}`}
               onClick={() => setRemoteFilter("shared")}
-              title="Your skills that are public or have active share links"
+              title={t("cloudInfo.sharedTitle")}
             >
-              Shared
+              {t("cloudInfo.shared")}
             </button>
             <button
               type="button"
@@ -87,20 +89,20 @@ export function CloudInfoPane({ onToast, onReload, onOpenActions }: Props) {
               aria-selected={remoteFilter === "public"}
               className={`pill ${remoteFilter === "public" ? "active" : ""}`}
               onClick={() => setRemoteFilter("public")}
-              title="Browse the public catalog"
+              title={t("cloudInfo.publicTitle")}
             >
-              Public
+              {t("cloudInfo.public")}
             </button>
           </div>
         </>
       )}
 
       <div className="section-label">
-        {cloudApiKey ? "Search" : "Search public skills"}
+        {cloudApiKey ? t("cloudInfo.search") : t("cloudInfo.searchPublic")}
       </div>
       <div className="cloud-info-search">
         <input
-          placeholder="Search skills…"
+          placeholder={t("cloudInfo.searchPlaceholder")}
           value={remoteQuery}
           onChange={(e) => setRemoteQuery(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") onReload(); }}
@@ -109,21 +111,21 @@ export function CloudInfoPane({ onToast, onReload, onOpenActions }: Props) {
           value={remoteSort}
           onChange={(e) => setRemoteSort(e.target.value)}
         >
-          <option value="popular">popular</option>
-          <option value="updated">updated</option>
-          <option value="recent">recent</option>
-          <option value="stars">stars</option>
-          <option value="trending">trending</option>
-          <option value="verified">verified</option>
+          <option value="popular">{t("cloudInfo.sortPopular")}</option>
+          <option value="updated">{t("cloudInfo.sortUpdated")}</option>
+          <option value="recent">{t("cloudInfo.sortRecent")}</option>
+          <option value="stars">{t("cloudInfo.sortStars")}</option>
+          <option value="trending">{t("cloudInfo.sortTrending")}</option>
+          <option value="verified">{t("cloudInfo.sortVerified")}</option>
         </select>
       </div>
 
       <div className="cloud-info-actions">
         <button className="primary" onClick={onReload} disabled={remoteLoading}>
-          {remoteLoading ? "Loading…" : "Search"}
+          {remoteLoading ? t("common.loading") : t("cloudInfo.searchButton")}
         </button>
         {cloudApiKey && (
-          <button onClick={onOpenActions}>Save / Share…</button>
+          <button onClick={onOpenActions}>{t("cloudInfo.saveShare")}</button>
         )}
       </div>
     </aside>

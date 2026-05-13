@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { ScanReport } from "../lib/skillsafe/client";
 
 interface Finding {
@@ -23,6 +24,7 @@ interface Props {
 
 // Mirror of skillsafe.ai's security/BOM summary in compact form.
 export function ScanReportPanel({ report }: Props) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
 
   const findings = useMemo<Finding[]>(() => {
@@ -54,8 +56,8 @@ export function ScanReportPanel({ report }: Props) {
       <div className="scan-panel scan-panel-muted">
         <div className="scan-panel-row">
           <span className="scan-icon" aria-hidden="true">⊘</span>
-          <span className="scan-title">Not scanned</span>
-          <span className="scan-hint">No publisher scan report on file.</span>
+          <span className="scan-title">{t("scanReport.notScanned")}</span>
+          <span className="scan-hint">{t("scanReport.notScannedHint")}</span>
         </div>
       </div>
     );
@@ -82,29 +84,29 @@ export function ScanReportPanel({ report }: Props) {
         <span className="scan-icon" aria-hidden="true">{isClean ? "✓" : "!"}</span>
         <span className="scan-title">
           {isClean
-            ? "No issues found"
-            : `${findingsCount} ${findingsCount === 1 ? "finding" : "findings"}`}
+            ? t("scanReport.noIssues")
+            : t("scanReport.findingsCount", { count: findingsCount })}
         </span>
-        <span className={`scan-risk scan-risk-${risk}`}>risk: {risk}</span>
+        <span className={`scan-risk scan-risk-${risk}`}>{t("scanReport.riskLabel", { risk })}</span>
         {bom.total_files_scanned !== undefined && (
-          <span className="scan-hint">{bom.total_files_scanned} {bom.total_files_scanned === 1 ? "file" : "files"} scanned</span>
+          <span className="scan-hint">{t("scanReport.filesScanned", { count: bom.total_files_scanned })}</span>
         )}
       </summary>
       <div className="scan-panel-body">
         <div className="scan-meta-row">
           {report.scanner_version && (
-            <span><strong>scanner</strong> {report.scanner_version}</span>
+            <span><strong>{t("scanReport.metaScanner")}</strong> {report.scanner_version}</span>
           )}
           {report.ruleset_version && (
-            <span><strong>ruleset</strong> {report.ruleset_version}</span>
+            <span><strong>{t("scanReport.metaRuleset")}</strong> {report.ruleset_version}</span>
           )}
           {report.submitted_at && (
-            <span><strong>scanned</strong> {new Date(report.submitted_at).toLocaleString()}</span>
+            <span><strong>{t("scanReport.metaScanned")}</strong> {new Date(report.submitted_at).toLocaleString()}</span>
           )}
         </div>
         {capabilityList.length > 0 && (
           <div className="scan-caps">
-            <div className="scan-section-label">Capabilities</div>
+            <div className="scan-section-label">{t("scanReport.capabilities")}</div>
             <div className="scan-caps-list">
               {capabilityList.map(([cap, count]) => (
                 <span key={cap} className="badge scan-cap">
@@ -116,7 +118,7 @@ export function ScanReportPanel({ report }: Props) {
         )}
         {findings.length > 0 && (
           <div className="scan-findings">
-            <div className="scan-section-label">Findings</div>
+            <div className="scan-section-label">{t("scanReport.findings")}</div>
             {severityOrder
               .filter((sev) => grouped[sev]?.length)
               .map((sev) => (
@@ -127,7 +129,7 @@ export function ScanReportPanel({ report }: Props) {
                   </div>
                   {grouped[sev].map((f, i) => (
                     <div key={i} className="scan-finding">
-                      <div className="scan-finding-msg">{f.message ?? f.rule_id ?? "Finding"}</div>
+                      <div className="scan-finding-msg">{f.message ?? f.rule_id ?? t("scanReport.defaultFindingMsg")}</div>
                       <div className="scan-finding-meta">
                         {f.rule_id && <code>{f.rule_id}</code>}
                         {f.file && <span>{f.file}{f.line ? `:${f.line}` : ""}</span>}
@@ -142,10 +144,7 @@ export function ScanReportPanel({ report }: Props) {
           </div>
         )}
         {findings.length === 0 && isClean && (
-          <div className="scan-hint">
-            The scanner found no problems with this version. Always review skill
-            content yourself before granting it tools.
-          </div>
+          <div className="scan-hint">{t("scanReport.cleanHint")}</div>
         )}
       </div>
     </details>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { tauriFs } from "../lib/tauriAdapters";
 import { getHistoryDeps } from "../lib/editHistory/runtime";
 import { getEntry, readSnapshot } from "../lib/editHistory/store";
@@ -41,6 +42,7 @@ function languageFromPath(p: string): string {
 }
 
 export function DiffViewOverlay() {
+  const { t } = useTranslation();
   const ref = useApp((s) => s.diffEntry);
   const close = useApp((s) => s.closeDiffEntry);
   const [original, setOriginal] = useState<string | null>(null);
@@ -62,10 +64,10 @@ export function DiffViewOverlay() {
         const deps = await getHistoryDeps();
         const entry = await getEntry(deps, ref.absPath, ref.entryId);
         if (cancelled) return;
-        if (!entry) throw new Error("snapshot entry not found");
+        if (!entry) throw new Error(t("diffOverlay.snapshotNotFound"));
         const blob = await readSnapshot(deps, ref.absPath, ref.entryId);
         if (cancelled) return;
-        if (blob === null) throw new Error("snapshot content missing");
+        if (blob === null) throw new Error(t("diffOverlay.snapshotContentMissing"));
         let current = "";
         try {
           current = await tauriFs.readTextFile(ref.absPath);
@@ -93,9 +95,9 @@ export function DiffViewOverlay() {
     return (
       <div className="diff-overlay diff-overlay--error">
         <div className="diff-overlay__header">
-          <div>Diff failed: {error}</div>
+          <div>{t("diffOverlay.failed", { error })}</div>
           <button className="diff-overlay__close" onClick={close}>
-            Close
+            {t("common.close")}
           </button>
         </div>
       </div>
@@ -106,9 +108,9 @@ export function DiffViewOverlay() {
     return (
       <div className="diff-overlay">
         <div className="diff-overlay__header">
-          <div>Loading diff…</div>
+          <div>{t("diffOverlay.loading")}</div>
           <button className="diff-overlay__close" onClick={close}>
-            Close
+            {t("common.close")}
           </button>
         </div>
       </div>
@@ -120,8 +122,8 @@ export function DiffViewOverlay() {
       original={original}
       modified={modified}
       language={languageFromPath(ref.absPath)}
-      originalLabel={`Snapshot · ${label}`}
-      modifiedLabel="Current on disk"
+      originalLabel={t("diffOverlay.snapshotLabel", { label })}
+      modifiedLabel={t("diffOverlay.currentLabel")}
       onClose={close}
     />
   );

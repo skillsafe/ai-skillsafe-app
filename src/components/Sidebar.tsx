@@ -1,4 +1,5 @@
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { useTranslation } from "react-i18next";
 import type { ArtifactType, Scope, Tool } from "../lib/artifacts/types";
 import { ALL_AGENTS, displayNameOf } from "../lib/agents/registry";
 import { useApp } from "../lib/store";
@@ -15,25 +16,13 @@ const TOOLS: { id: Tool; label: string }[] = ALL_AGENTS
 // `project` but also surfaced drift badges from skills-lock.json. Hidden from
 // the picker because the duplication confused users; drift detection still
 // runs internally if the project has a lockfile.
-const SCOPES: { id: Scope; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "global", label: "Global" },
-  { id: "project", label: "Project" },
-];
+const SCOPES: Scope[] = ["all", "global", "project"];
 
-const TYPES: { id: ArtifactType; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "skill", label: "Skills" },
-  { id: "agent", label: "Agents" },
-  { id: "command", label: "Commands" },
-];
+const TYPES: ArtifactType[] = ["all", "skill", "agent", "command"];
 
 // Configs only apply to global / project — there's no "all" file and no
 // lockfile to drift against, so we slice the artifact-scopes down here.
-const CONFIG_SCOPES: { id: Scope; label: string }[] = [
-  { id: "global", label: "Global" },
-  { id: "project", label: "Project" },
-];
+const CONFIG_SCOPES: Scope[] = ["global", "project"];
 
 interface SidebarProps {
   onToggleCloud?: () => void;
@@ -42,6 +31,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: SidebarProps = {}) {
+  const { t } = useTranslation();
   const {
     tool, scope, type, recentTools, recentProjects, projectFilter, bottomPanel,
     view,
@@ -62,7 +52,7 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
   }
   const cloudActive = bottomPanel === "cloud";
   const backupActive = bottomPanel === "backup";
-  const toolLabel = (id: Tool) => TOOLS.find((t) => t.id === id)?.label ?? id;
+  const toolLabel = (id: Tool) => TOOLS.find((tt) => tt.id === id)?.label ?? id;
 
   async function pickProject() {
     const picked = await openDialog({ directory: true, multiple: false });
@@ -82,9 +72,9 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
         {onToggleCloud && (
           <button
             className={`theme-toggle icon-btn ${cloudActive ? "active" : ""}`}
-            aria-label="skillsafe.ai cloud panel"
+            aria-label={t("sidebar.cloudPanelAria")}
             aria-pressed={cloudActive}
-            title={cloudActive ? "Hide cloud panel" : "Show cloud panel"}
+            title={cloudActive ? t("sidebar.cloudPanelHide") : t("sidebar.cloudPanelShow")}
             onClick={onToggleCloud}
           >
             <GlobeIcon size={16} />
@@ -93,9 +83,9 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
         {onToggleBackup && (
           <button
             className={`theme-toggle icon-btn ${backupActive ? "active" : ""}`}
-            aria-label="Local backup panel"
+            aria-label={t("sidebar.backupPanelAria")}
             aria-pressed={backupActive}
-            title={backupActive ? "Hide local backup panel" : "Local Backup"}
+            title={backupActive ? t("sidebar.backupPanelHide") : t("sidebar.backupPanelShow")}
             onClick={onToggleBackup}
           >
             <ArchiveIcon size={16} />
@@ -104,8 +94,8 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
         {onOpenSettings && (
           <button
             className="theme-toggle icon-btn"
-            aria-label="Open preferences"
-            title="Preferences"
+            aria-label={t("sidebar.preferencesAria")}
+            title={t("sidebar.preferencesTitle")}
             onClick={onOpenSettings}
           >
             <GearIcon size={16} />
@@ -115,19 +105,19 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
 
       {!isConfigs && (
         <>
-          <div className="section-label">Tool</div>
+          <div className="section-label">{t("sidebar.tool")}</div>
           <select
             className="tool-select"
             value={tool}
             onChange={(e) => setTool(e.target.value as Tool)}
           >
-            {TOOLS.map((t) => (
-              <option key={t.id} value={t.id}>{t.label}</option>
+            {TOOLS.map((tt) => (
+              <option key={tt.id} value={tt.id}>{tt.label}</option>
             ))}
           </select>
           {recentTools.length > 0 && (
             <>
-              <div className="section-label" id="sidebar-recent-label">Recent</div>
+              <div className="section-label" id="sidebar-recent-label">{t("sidebar.recent")}</div>
               <div className="pill-row" role="tablist" aria-labelledby="sidebar-recent-label">
                 {recentTools.map((id) => (
                   <button
@@ -147,33 +137,33 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
         </>
       )}
 
-      <div className="section-label" id="sidebar-scope-label">Scope</div>
+      <div className="section-label" id="sidebar-scope-label">{t("sidebar.scope")}</div>
       <div className="pill-row" role="tablist" aria-labelledby="sidebar-scope-label">
         {(isConfigs ? CONFIG_SCOPES : SCOPES).map((s) => (
           <button
-            key={s.id}
+            key={s}
             type="button"
             role="tab"
-            aria-selected={effectiveScope === s.id}
-            className={`pill ${effectiveScope === s.id ? "active" : ""}`}
+            aria-selected={effectiveScope === s}
+            className={`pill ${effectiveScope === s ? "active" : ""}`}
             onClick={() => {
-              if (s.id === "project" && recentProjects.length === 0) pickProject();
-              setScope(s.id);
+              if (s === "project" && recentProjects.length === 0) pickProject();
+              setScope(s);
             }}
           >
-            {s.label}
+            {t(`scopes.${s}`)}
           </button>
         ))}
       </div>
 
       {effectiveScope === "project" && recentProjects.length === 0 && (
         <div className="projects-summary">
-          <button className="link-btn" onClick={pickProject}>+ Add a project…</button>
+          <button className="link-btn" onClick={pickProject}>{t("sidebar.addProjectFirst")}</button>
         </div>
       )}
       {effectiveScope === "project" && recentProjects.length > 0 && (
         <>
-          <div className="section-label">Filter by project</div>
+          <div className="section-label">{t("sidebar.filterByProject")}</div>
           <select
             className="tool-select"
             value={projectFilter ?? ""}
@@ -183,23 +173,23 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
               setProjectFilter(v === "" ? null : v);
             }}
           >
-            <option value="">All projects ({recentProjects.length})</option>
+            <option value="">{t("sidebar.allProjects", { count: recentProjects.length })}</option>
             {recentProjects.map((p) => (
               <option key={p} value={p}>{projectName(p)}</option>
             ))}
-            <option value="__add__">+ Add project…</option>
+            <option value="__add__">{t("sidebar.addProject")}</option>
           </select>
           {recentProjects.length > 1 && (
-            <div className="pill-row" role="tablist" aria-label="Filter by project">
+            <div className="pill-row" role="tablist" aria-label={t("sidebar.filterByProjectAria")}>
               <button
                 type="button"
                 role="tab"
                 aria-selected={projectFilter === null}
                 className={`pill ${projectFilter === null ? "active" : ""}`}
                 onClick={() => setProjectFilter(null)}
-                title="Show artifacts from every project"
+                title={t("sidebar.allProjectsTitle")}
               >
-                All
+                {t("common.all")}
               </button>
               {recentProjects.slice(0, 3).map((p) => (
                 <button
@@ -217,35 +207,35 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
             </div>
           )}
           <button className="link-btn" onClick={manageProjects} style={{ alignSelf: "flex-start", marginTop: 6, marginLeft: 6 }}>
-            Manage projects…
+            {t("sidebar.manageProjects")}
           </button>
         </>
       )}
       {scope === "all" && recentProjects.length > 0 && (
         <div className="projects-summary">
-          <div className="section-label">Projects</div>
+          <div className="section-label">{t("sidebar.projects")}</div>
           <div className="projects-summary-text">
-            {recentProjects.length} {recentProjects.length === 1 ? "project" : "projects"} loaded
+            {t("sidebar.projectsLoaded", { count: recentProjects.length })}
           </div>
-          <button className="link-btn" onClick={manageProjects}>Manage projects…</button>
+          <button className="link-btn" onClick={manageProjects}>{t("sidebar.manageProjects")}</button>
         </div>
       )}
 
-      <div className="section-label" id="sidebar-type-label">Type</div>
+      <div className="section-label" id="sidebar-type-label">{t("sidebar.type")}</div>
       <div className="pill-row" role="tablist" aria-labelledby="sidebar-type-label">
-        {TYPES.map((t) => (
+        {TYPES.map((tt) => (
           <button
-            key={t.id}
+            key={tt}
             type="button"
             role="tab"
-            aria-selected={!isConfigs && !isWorkbench && type === t.id}
-            className={`pill ${!isConfigs && !isWorkbench && type === t.id ? "active" : ""}`}
+            aria-selected={!isConfigs && !isWorkbench && type === tt}
+            className={`pill ${!isConfigs && !isWorkbench && type === tt ? "active" : ""}`}
             onClick={() => {
               setView("artifacts");
-              setType(t.id);
+              setType(tt);
             }}
           >
-            {t.label}
+            {t(`types.${tt}`)}
           </button>
         ))}
         <button
@@ -254,13 +244,9 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
           aria-selected={isConfigs || isWorkbench}
           className={`pill ${isConfigs || isWorkbench ? "active" : ""}`}
           onClick={() => setView("workbench")}
-          title={
-            "Files that can be saved to your master folder — CLAUDE.md / AGENTS.md memory, " +
-            ".mcp.json servers, hooks, permissions, keybindings. " +
-            "Add the live source to master, restore the source from master, or diff the two."
-          }
+          title={t("sidebar.masterTooltip")}
         >
-          Master
+          {t("sidebar.master")}
         </button>
       </div>
 

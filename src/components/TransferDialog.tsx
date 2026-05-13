@@ -6,6 +6,7 @@
 // Overwrite-mode chooses replace / append / skip-if-exists.
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useApp } from "../lib/store";
 import { displayNameOf } from "../lib/agents/registry";
 import { tauriFs, tauriJoiner, tauriPaths } from "../lib/tauriAdapters";
@@ -40,38 +41,20 @@ interface Props {
   onError: (msg: string) => void;
 }
 
-const MEMORY_MODE_OPTIONS: Array<{ id: TransferMode; label: string; description: string }> = [
-  {
-    id: "replace",
-    label: "Replace",
-    description: "Overwrite the destination. A .skillsafe.bak copy is kept beside it.",
-  },
-  {
-    id: "append",
-    label: "Append",
-    description: "Append to the existing destination, separated by a horizontal rule.",
-  },
-  {
-    id: "skip-if-exists",
-    label: "Skip if exists",
-    description: "Only write when the destination doesn't exist yet.",
-  },
-];
-
-const MCP_MODE_OPTIONS: Array<{ id: McpTransferMode; label: string; description: string }> = [
-  {
-    id: "replace",
-    label: "Replace",
-    description: "Overwrite the server entry if it already exists; siblings are preserved.",
-  },
-  {
-    id: "skip-if-exists",
-    label: "Skip if exists",
-    description: "Only write when no server with this name exists yet at the destination.",
-  },
-];
+const MEMORY_MODE_IDS: TransferMode[] = ["replace", "append", "skip-if-exists"];
+const MCP_MODE_IDS: McpTransferMode[] = ["replace", "skip-if-exists"];
 
 export function TransferDialog({ source, onClose, onSuccess, onError }: Props) {
+  const { t } = useTranslation();
+  const memoryModeOptions = useMemo(() => [
+    { id: "replace" as TransferMode, label: t("transferDialog.modeReplace"), description: t("transferDialog.modeReplaceMemoryDesc") },
+    { id: "append" as TransferMode, label: t("transferDialog.modeAppend"), description: t("transferDialog.modeAppendDesc") },
+    { id: "skip-if-exists" as TransferMode, label: t("transferDialog.modeSkipIfExists"), description: t("transferDialog.modeSkipMemoryDesc") },
+  ], [t]);
+  const mcpModeOptions = useMemo(() => [
+    { id: "replace" as McpTransferMode, label: t("transferDialog.modeReplace"), description: t("transferDialog.modeReplaceMcpDesc") },
+    { id: "skip-if-exists" as McpTransferMode, label: t("transferDialog.modeSkipIfExists"), description: t("transferDialog.modeSkipMcpDesc") },
+  ], [t]);
   const recentProjects = useApp((s) => s.recentProjects);
   const projectRoot = useApp((s) => s.projectRoot);
   const bumpWorkbenchScan = useApp((s) => s.bumpWorkbenchScan);
@@ -89,7 +72,9 @@ export function TransferDialog({ source, onClose, onSuccess, onError }: Props) {
   const isMcp = source.category === "mcp";
   const supportedTargets = isMcp ? MCP_TRANSFER_TARGETS : MEMORY_TRANSFER_TARGETS;
   const globalCapableSet = isMcp ? MCP_GLOBAL_CAPABLE : MEMORY_GLOBAL_CAPABLE;
-  const modeOptions = isMcp ? MCP_MODE_OPTIONS : MEMORY_MODE_OPTIONS;
+  const modeOptions = isMcp ? mcpModeOptions : memoryModeOptions;
+  // Mode id list kept for any caller that walks the original constants.
+  void MEMORY_MODE_IDS; void MCP_MODE_IDS;
 
   // Default destination tool: pick one supported tool that isn't the source.
   const defaultDestTool =
@@ -138,7 +123,7 @@ export function TransferDialog({ source, onClose, onSuccess, onError }: Props) {
     ? destTool !== "codex" && (destScope === "project" || destTool === "cursor")
     : destScope === "project" || destTool === "cursor" || destTool === "cline";
   const fileNameApplicable = isMcp || destTool === "cursor" || destTool === "cline";
-  const fileNameLabel = isMcp ? "Server name" : "Filename";
+  const fileNameLabel = isMcp ? t("transferDialog.serverNameLabel") : t("transferDialog.filenameLabel");
 
   // Auto-coerce destination scope when switching to a tool that doesn't
   // support global memory.
@@ -157,14 +142,14 @@ export function TransferDialog({ source, onClose, onSuccess, onError }: Props) {
     if (requiresProject && !destProject) {
       setResolvedPath("");
       setResolveWarnings([]);
-      setResolveError("Pick a project root.");
+      setResolveError(t("transferDialog.pickProjectRoot"));
       return;
     }
     (async () => {
       try {
         if (isMcp) {
           if (!isMcpTransferTool(destTool)) {
-            throw new Error(`MCP transfer to ${destTool} is not supported.`);
+            throw new Error(t("transferDialog.mcpNotSupported", { tool: destTool }));
           }
           const dest: McpDestination = {
             tool: destTool,
@@ -225,6 +210,7 @@ export function TransferDialog({ source, onClose, onSuccess, onError }: Props) {
     mcpMode,
     source,
     requiresProject,
+    t,
   ]);
 
   async function handleConfirm() {
@@ -233,7 +219,7 @@ export function TransferDialog({ source, onClose, onSuccess, onError }: Props) {
     try {
       if (isMcp) {
         if (!isMcpTransferTool(destTool)) {
-          throw new Error(`MCP transfer to ${destTool} is not supported.`);
+          throw new Error(t("transferDialog.mcpNotSupported", { tool: destTool }));
         }
         const dest: McpDestination = {
           tool: destTool,
@@ -262,10 +248,10 @@ export function TransferDialog({ source, onClose, onSuccess, onError }: Props) {
         }
         const lines = [
           result.skipped
-            ? `Skipped: ${result.writtenName} already exists at ${result.destPath}.`
-            : `Transferred ${result.writtenName} → ${result.destPath}`,
+            ? t("transferDialog.mcpSkippedToast", { name: result.writtenName, path: result.destPath })
+            : t("transferDialog.mcpTransferredToast", { name: result.writtenName, path: result.destPath }),
         ];
-        if (result.backupPath) lines.push(`Previous file saved to ${result.backupPath}.`);
+        if (result.backupPath) lines.push(t("transferDialog.backupSavedFile", { path: result.backupPath }));
         for (const w of result.warnings) lines.push(w);
         onSuccess(lines.join(" "));
         onClose();
@@ -299,15 +285,15 @@ export function TransferDialog({ source, onClose, onSuccess, onError }: Props) {
       }
       const lines = [
         result.skipped
-          ? `Skipped: destination already exists (${result.destPath}).`
-          : `Transferred to ${result.destPath}`,
+          ? t("transferDialog.memorySkippedToast", { path: result.destPath })
+          : t("transferDialog.memoryTransferredToast", { path: result.destPath }),
       ];
-      if (result.backupPath) lines.push(`Previous content saved to ${result.backupPath}.`);
+      if (result.backupPath) lines.push(t("transferDialog.backupSavedContent", { path: result.backupPath }));
       for (const w of result.warnings) lines.push(w);
       onSuccess(lines.join(" "));
       onClose();
     } catch (e) {
-      onError(`Transfer failed: ${e instanceof Error ? e.message : String(e)}`);
+      onError(t("transferDialog.transferFailed", { message: e instanceof Error ? e.message : String(e) }));
     } finally {
       setBusy(false);
     }
@@ -354,11 +340,11 @@ export function TransferDialog({ source, onClose, onSuccess, onError }: Props) {
       >
         <header className="transfer-header">
           <h3 style={{ margin: 0 }}>
-            Transfer {isMcp ? "MCP server" : "memory"} to another tool
+            {isMcp ? t("transferDialog.titleMcp") : t("transferDialog.titleMemory")}
           </h3>
           <button
             className="icon-btn"
-            aria-label="Close"
+            aria-label={t("transferDialog.closeAria")}
             onClick={onClose}
             disabled={busy}
           >
@@ -367,7 +353,7 @@ export function TransferDialog({ source, onClose, onSuccess, onError }: Props) {
         </header>
         <div className="transfer-body">
           <section className="transfer-section">
-            <div className="transfer-label">Source</div>
+            <div className="transfer-label">{t("transferDialog.sourceSection")}</div>
             <div className="transfer-source-summary">
               <code>{source.absPath}</code>
               <div className="muted">
@@ -378,25 +364,25 @@ export function TransferDialog({ source, onClose, onSuccess, onError }: Props) {
           </section>
 
           <section className="transfer-section">
-            <div className="transfer-label">Destination</div>
+            <div className="transfer-label">{t("transferDialog.destinationSection")}</div>
             <div className="transfer-grid">
               <label>
-                <span>Tool</span>
+                <span>{t("transferDialog.destTool")}</span>
                 <select
                   value={destTool}
                   onChange={(e) => setDestTool(e.target.value)}
                 >
-                  {supportedTargets.map((t) => (
-                    <option key={t} value={t}>
-                      {displayNameOf(t)}
-                      {t === source.tool ? " (source)" : ""}
+                  {supportedTargets.map((tt) => (
+                    <option key={tt} value={tt}>
+                      {displayNameOf(tt)}
+                      {tt === source.tool ? t("transferDialog.destSourceSuffix") : ""}
                     </option>
                   ))}
                 </select>
               </label>
               <label>
-                <span>Scope</span>
-                <div className="pill-row" role="tablist" aria-label="Destination scope">
+                <span>{t("transferDialog.destScope")}</span>
+                <div className="pill-row" role="tablist" aria-label={t("transferDialog.destScopeAria")}>
                   <button
                     type="button"
                     role="tab"
@@ -405,7 +391,7 @@ export function TransferDialog({ source, onClose, onSuccess, onError }: Props) {
                     disabled={!supportsGlobal}
                     onClick={() => setDestScope("global")}
                   >
-                    Global
+                    {t("transferDialog.destGlobal")}
                   </button>
                   <button
                     type="button"
@@ -414,18 +400,18 @@ export function TransferDialog({ source, onClose, onSuccess, onError }: Props) {
                     className={`pill ${destScope === "project" ? "active" : ""}`}
                     onClick={() => setDestScope("project")}
                   >
-                    Project
+                    {t("transferDialog.destProject")}
                   </button>
                 </div>
               </label>
               {requiresProject && (
                 <label>
-                  <span>Project</span>
+                  <span>{t("transferDialog.projectSelectLabel")}</span>
                   <select
                     value={destProject ?? ""}
                     onChange={(e) => setDestProject(e.target.value || null)}
                   >
-                    <option value="">— pick a project —</option>
+                    <option value="">{t("transferDialog.pickProject")}</option>
                     {recentProjects.map((p) => (
                       <option key={p} value={p}>
                         {shortenPath(p)}
@@ -452,7 +438,7 @@ export function TransferDialog({ source, onClose, onSuccess, onError }: Props) {
               ) : resolvedPath ? (
                 <code>{resolvedPath}</code>
               ) : (
-                <span className="muted">Resolving…</span>
+                <span className="muted">{t("transferDialog.resolving")}</span>
               )}
             </div>
             {resolveWarnings.length > 0 && (
@@ -466,9 +452,9 @@ export function TransferDialog({ source, onClose, onSuccess, onError }: Props) {
 
           <section className="transfer-section">
             <div className="transfer-label">
-              {isMcp ? "If a server with this name exists" : "If destination exists"}
+              {isMcp ? t("transferDialog.modeSectionMcp") : t("transferDialog.modeSectionMemory")}
             </div>
-            <div className="pill-row" role="radiogroup" aria-label="Overwrite mode">
+            <div className="pill-row" role="radiogroup" aria-label={t("transferDialog.modeAria")}>
               {modeOptions.map((opt) => {
                 const active = isMcp ? mcpMode === opt.id : memoryMode === opt.id;
                 return (
@@ -500,7 +486,7 @@ export function TransferDialog({ source, onClose, onSuccess, onError }: Props) {
             <section className="transfer-section">
               <label
                 className="transfer-bind-row"
-                title="Records the destination as a source on the master entry so future Restore-from-master writes here too."
+                title={t("transferDialog.bindTitle")}
               >
                 <input
                   type="checkbox"
@@ -508,39 +494,39 @@ export function TransferDialog({ source, onClose, onSuccess, onError }: Props) {
                   onChange={(e) => setBindOnTransfer(e.target.checked)}
                   data-testid="bind-on-transfer"
                 />
-                <span>Bind destination as a source of the master entry</span>
+                <span>{t("transferDialog.bindLabel")}</span>
               </label>
             </section>
           )}
 
           <section className="transfer-section">
             <div className="transfer-label-row">
-              <div className="transfer-label">Preview</div>
+              <div className="transfer-label">{t("transferDialog.previewSection")}</div>
               <button
                 type="button"
                 className="link-btn"
                 onClick={() => setShowPreview((v) => !v)}
               >
-                {showPreview ? "Hide" : "Show"}
+                {showPreview ? t("transferDialog.hide") : t("transferDialog.show")}
               </button>
             </div>
             {showPreview && (
               <pre className="workbench-payload workbench-payload-text transfer-preview">
-                {(isMcp ? mcpPreview : memoryPreview) || "(empty)"}
+                {(isMcp ? mcpPreview : memoryPreview) || t("transferDialog.emptyPreview")}
               </pre>
             )}
           </section>
         </div>
         <div className="dialog-row">
           <button onClick={onClose} disabled={busy}>
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             className="primary"
             onClick={handleConfirm}
             disabled={busy || !!resolveError || !resolvedPath}
           >
-            {busy ? "Transferring…" : "Transfer"}
+            {busy ? t("transferDialog.transferring") : t("transferDialog.transferButton")}
           </button>
         </div>
       </div>

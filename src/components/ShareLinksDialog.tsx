@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
+import { useTranslation } from "react-i18next";
 import {
   createShareLink,
   listShareLinks,
@@ -31,6 +32,7 @@ export function ShareLinksDialog({
   onClose,
   onToast,
 }: Props) {
+  const { t } = useTranslation();
   const [links, setLinks] = useState<ShareLinkListItem[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -55,14 +57,14 @@ export function ShareLinksDialog({
   }, [apiKey, ns, name, defaultVersion]);
 
   async function handleRevoke(shareId: string) {
-    if (!confirm("Revoke this share link? Anyone using it will lose access.")) return;
+    if (!confirm(t("shareLinks.revokePrompt"))) return;
     setBusyId(shareId);
     try {
       await revokeShareLink(apiKey, shareId);
       setLinks((prev) => (prev ?? []).filter((l) => l.share_id !== shareId));
-      onToast("ok", "Share link revoked.");
+      onToast("ok", t("shareLinks.revokedToast"));
     } catch (e) {
-      onToast("error", `Revoke failed: ${describeError(e)}`);
+      onToast("error", t("shareLinks.revokeFailedToast", { message: describeError(e) }));
     } finally {
       setBusyId(null);
     }
@@ -70,7 +72,7 @@ export function ShareLinksDialog({
 
   async function handleCreate() {
     if (!createVersion) {
-      onToast("error", "Pick a version first.");
+      onToast("error", t("shareLinks.pickVersionFirst"));
       return;
     }
     setCreating(true);
@@ -93,9 +95,9 @@ export function ShareLinksDialog({
         },
         ...(prev ?? []),
       ]);
-      onToast("ok", "Share link created.");
+      onToast("ok", t("shareLinks.createdToast"));
     } catch (e) {
-      onToast("error", `Share failed: ${describeError(e)}`);
+      onToast("error", t("shareLinks.shareFailedToast", { message: describeError(e) }));
     } finally {
       setCreating(false);
     }
@@ -108,16 +110,16 @@ export function ShareLinksDialog({
   return (
     <div className="dialog-backdrop" onClick={onClose}>
       <div className="dialog share-links-dialog" onClick={(e) => e.stopPropagation()}>
-        <h3>Share links — {ns}/{name}</h3>
+        <h3>{t("shareLinks.title", { ns, name })}</h3>
 
         <div className="fm-field">
-          <label className="fm-label">create new</label>
+          <label className="fm-label">{t("shareLinks.createNew")}</label>
           <div className="share-create-row">
             <select
               value={createVersion}
               onChange={(e) => setCreateVersion(e.target.value)}
               disabled={!versions || versions.length === 0}
-              title="version"
+              title={t("shareLinks.versionTitle")}
             >
               {(versions ?? [defaultVersion]).map((v) => (
                 <option key={v} value={v}>v{v}</option>
@@ -126,32 +128,32 @@ export function ShareLinksDialog({
             <select
               value={createVisibility}
               onChange={(e) => setCreateVisibility(e.target.value as "private" | "public")}
-              title="visibility"
+              title={t("shareLinks.visibilityTitle")}
             >
-              <option value="private">private</option>
-              <option value="public">public</option>
+              <option value="private">{t("shareLinks.visibilityPrivate")}</option>
+              <option value="public">{t("shareLinks.visibilityPublic")}</option>
             </select>
             <select
               value={createExpires}
               onChange={(e) => setCreateExpires(e.target.value as ExpiresIn)}
-              title="expires in"
+              title={t("shareLinks.expiresTitle")}
             >
-              <option value="never">never</option>
-              <option value="1d">1 day</option>
-              <option value="7d">7 days</option>
-              <option value="30d">30 days</option>
+              <option value="never">{t("shareLinks.expiresNever")}</option>
+              <option value="1d">{t("shareLinks.expires1d")}</option>
+              <option value="7d">{t("shareLinks.expires7d")}</option>
+              <option value="30d">{t("shareLinks.expires30d")}</option>
             </select>
             <button className="primary" onClick={handleCreate} disabled={creating}>
-              {creating ? "Creating…" : "Create"}
+              {creating ? t("shareLinks.creating") : t("shareLinks.create")}
             </button>
           </div>
         </div>
 
         <div className="share-links-list">
-          {!links && !loadError && <div className="cloud-hint">Loading…</div>}
+          {!links && !loadError && <div className="cloud-hint">{t("common.loading")}</div>}
           {loadError && <div className="empty-error">{loadError}</div>}
           {links && links.length === 0 && (
-            <div className="cloud-hint">No share links yet.</div>
+            <div className="cloud-hint">{t("shareLinks.noLinks")}</div>
           )}
           {links?.map((l) => {
             const url = urlFor(l.share_id);
@@ -161,30 +163,30 @@ export function ShareLinksDialog({
                 <div className="share-link-meta">
                   <span className="badge">{l.visibility}</span>
                   <span className="badge">v{l.version}</span>
-                  {expired && <span className="badge drift">expired</span>}
-                  {l.revoked && <span className="badge drift">revoked</span>}
-                  <span className="cloud-static">{l.access_count} access{l.access_count === 1 ? "" : "es"}</span>
+                  {expired && <span className="badge drift">{t("shareLinks.expired")}</span>}
+                  {l.revoked && <span className="badge drift">{t("shareLinks.revoked")}</span>}
+                  <span className="cloud-static">{t("shareLinks.accessCount", { count: l.access_count })}</span>
                 </div>
                 <div className="share-link-url" title={url}>{url}</div>
                 <div className="share-link-actions">
                   <button
-                    onClick={() => navigator.clipboard.writeText(url).then(() => onToast("ok", "Copied."))}
+                    onClick={() => navigator.clipboard.writeText(url).then(() => onToast("ok", t("shareLinks.copiedToast")))}
                     disabled={l.revoked}
                   >
-                    Copy
+                    {t("common.copy")}
                   </button>
                   <button
                     onClick={() => shellOpen(url).catch(() => {})}
                     disabled={l.revoked}
                   >
-                    Open
+                    {t("common.open")}
                   </button>
                   <button
                     className="danger"
                     onClick={() => handleRevoke(l.share_id)}
                     disabled={l.revoked || busyId === l.share_id}
                   >
-                    {busyId === l.share_id ? "…" : "Revoke"}
+                    {busyId === l.share_id ? "…" : t("shareLinks.revokeButton")}
                   </button>
                 </div>
               </div>
@@ -193,7 +195,7 @@ export function ShareLinksDialog({
         </div>
 
         <div className="dialog-row">
-          <button onClick={onClose}>Close</button>
+          <button onClick={onClose}>{t("common.close")}</button>
         </div>
       </div>
     </div>

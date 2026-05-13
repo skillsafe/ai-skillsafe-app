@@ -5,6 +5,7 @@
 // `.tree-folder-header`, `.tree-folder-children`, `.tree-chevron`,
 // `.tree-folder-icon`, `.tree-folder-name`, `.file-item`, `.file-name`,
 // `.file-size`.
+import { useTranslation } from "react-i18next";
 import type { Attachment } from "../lib/artifacts/types";
 
 function formatBytes(n: number): string {
@@ -200,12 +201,13 @@ function countFiles(nodes: Attachment[]): number {
 }
 
 export function TreeView({ attachments, topItem, activePath, loadingPath, onOpen }: TreeViewProps) {
+  const { t } = useTranslation();
   const total = countFiles(attachments) + (topItem ? 1 : 0);
   return (
     <div className="files-tree-wrap">
       <div className="file-tree-header">
         <FolderIcon />
-        <span>{total} file{total !== 1 ? "s" : ""}</span>
+        <span>{t("treeView.fileCount", { count: total })}</span>
       </div>
       <div className="file-tree">
         {topItem && (
@@ -241,7 +243,7 @@ export function TreeView({ attachments, topItem, activePath, loadingPath, onOpen
           />
         ))}
         {attachments.length === 0 && !topItem && (
-          <div className="tree-empty">No files.</div>
+          <div className="tree-empty">{t("treeView.empty")}</div>
         )}
       </div>
     </div>

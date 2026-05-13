@@ -6,6 +6,8 @@
 // detail pane for the case where the user wants to bulk-merge instead.
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { useApp } from "../lib/store";
 import { displayNameOf } from "../lib/agents/registry";
 import { tauriFs, tauriJoiner, tauriPaths } from "../lib/tauriAdapters";
@@ -42,6 +44,7 @@ interface UnionRow {
 }
 
 export function MergeMcpDialog({ items, onClose, onSuccess, onError }: Props) {
+  const { t } = useTranslation();
   const recentProjects = useApp((s) => s.recentProjects);
   const projectRoot = useApp((s) => s.projectRoot);
   const bumpScan = useApp((s) => s.bumpWorkbenchScan);
@@ -116,14 +119,14 @@ export function MergeMcpDialog({ items, onClose, onSuccess, onError }: Props) {
     try {
       const sourceServer = direction === "left-to-right" ? row.left : row.right;
       if (!sourceServer) {
-        onError(`Source side is empty for ${row.name}.`);
+        onError(t("mergeMcp.sourceEmpty", { name: row.name }));
         return;
       }
       const dest = direction === "left-to-right" ? rightSide : leftSide;
       const sourceTool =
         direction === "left-to-right" ? leftSide.tool : rightSide.tool;
       if (dest.scope === "project" && !dest.projectRoot) {
-        onError("Pick a project root for the destination side.");
+        onError(t("mergeMcp.pickProjectRoot"));
         return;
       }
       const result = await transferMcp(tauriFs, tauriPaths, tauriJoiner, {
@@ -139,11 +142,11 @@ export function MergeMcpDialog({ items, onClose, onSuccess, onError }: Props) {
         mode: "replace",
       });
       bumpScan();
-      const msg = `Copied ${row.name} → ${result.destPath}`;
+      const msg = t("mergeMcp.copiedToast", { name: row.name, path: result.destPath });
       setBannerToast(msg);
       onSuccess(msg);
     } catch (e) {
-      onError(`Copy failed: ${e instanceof Error ? e.message : String(e)}`);
+      onError(t("mergeMcp.copyFailed", { message: e instanceof Error ? e.message : String(e) }));
     } finally {
       setBusyKey(null);
     }
@@ -161,39 +164,40 @@ export function MergeMcpDialog({ items, onClose, onSuccess, onError }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         <header className="transfer-header">
-          <h3 style={{ margin: 0 }}>Merge MCP servers</h3>
-          <button className="icon-btn" aria-label="Close" onClick={onClose}>
+          <h3 style={{ margin: 0 }}>{t("mergeMcp.title")}</h3>
+          <button className="icon-btn" aria-label={t("mergeMcp.closeAria")} onClick={onClose}>
             ×
           </button>
         </header>
         <div className="merge-body">
           <div className="merge-sides">
             <SidePicker
-              label="Side A"
+              label={t("mergeMcp.sideA")}
               tool={leftTool}
               scope={leftScope}
               projectRoot={leftProject}
               recentProjects={recentProjects}
-              onTool={(t) => setLeftTool(t)}
+              onTool={(tt) => setLeftTool(tt)}
               onScope={setLeftScope}
               onProject={setLeftProject}
+              t={t}
             />
             <SidePicker
-              label="Side B"
+              label={t("mergeMcp.sideB")}
               tool={rightTool}
               scope={rightScope}
               projectRoot={rightProject}
               recentProjects={recentProjects}
-              onTool={(t) => setRightTool(t)}
+              onTool={(tt) => setRightTool(tt)}
               onScope={setRightScope}
               onProject={setRightProject}
+              t={t}
             />
           </div>
           {bannerToast && <div className="workbench-list-toast">{bannerToast}</div>}
           {rows.length === 0 ? (
             <div className="muted bulk-empty">
-              Neither side has any MCP servers in scope. Add some via Workbench →
-              Add to master, or run a tool that registers MCP servers and re-scan.
+              {t("mergeMcp.empty")}
             </div>
           ) : (
             <ul className="merge-rows">
@@ -206,14 +210,14 @@ export function MergeMcpDialog({ items, onClose, onSuccess, onError }: Props) {
                   <li key={row.name} className="merge-row">
                     <div className="merge-cell merge-name">{row.name}</div>
                     <div className="merge-cell merge-left">
-                      {row.left ? "✓ present" : <span className="muted">missing</span>}
+                      {row.left ? t("mergeMcp.present") : <span className="muted">{t("mergeMcp.missing")}</span>}
                     </div>
                     <div className="merge-cell merge-arrows">
                       <button
                         type="button"
                         disabled={!row.left || rightBusy}
                         onClick={() => copyAcross("left-to-right", row)}
-                        title={`Copy ${row.name} from ${displayNameOf(leftTool)} to ${displayNameOf(rightTool)}`}
+                        title={t("mergeMcp.copyTitle", { name: row.name, from: displayNameOf(leftTool), to: displayNameOf(rightTool) })}
                       >
                         {rightBusy ? "…" : "→"}
                       </button>
@@ -221,24 +225,24 @@ export function MergeMcpDialog({ items, onClose, onSuccess, onError }: Props) {
                         type="button"
                         disabled={!row.right || leftBusy}
                         onClick={() => copyAcross("right-to-left", row)}
-                        title={`Copy ${row.name} from ${displayNameOf(rightTool)} to ${displayNameOf(leftTool)}`}
+                        title={t("mergeMcp.copyTitle", { name: row.name, from: displayNameOf(rightTool), to: displayNameOf(leftTool) })}
                       >
                         {leftBusy ? "…" : "←"}
                       </button>
                     </div>
                     <div className="merge-cell merge-right">
-                      {row.right ? "✓ present" : <span className="muted">missing</span>}
+                      {row.right ? t("mergeMcp.present") : <span className="muted">{t("mergeMcp.missing")}</span>}
                     </div>
                     <div className="merge-cell merge-status">
                       {leftMissing && rightMissing
                         ? ""
                         : leftMissing
-                          ? `only in ${displayNameOf(rightTool)}`
+                          ? t("mergeMcp.onlyInTool", { tool: displayNameOf(rightTool) })
                           : rightMissing
-                            ? `only in ${displayNameOf(leftTool)}`
+                            ? t("mergeMcp.onlyInTool", { tool: displayNameOf(leftTool) })
                             : sameServer(row.left!, row.right!)
-                              ? "in sync"
-                              : "differs"}
+                              ? t("mergeMcp.inSync")
+                              : t("mergeMcp.differs")}
                     </div>
                   </li>
                 );
@@ -247,7 +251,7 @@ export function MergeMcpDialog({ items, onClose, onSuccess, onError }: Props) {
           )}
         </div>
         <div className="dialog-row">
-          <button onClick={onClose}>Done</button>
+          <button onClick={onClose}>{t("mergeMcp.done")}</button>
         </div>
       </div>
     </div>
@@ -271,6 +275,7 @@ function SidePicker({
   onTool,
   onScope,
   onProject,
+  t,
 }: {
   label: string;
   tool: McpTransferTool;
@@ -280,6 +285,7 @@ function SidePicker({
   onTool: (t: McpTransferTool) => void;
   onScope: (s: WorkbenchScope) => void;
   onProject: (p: string | null) => void;
+  t: TFunction;
 }) {
   return (
     <div className="merge-side">
@@ -291,9 +297,9 @@ function SidePicker({
           if (isMcpTransferTool(v)) onTool(v);
         }}
       >
-        {MCP_TRANSFER_TARGETS.map((t) => (
-          <option key={t} value={t}>
-            {displayNameOf(t)}
+        {MCP_TRANSFER_TARGETS.map((tt) => (
+          <option key={tt} value={tt}>
+            {displayNameOf(tt)}
           </option>
         ))}
       </select>
@@ -304,7 +310,7 @@ function SidePicker({
           disabled={!MCP_GLOBAL_CAPABLE.has(tool)}
           onClick={() => onScope("global")}
         >
-          Global
+          {t("mergeMcp.global")}
         </button>
         <button
           type="button"
@@ -312,7 +318,7 @@ function SidePicker({
           disabled={tool === "codex"}
           onClick={() => onScope("project")}
         >
-          Project
+          {t("mergeMcp.project")}
         </button>
       </div>
       {scope === "project" && (
@@ -320,7 +326,7 @@ function SidePicker({
           value={projectRoot ?? ""}
           onChange={(e) => onProject(e.target.value || null)}
         >
-          <option value="">— pick a project —</option>
+          <option value="">{t("mergeMcp.pickProject")}</option>
           {recentProjects.map((p) => (
             <option key={p} value={p}>
               {p}

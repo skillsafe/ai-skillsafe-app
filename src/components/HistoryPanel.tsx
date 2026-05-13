@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { atomicWrite } from "../lib/fs";
 import { tauriFs } from "../lib/tauriAdapters";
 import { getHistoryDeps } from "../lib/editHistory/runtime";
@@ -21,18 +23,19 @@ function formatBytes(n: number): string {
   return `${(n / 1024 / 1024).toFixed(2)} MB`;
 }
 
-function sourceLabel(s: HistoryEntry["source"]): string {
+function sourceLabel(s: HistoryEntry["source"], t: TFunction): string {
   switch (s) {
     case "pre-edit":
-      return "Before edit";
+      return t("historyPanel.sourcePreEdit");
     case "save":
-      return "Saved";
+      return t("historyPanel.sourceSave");
     case "pre-restore":
-      return "Before restore";
+      return t("historyPanel.sourcePreRestore");
   }
 }
 
 export function HistoryPanel({ onReload }: Props) {
+  const { t } = useTranslation();
   const path = useApp((s) => s.historyPanelPath);
   const closePanel = useApp((s) => s.closeHistoryPanel);
   const openDiffEntry = useApp((s) => s.openDiffEntry);
@@ -67,9 +70,7 @@ export function HistoryPanel({ onReload }: Props) {
     async (entry: HistoryEntry) => {
       if (!path) return;
       if (busyId) return;
-      const ok = window.confirm(
-        `Restore this version (${formatTimestamp(entry.ts)})?\nThe current on-disk content will be snapshotted first.`,
-      );
+      const ok = window.confirm(t("historyPanel.restorePrompt", { time: formatTimestamp(entry.ts) }));
       if (!ok) return;
       setBusyId(entry.id);
       try {
@@ -77,7 +78,7 @@ export function HistoryPanel({ onReload }: Props) {
         const currentDisk = await tauriFs.readTextFile(path);
         await recordSnapshot(deps, path, currentDisk, "pre-restore");
         const blob = await readSnapshot(deps, path, entry.id);
-        if (blob === null) throw new Error("snapshot blob missing");
+        if (blob === null) throw new Error(t("historyPanel.snapshotMissing"));
         await atomicWrite(tauriFs, path, blob);
         if (viewedFile && viewedFile.path === path) {
           setViewedFile({ ...viewedFile, content: blob });
@@ -90,7 +91,7 @@ export function HistoryPanel({ onReload }: Props) {
         setBusyId(null);
       }
     },
-    [path, busyId, viewedFile, setViewedFile, onReload, refresh],
+    [path, busyId, viewedFile, setViewedFile, onReload, refresh, t],
   );
 
   if (!path) return null;
@@ -101,19 +102,19 @@ export function HistoryPanel({ onReload }: Props) {
     <aside className="history-panel">
       <header className="history-panel__header">
         <div>
-          <div className="history-panel__title">History</div>
+          <div className="history-panel__title">{t("historyPanel.title")}</div>
           <div className="history-panel__path" title={path}>
             {path.split(/[\\/]/).pop()}
           </div>
         </div>
-        <button className="history-panel__close" onClick={closePanel} aria-label="Close history">
+        <button className="history-panel__close" onClick={closePanel} aria-label={t("historyPanel.closeAria")}>
           ×
         </button>
       </header>
-      {loading && <div className="history-panel__status">Loading…</div>}
+      {loading && <div className="history-panel__status">{t("common.loading")}</div>}
       {error && <div className="history-panel__status history-panel__status--error">{error}</div>}
       {!loading && !error && entriesNewestFirst.length === 0 && (
-        <div className="history-panel__status">No history yet. Edit and save to record one.</div>
+        <div className="history-panel__status">{t("historyPanel.empty")}</div>
       )}
       <ul className="history-panel__list">
         {entriesNewestFirst.map((entry) => (
@@ -121,11 +122,11 @@ export function HistoryPanel({ onReload }: Props) {
             <button
               className="history-entry__main"
               onClick={() => openDiffEntry({ absPath: path, entryId: entry.id })}
-              title="Show diff vs current on-disk content"
+              title={t("historyPanel.showDiffTitle")}
             >
               <div className="history-entry__row">
                 <span className={`history-entry__source-badge history-entry__source-badge--${entry.source}`}>
-                  {sourceLabel(entry.source)}
+                  {sourceLabel(entry.source, t)}
                 </span>
                 <span className="history-entry__time">{formatTimestamp(entry.ts)}</span>
               </div>
@@ -136,7 +137,7 @@ export function HistoryPanel({ onReload }: Props) {
               onClick={() => onRestore(entry)}
               disabled={busyId === entry.id}
             >
-              {busyId === entry.id ? "…" : "Restore"}
+              {busyId === entry.id ? "…" : t("common.restore")}
             </button>
           </li>
         ))}

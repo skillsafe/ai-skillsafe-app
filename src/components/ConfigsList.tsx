@@ -1,58 +1,44 @@
+import { useTranslation } from "react-i18next";
 import { useApp } from "../lib/store";
 import type { ConfigKind } from "../lib/configs/types";
 
-interface KindRow {
-  id: ConfigKind;
-  label: string;
-  description: string;
-}
-
-// File names per kind / scope are useful as a one-liner under each row so the
-// user can see at a glance what the editor is going to touch.
-const KINDS: KindRow[] = [
-  {
-    id: "permissions",
-    label: "Permissions",
-    description: "Allow / Deny / Ask rules + default mode",
-  },
-  {
-    id: "hooks",
-    label: "Hooks",
-    description: "Run shell commands before/after tool use, on Stop, etc.",
-  },
-  {
-    id: "mcp",
-    label: "MCP servers",
-    description: "Connect Claude Code to external MCP tools",
-  },
-  {
-    id: "keybindings",
-    label: "Keybindings",
-    description: "Customize keyboard shortcuts",
-  },
-];
+const KINDS: ConfigKind[] = ["permissions", "hooks", "mcp", "keybindings"];
 
 export function ConfigsList() {
+  const { t } = useTranslation();
   const configKind = useApp((s) => s.configKind);
   const setConfigKind = useApp((s) => s.setConfigKind);
   const scope = useApp((s) => s.scope);
   const tier = useApp((s) => s.projectSettingsTier);
 
+  const labelFor: Record<ConfigKind, string> = {
+    permissions: t("configsList.permissionsLabel"),
+    hooks: t("configsList.hooksLabel"),
+    mcp: t("configsList.mcpLabel"),
+    keybindings: t("configsList.keybindingsLabel"),
+  };
+  const descFor: Record<ConfigKind, string> = {
+    permissions: t("configsList.permissionsDesc"),
+    hooks: t("configsList.hooksDesc"),
+    mcp: t("configsList.mcpDesc"),
+    keybindings: t("configsList.keybindingsDesc"),
+  };
+
   const effectiveScope: "global" | "project" = scope === "project" ? "project" : "global";
   return (
     <section className="list-pane configs-list">
       {KINDS.map((k) => {
-        const isActive = configKind === k.id;
+        const isActive = configKind === k;
         return (
           <div
-            key={k.id}
+            key={k}
             className={`artifact-card ${isActive ? "active" : ""}`}
-            onClick={() => setConfigKind(k.id)}
+            onClick={() => setConfigKind(k)}
           >
-            <div className="artifact-name">{k.label}</div>
-            <div className="artifact-desc">{k.description}</div>
+            <div className="artifact-name">{labelFor[k]}</div>
+            <div className="artifact-desc">{descFor[k]}</div>
             <div className="artifact-meta">
-              <span>{filenameFor(k.id, effectiveScope, tier)}</span>
+              <span>{filenameFor(k, effectiveScope, tier)}</span>
             </div>
           </div>
         );

@@ -6,6 +6,7 @@
 // list-pane shell to mirror the Skills/Agents/Commands experience.
 
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useApp } from "../lib/store";
 import { displayNameOf } from "../lib/agents/registry";
 import { masterStateFor } from "../lib/master/store";
@@ -15,6 +16,7 @@ import type { InventoryItem } from "../lib/inventory/types";
 export const MASTER_TOOL_SENTINEL = "__master__";
 
 export function InventoryList() {
+  const { t } = useTranslation();
   const tool = useApp((s) => s.tool);
   const scope = useApp((s) => s.scope);
   const projectFilter = useApp((s) => s.projectFilter);
@@ -63,26 +65,26 @@ export function InventoryList() {
       <div className="list-toolbar">
         <input
           className="search"
-          placeholder="Filter…"
+          placeholder={t("inventoryList.filterPlaceholder")}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
         <button
           onClick={() => bumpWorkbenchScan()}
-          aria-label="Rescan inventory"
-          title="Rescan tool surfaces and master folder"
+          aria-label={t("inventoryList.rescanAria")}
+          title={t("inventoryList.rescanTitle")}
           data-testid="inventory-list-refresh"
         >
           ↻
         </button>
       </div>
-      {error && <div className="empty empty-error">Scan failed: {error}</div>}
+      {error && <div className="empty empty-error">{t("inventoryList.scanFailed", { error })}</div>}
 
       {!loading && inventory && filtered.length === 0 && (
         <div className="empty">
           {(inventory?.items.length ?? 0) === 0 && masterItems.length === 0
-            ? "Nothing on disk yet for the supported tools (Claude Code, Codex, Cursor, Cline). Try installing one and re-scanning."
-            : "No matches."}
+            ? t("inventoryList.emptyOnDisk")
+            : t("inventoryList.noMatches")}
         </div>
       )}
 
@@ -110,12 +112,13 @@ function ItemRow({
   manifest: Manifest | null;
   onClick: () => void;
 }) {
-  const scopeLabel = item.scope === "global" ? "global" : "project";
+  const { t } = useTranslation();
+  const scopeLabel = item.scope === "global" ? t("inventoryList.scopeGlobal") : t("inventoryList.scopeProject");
   const projectLabel =
     item.scope === "project" && item.projectPath ? ` · ${basename(item.projectPath)}` : "";
   const state = manifest && !item.masterOnly ? masterStateFor(manifest, item) : null;
   const toolLabel =
-    item.tool === MASTER_TOOL_SENTINEL ? "Master" : displayNameOf(item.tool);
+    item.tool === MASTER_TOOL_SENTINEL ? t("inventoryList.masterToolLabel") : displayNameOf(item.tool);
   return (
     <div
       className={`artifact-card ${active ? "active" : ""}`}
@@ -132,18 +135,18 @@ function ItemRow({
       <div className="artifact-name">
         <span>{item.name}</span>
         {item.masterOnly && (
-          <span className="badge master-in-sync" title="In master · live source missing">
-            master only
+          <span className="badge master-in-sync" title={t("inventoryList.masterOnlyTitle")}>
+            {t("inventoryList.masterOnlyBadge")}
           </span>
         )}
         {state?.kind === "in-sync" && (
-          <span className="badge master-in-sync" title="In master, in sync">
-            ✓ master
+          <span className="badge master-in-sync" title={t("inventoryList.inSyncTitle")}>
+            {t("inventoryList.inSyncBadge")}
           </span>
         )}
         {state?.kind === "drifted" && (
-          <span className="badge master-drift" title="In master but source has drifted">
-            drift
+          <span className="badge master-drift" title={t("inventoryList.driftTitle")}>
+            {t("inventoryList.driftBadge")}
           </span>
         )}
       </div>

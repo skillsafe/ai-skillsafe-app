@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { useApp } from "../lib/store";
 import { tauriFs, tauriJoiner, tauriPaths } from "../lib/tauriAdapters";
 import { loadMcp, mcpPath, saveMcp, type McpDoc } from "../lib/configs/mcp";
@@ -17,6 +19,7 @@ interface Props {
 }
 
 export function McpEditor({ onToast }: Props) {
+  const { t } = useTranslation();
   const scope = useApp((s) => s.scope);
   const projectRoot = useApp((s) => s.projectRoot);
   const projectFilter = useApp((s) => s.projectFilter);
@@ -60,11 +63,11 @@ export function McpEditor({ onToast }: Props) {
       setDoc(next);
       setRows(next.servers.map(serverToRow));
     } catch (e) {
-      setError(`Load failed: ${e instanceof Error ? e.message : String(e)}`);
+      setError(t("configs.loadFailed", { message: e instanceof Error ? e.message : String(e) }));
     } finally {
       setLoading(false);
     }
-  }, [effectiveScope, activeProjectRoot]);
+  }, [effectiveScope, activeProjectRoot, t]);
 
   useEffect(() => {
     void load();
@@ -98,18 +101,18 @@ export function McpEditor({ onToast }: Props) {
       const seen = new Set<string>();
       for (const s of servers) {
         if (seen.has(s.name)) {
-          throw new Error(`Duplicate server name: ${s.name}`);
+          throw new Error(t("mcp.duplicateName", { name: s.name }));
         }
         seen.add(s.name);
       }
       const saved = await saveMcp(tauriFs, doc, servers);
       setDoc(saved);
       setRows(saved.servers.map(serverToRow));
-      onToast?.("ok", `Saved ${shortPath(saved.path)}.`);
+      onToast?.("ok", t("configs.savedToast", { path: shortPath(saved.path) }));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setError(`Save failed: ${msg}`);
-      onToast?.("error", `Save failed: ${msg}`);
+      setError(t("configs.saveFailed", { message: msg }));
+      onToast?.("error", t("configs.saveFailed", { message: msg }));
     } finally {
       setSaving(false);
     }
@@ -123,7 +126,7 @@ export function McpEditor({ onToast }: Props) {
   if (effectiveScope === "project" && !activeProjectRoot) {
     return (
       <section className="editor-pane">
-        <div className="empty">Pick a project in the sidebar to edit project-scope MCP servers.</div>
+        <div className="empty">{t("mcp.pickProjectFirst")}</div>
       </section>
     );
   }
@@ -136,7 +139,7 @@ export function McpEditor({ onToast }: Props) {
     <section className="editor-pane configs-editor">
       <div className="editor-toolbar">
         <div className="editor-title">
-          MCP servers <span className="editor-subtitle">— {filename}</span>
+          {t("mcp.title")} <span className="editor-subtitle">— {filename}</span>
         </div>
         <div className="editor-toolbar__actions">
           <button
@@ -144,19 +147,19 @@ export function McpEditor({ onToast }: Props) {
             onClick={onSave}
             disabled={!dirty || saving || !doc}
           >
-            {saving ? "Saving…" : "Save"}
+            {saving ? t("configs.saving") : t("configs.save")}
           </button>
-          <button onClick={onRevert} disabled={!dirty || saving}>Revert</button>
-          <button onClick={() => void load()} disabled={loading}>Reload</button>
+          <button onClick={onRevert} disabled={!dirty || saving}>{t("configs.revert")}</button>
+          <button onClick={() => void load()} disabled={loading}>{t("configs.reload")}</button>
         </div>
       </div>
       {error && <div className="editor-error">{error}</div>}
       <div className="configs-body">
-        {loading && <div className="empty">Loading…</div>}
+        {loading && <div className="empty">{t("configs.loading")}</div>}
         {!loading && doc && (
           <>
             {rows.length === 0 && (
-              <div className="empty">No MCP servers configured.</div>
+              <div className="empty">{t("mcp.empty")}</div>
             )}
             {rows.map((row, idx) => (
               <McpServerCard
@@ -164,10 +167,11 @@ export function McpEditor({ onToast }: Props) {
                 row={row}
                 onChange={(patch) => onUpdate(idx, patch)}
                 onRemove={() => onRemove(idx)}
+                t={t}
               />
             ))}
             <div className="hooks-add">
-              <span>Add server:</span>
+              <span>{t("mcp.addServer")}</span>
               <button type="button" className="pill" onClick={() => onAdd("stdio")}>+ stdio</button>
               <button type="button" className="pill" onClick={() => onAdd("url")}>+ url</button>
             </div>
@@ -182,10 +186,12 @@ function McpServerCard({
   row,
   onChange,
   onRemove,
+  t,
 }: {
   row: Row;
   onChange: (patch: Partial<Row>) => void;
   onRemove: () => void;
+  t: TFunction;
 }) {
   return (
     <div className="mcp-card">
@@ -194,35 +200,35 @@ function McpServerCard({
           type="text"
           className="mcp-name"
           value={row.name}
-          placeholder="server-name"
+          placeholder={t("mcp.namePlaceholder")}
           onChange={(e) => onChange({ name: e.target.value })}
-          aria-label="Server name"
+          aria-label={t("mcp.nameAria")}
         />
         <span className="mcp-transport">{row.transport}</span>
-        <button type="button" className="link-btn" onClick={onRemove} aria-label="Remove server">×</button>
+        <button type="button" className="link-btn" onClick={onRemove} aria-label={t("mcp.removeServerAria")}>×</button>
       </div>
       {row.transport === "stdio" ? (
         <div className="mcp-card-body">
           <label>
-            Command
+            {t("mcp.command")}
             <input
               type="text"
               value={row.command ?? ""}
-              placeholder="npx"
+              placeholder={t("mcp.commandPlaceholder")}
               onChange={(e) => onChange({ command: e.target.value })}
             />
           </label>
           <label>
-            Args (space-separated)
+            {t("mcp.args")}
             <input
               type="text"
               value={row.args ?? ""}
-              placeholder="-y @modelcontextprotocol/server-foo"
+              placeholder={t("mcp.argsPlaceholder")}
               onChange={(e) => onChange({ args: e.target.value })}
             />
           </label>
           <label>
-            Env (one KEY=value per line)
+            {t("mcp.env")}
             <textarea
               rows={2}
               value={row.env ?? ""}
@@ -233,16 +239,16 @@ function McpServerCard({
       ) : (
         <div className="mcp-card-body">
           <label>
-            URL
+            {t("mcp.url")}
             <input
               type="text"
               value={row.url ?? ""}
-              placeholder="https://api.example.com/mcp"
+              placeholder={t("mcp.urlPlaceholder")}
               onChange={(e) => onChange({ url: e.target.value })}
             />
           </label>
           <label>
-            Headers (one Name: value per line)
+            {t("mcp.headers")}
             <textarea
               rows={2}
               value={row.headers ?? ""}

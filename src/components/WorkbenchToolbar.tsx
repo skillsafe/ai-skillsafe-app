@@ -6,6 +6,7 @@
 import { useEffect, useState } from "react";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import { save as saveDialog, open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { useTranslation } from "react-i18next";
 import { useApp } from "../lib/store";
 import { tauriFs, tauriJoiner, tauriPaths } from "../lib/tauriAdapters";
 import { ensureDir } from "../lib/fs";
@@ -15,6 +16,7 @@ import { BulkRestoreDialog } from "./BulkRestoreDialog";
 import { MergeMcpDialog } from "./MergeMcpDialog";
 
 export function WorkbenchToolbar() {
+  const { t } = useTranslation();
   const masterRoot = useApp((s) => s.masterRoot);
   const masterManifest = useApp((s) => s.masterManifest);
   const backupDestination = useApp((s) => s.backupDestination);
@@ -55,13 +57,13 @@ export function WorkbenchToolbar() {
       });
       if (typeof target !== "string") return;
       if (!tauriFs.writeFile) {
-        flashToast("Binary write isn't available in this environment.");
+        flashToast(t("workbenchToolbar.binaryWriteUnavailable"));
         return;
       }
       await tauriFs.writeFile(target, bytes);
-      flashToast(`Exported master → ${target}`);
+      flashToast(t("workbenchToolbar.exportedToast", { target }));
     } catch (e) {
-      flashToast(`Export failed: ${e instanceof Error ? e.message : String(e)}`);
+      flashToast(t("workbenchToolbar.exportFailed", { message: e instanceof Error ? e.message : String(e) }));
     } finally {
       setBusyExport(false);
     }
@@ -77,25 +79,23 @@ export function WorkbenchToolbar() {
       });
       if (typeof picked !== "string") return;
       if (!tauriFs.readFile) {
-        flashToast("Binary read isn't available in this environment.");
+        flashToast(t("workbenchToolbar.binaryReadUnavailable"));
         return;
       }
       const bytes = await tauriFs.readFile(picked);
       const root = await resolveMasterRoot(tauriPaths, masterRoot, backupDestination);
       const result = await importMasterZip(tauriFs, tauriJoiner, root, bytes);
       const parts = [
-        `Imported ${result.filesWritten + result.filesReplaced} file${
-          result.filesWritten + result.filesReplaced === 1 ? "" : "s"
-        }`,
+        t("workbenchToolbar.importedFiles", { count: result.filesWritten + result.filesReplaced }),
       ];
-      if (result.filesReplaced > 0) parts.push(`(${result.filesReplaced} replaced)`);
+      if (result.filesReplaced > 0) parts.push(t("workbenchToolbar.importedReplaced", { count: result.filesReplaced }));
       if (result.manifestEntriesImported > 0) {
-        parts.push(`· ${result.manifestEntriesImported} manifest entries merged`);
+        parts.push(t("workbenchToolbar.importedManifest", { count: result.manifestEntriesImported }));
       }
       flashToast(parts.join(" "));
       bumpScan();
     } catch (e) {
-      flashToast(`Import failed: ${e instanceof Error ? e.message : String(e)}`);
+      flashToast(t("workbenchToolbar.importFailed", { message: e instanceof Error ? e.message : String(e) }));
     } finally {
       setBusyImport(false);
     }
@@ -104,35 +104,36 @@ export function WorkbenchToolbar() {
   return (
     <>
       <ActionsMenu
+        triggerLabel={t("workbenchToolbar.actionsTrigger")}
         items={[
           {
-            label: "Open master folder",
+            label: t("workbenchToolbar.openMasterFolder"),
             onClick: openMasterFolder,
-            hint: "Reveal <backup>/master in Finder",
+            hint: t("workbenchToolbar.openMasterFolderHint"),
           },
           {
-            label: "Bulk restore…",
+            label: t("workbenchToolbar.bulkRestore"),
             onClick: () => setBulkOpen(true),
             disabled: !masterManifest || masterManifest.entries.length === 0,
-            hint: "Restore every master entry to its source on this machine",
+            hint: t("workbenchToolbar.bulkRestoreHint"),
           },
           {
-            label: "Merge MCP…",
+            label: t("workbenchToolbar.mergeMcp"),
             onClick: () => setMergeOpen(true),
-            hint: "Compare two tools' MCP server lists side-by-side",
+            hint: t("workbenchToolbar.mergeMcpHint"),
           },
           { kind: "separator" },
           {
-            label: busyExport ? "Exporting…" : "Export master as zip",
+            label: busyExport ? t("workbenchToolbar.exportZipBusy") : t("workbenchToolbar.exportZip"),
             onClick: exportMasterZip,
             disabled: busyExport,
-            hint: "Save the master folder as a single .zip archive",
+            hint: t("workbenchToolbar.exportZipHint"),
           },
           {
-            label: busyImport ? "Importing…" : "Import master from zip",
+            label: busyImport ? t("workbenchToolbar.importZipBusy") : t("workbenchToolbar.importZip"),
             onClick: importMasterZipUI,
             disabled: busyImport,
-            hint: "Unzip an archive into this master folder",
+            hint: t("workbenchToolbar.importZipHint"),
           },
         ]}
       />
@@ -170,7 +171,7 @@ type ActionsMenuItem =
     }
   | { kind: "separator" };
 
-function ActionsMenu({ items }: { items: ActionsMenuItem[] }) {
+function ActionsMenu({ items, triggerLabel }: { items: ActionsMenuItem[]; triggerLabel: string }) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -193,7 +194,7 @@ function ActionsMenu({ items }: { items: ActionsMenuItem[] }) {
         aria-haspopup="menu"
         onClick={() => setOpen((v) => !v)}
       >
-        Actions ▾
+        {triggerLabel}
       </button>
       {open && (
         <div role="menu" className="workbench-actions-menu-popover">

@@ -1,7 +1,9 @@
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { useTranslation } from "react-i18next";
 import { useApp } from "../lib/store";
 
 export function ProjectRootPicker() {
+  const { t } = useTranslation();
   const { projectRoot, setProjectRoot } = useApp();
 
   async function pickProject() {
@@ -11,11 +13,11 @@ export function ProjectRootPicker() {
 
   return (
     <div className="project-box">
-      <div className="project-path">{projectRoot ?? "— not selected —"}</div>
+      <div className="project-path">{projectRoot ?? t("projectPicker.notSelected")}</div>
       <div className="cloud-row">
-        <button onClick={pickProject}>Pick folder…</button>
+        <button onClick={pickProject}>{t("projectPicker.pickFolder")}</button>
         {projectRoot && (
-          <button onClick={() => setProjectRoot(null)}>Clear</button>
+          <button onClick={() => setProjectRoot(null)}>{t("projectPicker.clear")}</button>
         )}
       </div>
     </div>

@@ -652,6 +652,21 @@ select:focus-visible { outline-offset: 0; }
   padding: 8px 0;
 }
 .layout-reset-text { flex: 1; color: var(--muted); font-size: 13px; }
+.language-select {
+  flex: 0 0 auto;
+  min-width: 180px;
+  max-width: 240px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.language-select:hover { border-color: var(--border-strong, var(--border)); }
+.language-select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* Settings dialog — compact, segmented controls, account "card". */
 .settings-dialog {
   width: 520px;

@@ -8,6 +8,8 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { useApp } from "../lib/store";
 import { displayNameOf } from "../lib/agents/registry";
 import { tauriFs, tauriJoiner, tauriPaths } from "../lib/tauriAdapters";
@@ -27,6 +29,7 @@ import type { InventoryItem, StateCategory } from "../lib/inventory/types";
 import { TransferDialog } from "./TransferDialog";
 
 export function Workbench() {
+  const { t } = useTranslation();
   const inventory = useApp((s) => s.workbenchInventory);
   const selectedId = useApp((s) => s.workbenchSelectedId);
   const masterManifest = useApp((s) => s.masterManifest);
@@ -183,10 +186,10 @@ export function Workbench() {
       bumpWorkbenchScan();
       setToast({
         kind: "ok",
-        text: masterState?.kind === "drifted" ? "Master updated." : "Added to master.",
+        text: masterState?.kind === "drifted" ? t("workbench.toastMasterUpdated") : t("workbench.toastAddedToMaster"),
       });
     } catch (e) {
-      setToast({ kind: "error", text: `Add to master failed: ${errorMessage(e)}` });
+      setToast({ kind: "error", text: t("workbench.toastAddFailed", { message: errorMessage(e) }) });
     } finally {
       setBusy(false);
     }
@@ -200,9 +203,9 @@ export function Workbench() {
       await removeFromMaster(tauriFs, tauriJoiner, root, masterState.entry.id);
       await reloadManifestOnly();
       bumpWorkbenchScan();
-      setToast({ kind: "ok", text: "Removed from master." });
+      setToast({ kind: "ok", text: t("workbench.toastRemovedFromMaster") });
     } catch (e) {
-      setToast({ kind: "error", text: `Remove failed: ${errorMessage(e)}` });
+      setToast({ kind: "error", text: t("workbench.toastRemoveFailed", { message: errorMessage(e) }) });
     } finally {
       setBusy(false);
     }
@@ -224,9 +227,9 @@ export function Workbench() {
       // Source contents changed; full re-scan is the cleanest way to
       // refresh the inventory's hashes and clear the drift badge.
       bumpWorkbenchScan();
-      setToast({ kind: "ok", text: "Source restored from master." });
+      setToast({ kind: "ok", text: t("workbench.toastSourceRestored") });
     } catch (e) {
-      setToast({ kind: "error", text: `Restore failed: ${errorMessage(e)}` });
+      setToast({ kind: "error", text: t("workbench.toastRestoreFailed", { message: errorMessage(e) }) });
     } finally {
       setBusy(false);
     }
@@ -246,10 +249,10 @@ export function Workbench() {
       bumpWorkbenchScan();
       setToast({
         kind: "ok",
-        text: `Restored ${displayNameOf(src.tool)} (${src.scope}).`,
+        text: t("workbench.toastRestoredSource", { tool: displayNameOf(src.tool), scope: src.scope }),
       });
     } catch (e) {
-      setToast({ kind: "error", text: `Restore failed: ${errorMessage(e)}` });
+      setToast({ kind: "error", text: t("workbench.toastRestoreFailed", { message: errorMessage(e) }) });
     } finally {
       setBusy(false);
     }
@@ -268,10 +271,10 @@ export function Workbench() {
       bumpWorkbenchScan();
       setToast({
         kind: "ok",
-        text: `Unbound ${displayNameOf(src.tool)} (${src.scope}). Destination file untouched.`,
+        text: t("workbench.toastUnboundSource", { tool: displayNameOf(src.tool), scope: src.scope }),
       });
     } catch (e) {
-      setToast({ kind: "error", text: `Unbind failed: ${errorMessage(e)}` });
+      setToast({ kind: "error", text: t("workbench.toastUnbindFailed", { message: errorMessage(e) }) });
     } finally {
       setBusy(false);
     }
@@ -287,7 +290,7 @@ export function Workbench() {
       );
       await shellOpen(abs);
     } catch (e) {
-      setToast({ kind: "error", text: `Couldn't open master file: ${errorMessage(e)}` });
+      setToast({ kind: "error", text: t("workbench.toastCantOpenMaster", { message: errorMessage(e) }) });
     }
   }
 
@@ -296,7 +299,7 @@ export function Workbench() {
     try {
       await shellOpen(selected.absPath);
     } catch (e) {
-      setToast({ kind: "error", text: `Couldn't open source file: ${errorMessage(e)}` });
+      setToast({ kind: "error", text: t("workbench.toastCantOpenSource", { message: errorMessage(e) }) });
     }
   }
 
@@ -317,7 +320,7 @@ export function Workbench() {
         );
         setMasterBody(body);
       } catch (e) {
-        setToast({ kind: "error", text: `Couldn't read master payload: ${errorMessage(e)}` });
+        setToast({ kind: "error", text: t("workbench.toastCantReadMaster", { message: errorMessage(e) }) });
         return;
       }
     }
@@ -327,14 +330,19 @@ export function Workbench() {
   if (!selected) {
     return (
       <section className="editor-pane workbench-pane">
-        <EmptyState />
+        <EmptyState t={t} />
       </section>
     );
   }
 
+  const categoryLabel = t(`category.${selected.category}`, { defaultValue: selected.category });
   const subtitle = isMasterOnly
-    ? `Master · ${selected.category}`
-    : `${selected.tool === "__master__" ? "Master" : displayNameOf(selected.tool)} · ${selected.category} · ${selected.scope}`;
+    ? t("workbench.subtitleMasterOnly", { category: categoryLabel })
+    : t("workbench.subtitleLive", {
+        tool: selected.tool === "__master__" ? t("workbench.subtitleMasterTool") : displayNameOf(selected.tool),
+        category: categoryLabel,
+        scope: selected.scope,
+      });
 
   return (
     <section className="editor-pane workbench-pane">
@@ -348,12 +356,12 @@ export function Workbench() {
         </div>
         <div className="workbench-meta">
           {selected.lastSeen
-            ? `Last modified ${formatTime(selected.lastSeen)}`
-            : "Modification time unavailable"}
+            ? t("workbench.lastModified", { time: formatTime(selected.lastSeen) })
+            : t("workbench.noModTime")}
           <span className="workbench-meta-sep">·</span>
           <code className="workbench-hash">{selected.contentHash.slice(0, 12)}</code>
         </div>
-        <StateCallout state={masterState} masterOnly={isMasterOnly} />
+        <StateCallout state={masterState} masterOnly={isMasterOnly} t={t} />
         <MasterActions
           state={masterState}
           masterOnly={isMasterOnly}
@@ -367,6 +375,7 @@ export function Workbench() {
           onOpenMasterFile={handleOpenMasterFile}
           onOpenSource={handleOpenSource}
           onTransfer={() => setTransferOpen(true)}
+          t={t}
         />
       </div>
       {toast && (
@@ -381,11 +390,11 @@ export function Workbench() {
       )}
       <div className="workbench-body">
         {isMasterOnly ? (
-          <MasterOnlyPreview category={selected.category} body={masterOnlyBody} />
+          <MasterOnlyPreview category={selected.category} body={masterOnlyBody} t={t} />
         ) : showDiff && masterState && masterState.kind !== "not-in-master" ? (
-          <DiffPreview item={selected} masterEntry={masterState.entry} masterBody={masterBody} />
+          <DiffPreview item={selected} masterEntry={masterState.entry} masterBody={masterBody} t={t} />
         ) : (
-          <PayloadPreview item={selected} />
+          <PayloadPreview item={selected} t={t} />
         )}
         {masterState && masterState.kind !== "not-in-master" && (
           <SourcesList
@@ -393,6 +402,7 @@ export function Workbench() {
             busy={busy}
             onRestoreSource={(s) => handleRestoreSource(masterState.entry, s)}
             onUnbindSource={(s) => handleUnbindSource(masterState.entry, s)}
+            t={t}
           />
         )}
       </div>
@@ -416,16 +426,18 @@ export function Workbench() {
 function StateCallout({
   state,
   masterOnly,
+  t,
 }: {
   state: MasterState | null;
   masterOnly: boolean;
+  t: TFunction;
 }) {
   if (masterOnly) {
     return (
       <div className="state-callout state-callout-master-only">
         <span className="state-callout-icon">○</span>
         <div>
-          <strong>Master only.</strong> No live source on this machine.
+          <strong>{t("workbench.calloutMasterOnlyTitle")}</strong> {t("workbench.calloutMasterOnlyBody")}
         </div>
       </div>
     );
@@ -437,7 +449,7 @@ function StateCallout({
     return (
       <div className="state-callout state-callout-absent">
         <span className="state-callout-icon">·</span>
-        <div>Not in master yet. Add it to keep a curated copy.</div>
+        <div>{t("workbench.calloutAbsent")}</div>
       </div>
     );
   }
@@ -446,7 +458,7 @@ function StateCallout({
       <div className="state-callout state-callout-sync">
         <span className="state-callout-icon">✓</span>
         <div>
-          <strong>In master.</strong> Source matches the curated copy.
+          <strong>{t("workbench.calloutInSyncTitle")}</strong> {t("workbench.calloutInSyncBody")}
         </div>
       </div>
     );
@@ -455,7 +467,7 @@ function StateCallout({
     <div className="state-callout state-callout-drift">
       <span className="state-callout-icon">⚠</span>
       <div>
-        <strong>Drifted.</strong> Source has changed since it was added to master.
+        <strong>{t("workbench.calloutDriftTitle")}</strong> {t("workbench.calloutDriftBody")}
       </div>
     </div>
   );
@@ -474,6 +486,7 @@ function MasterActions({
   onOpenMasterFile,
   onOpenSource,
   onTransfer,
+  t,
 }: {
   state: MasterState | null;
   masterOnly: boolean;
@@ -487,6 +500,7 @@ function MasterActions({
   onOpenMasterFile: () => void;
   onOpenSource: () => void;
   onTransfer: () => void;
+  t: TFunction;
 }) {
   const isInMaster = state && state.kind !== "not-in-master";
   const drifted = state?.kind === "drifted";
@@ -504,25 +518,24 @@ function MasterActions({
               className="primary"
               onClick={onTransfer}
               disabled={busy}
-              title="Translate and write this to a tool's config location"
+              title={t("workbench.transferToToolTitle")}
             >
-              Transfer to a tool…
+              {t("workbench.transferToTool")}
             </button>
           ) : (
             <div className="muted">
-              No transfer translator yet for {category}. Open the file in master
-              and copy by hand if needed.
+              {t("workbench.noTransferTranslator", { category })}
             </div>
           )}
         </div>
-        <ActionGroup label="Inspect">
+        <ActionGroup label={t("workbench.inspectLabel")}>
           <button onClick={onOpenMasterFile} disabled={busy}>
-            Open in master
+            {t("workbench.openInMaster")}
           </button>
         </ActionGroup>
-        <ActionGroup label="Manage" muted>
+        <ActionGroup label={t("workbench.manageLabel")} muted>
           <button onClick={onRemove} disabled={busy} className="danger">
-            Remove from master
+            {t("workbench.removeFromMaster")}
           </button>
         </ActionGroup>
       </div>
@@ -530,15 +543,11 @@ function MasterActions({
   }
 
   // ----- live items -------------------------------------------------------
-  // Primary action depends on state:
-  //   not-in-master  → Add to master
-  //   in-sync        → Re-add (uncommon; mostly a manual refresh)
-  //   drifted        → Update master AND Restore source (real choice)
   const primaryLabel = drifted
-    ? "Update master with source"
+    ? t("workbench.primaryUpdate")
     : isInMaster
-      ? "Re-add to master"
-      : "Add to master";
+      ? t("workbench.primaryReAdd")
+      : t("workbench.primaryAdd");
 
   return (
     <div className="workbench-actions-stack">
@@ -549,10 +558,10 @@ function MasterActions({
           disabled={busy}
           title={
             drifted
-              ? "Capture the current source content into master"
+              ? t("workbench.primaryTitleDrifted")
               : isInMaster
-                ? "Re-write the master copy from the current source"
-                : "Save a curated copy of the source into the master folder"
+                ? t("workbench.primaryTitleInMaster")
+                : t("workbench.primaryTitleAdd")
           }
         >
           {primaryLabel}
@@ -562,52 +571,52 @@ function MasterActions({
             className="primary primary-secondary"
             onClick={onRestore}
             disabled={busy}
-            title="Overwrite the source with the curated master content"
+            title={t("workbench.restoreFromMasterTitle")}
           >
-            Restore source from master
+            {t("workbench.restoreFromMaster")}
           </button>
         )}
       </div>
 
-      <ActionGroup label="Inspect">
+      <ActionGroup label={t("workbench.inspectLabel")}>
         {isInMaster && (
           <button onClick={onToggleDiff} disabled={busy}>
-            {showDiff ? "Hide diff" : "Diff vs master"}
+            {showDiff ? t("workbench.hideDiff") : t("workbench.diffVsMaster")}
           </button>
         )}
-        <button onClick={onOpenSource} disabled={busy} title="Open the source file in your default editor">
-          Open source
+        <button onClick={onOpenSource} disabled={busy} title={t("workbench.openSourceTitle")}>
+          {t("workbench.openSource")}
         </button>
         {isInMaster && (
-          <button onClick={onOpenMasterFile} disabled={busy} title="Open the master payload file">
-            Open in master
+          <button onClick={onOpenMasterFile} disabled={busy} title={t("workbench.openMasterFileTitle")}>
+            {t("workbench.openMasterFile")}
           </button>
         )}
       </ActionGroup>
 
       {(isInMaster || transferSupported) && (
-        <ActionGroup label="Other" muted>
+        <ActionGroup label={t("workbench.otherLabel")} muted>
           {transferSupported && (
             <button
               onClick={onTransfer}
               disabled={busy}
-              title="Translate and write to another tool"
+              title={t("workbench.transferAnotherTitle")}
             >
-              Transfer to another tool…
+              {t("workbench.transferAnother")}
             </button>
           )}
           {isInMaster && !drifted && (
             <button
               onClick={onRestore}
               disabled={busy}
-              title="Overwrite source with master content"
+              title={t("workbench.restoreFromMasterAltTitle")}
             >
-              Restore source from master
+              {t("workbench.restoreFromMaster")}
             </button>
           )}
           {isInMaster && (
             <button onClick={onRemove} disabled={busy} className="danger">
-              Remove from master
+              {t("workbench.removeFromMaster")}
             </button>
           )}
         </ActionGroup>
@@ -636,15 +645,17 @@ function ActionGroup({
 function MasterOnlyPreview({
   category,
   body,
+  t,
 }: {
   category: StateCategory;
   body: string | null;
+  t: TFunction;
 }) {
   if (body === null) {
-    return <div className="workbench-loading-placeholder">Loading master payload…</div>;
+    return <div className="workbench-loading-placeholder">{t("workbench.loadingMasterPayload")}</div>;
   }
   if (body === "") {
-    return <div className="workbench-empty">(master payload is empty or unreadable)</div>;
+    return <div className="workbench-empty">{t("workbench.emptyMasterPayload")}</div>;
   }
   if (category === "memory") {
     return <pre className="workbench-payload workbench-payload-text">{body}</pre>;
@@ -667,19 +678,20 @@ function SourcesList({
   busy,
   onRestoreSource,
   onUnbindSource,
+  t,
 }: {
   entry: MasterEntry;
   busy: boolean;
   onRestoreSource: (s: MasterSource) => void;
   onUnbindSource: (s: MasterSource) => void;
+  t: TFunction;
 }) {
   if (entry.sources.length === 0) {
     return (
       <div className="workbench-sources">
-        <div className="workbench-sources-label">Bound sources</div>
+        <div className="workbench-sources-label">{t("workbench.boundSources")}</div>
         <div className="workbench-empty">
-          No sources bound. Use <em>Transfer</em> to push the canonical body into a tool's
-          location and bind it as a source.
+          {t("workbench.noBoundSources")}
         </div>
       </div>
     );
@@ -687,7 +699,7 @@ function SourcesList({
   return (
     <div className="workbench-sources">
       <div className="workbench-sources-label">
-        Bound sources <span className="muted">({entry.sources.length})</span>
+        {t("workbench.boundSources")} <span className="muted">({entry.sources.length})</span>
       </div>
       <ul className="workbench-sources-list">
         {entry.sources.map((s, idx) => {
@@ -699,10 +711,10 @@ function SourcesList({
               <div className="workbench-source-row">
                 <div className="workbench-source-meta">
                   <div className="workbench-source-tool">
-                    {isMasterSentinel ? "Master" : displayNameOf(s.tool)} · {s.scope}
+                    {isMasterSentinel ? t("workbench.masterSentinel") : displayNameOf(s.tool)} · {s.scope}
                     {neverSynced && (
-                      <span className="badge master-drift" title="Bound but never synced — Restore to push the canonical body.">
-                        bound
+                      <span className="badge master-drift" title={t("workbench.boundTitle")}>
+                        {t("workbench.boundBadge")}
                       </span>
                     )}
                   </div>
@@ -716,19 +728,19 @@ function SourcesList({
                       type="button"
                       onClick={() => onRestoreSource(s)}
                       disabled={busy}
-                      title="Write the master payload into this source's path."
+                      title={t("workbench.restoreSourceTitle")}
                       data-testid={`restore-source-${s.tool}-${s.scope}`}
                     >
-                      Restore
+                      {t("workbench.restoreSource")}
                     </button>
                     <button
                       type="button"
                       onClick={() => onUnbindSource(s)}
                       disabled={busy}
-                      title="Remove this source from the master entry. The destination file is not touched."
+                      title={t("workbench.unbindSourceTitle")}
                       data-testid={`unbind-source-${s.tool}-${s.scope}`}
                     >
-                      Unbind
+                      {t("workbench.unbindSource")}
                     </button>
                   </div>
                 )}
@@ -746,30 +758,22 @@ function lastSegment(p: string): string {
   return segs[segs.length - 1] || p;
 }
 
-function EmptyState() {
+function EmptyState({ t }: { t: TFunction }) {
   return (
     <div className="workbench-empty-state">
-      <div className="workbench-empty-title">Workbench</div>
-      <p>
-        Cross-tool inventory of memory files, MCP servers, hooks, permissions, and
-        keybindings. Pick an item from the list to inspect what's on disk and add it
-        to your master folder.
-      </p>
-      <p className="workbench-empty-hint">
-        The master folder is just a folder of files — set its location in
-        Settings → Workbench master folder. It's safe to <code>git init</code> the
-        master folder and version-control your setup.
-      </p>
+      <div className="workbench-empty-title">{t("workbench.emptyStateTitle")}</div>
+      <p>{t("workbench.emptyStateBody")}</p>
+      <p className="workbench-empty-hint">{t("workbench.emptyStateHint")}</p>
     </div>
   );
 }
 
-function PayloadPreview({ item }: { item: InventoryItem }) {
+function PayloadPreview({ item, t }: { item: InventoryItem; t: TFunction }) {
   if (item.category === "memory") {
     const body = isObjectWithKey(item.payload, "body") ? String(item.payload.body) : "";
     return (
       <pre className="workbench-payload workbench-payload-text">
-        {body || "(empty file)"}
+        {body || t("workbench.emptyFile")}
       </pre>
     );
   }
@@ -784,22 +788,23 @@ function DiffPreview({
   item,
   masterEntry,
   masterBody,
+  t,
 }: {
   item: InventoryItem;
   masterEntry: MasterEntry;
   masterBody: string | null;
+  t: TFunction;
 }) {
   const sourceText = renderForDiff(item);
-  const masterText =
-    masterBody ?? "(loading master payload…)";
+  const masterText = masterBody ?? t("workbench.diffLoadingMaster");
   return (
     <div className="workbench-diff">
       <div className="workbench-diff-col">
-        <div className="workbench-diff-label">Source on disk</div>
+        <div className="workbench-diff-label">{t("workbench.diffSourceLabel")}</div>
         <pre className="workbench-payload workbench-payload-text">{sourceText}</pre>
       </div>
       <div className="workbench-diff-col">
-        <div className="workbench-diff-label">Master ({masterEntry.masterPath})</div>
+        <div className="workbench-diff-label">{t("workbench.diffMasterLabel", { path: masterEntry.masterPath })}</div>
         <pre className="workbench-payload workbench-payload-text">{masterText}</pre>
       </div>
     </div>

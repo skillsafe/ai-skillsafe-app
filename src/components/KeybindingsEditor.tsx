@@ -1,5 +1,6 @@
 import Monaco from "@monaco-editor/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useApp } from "../lib/store";
 import { tauriFs, tauriJoiner, tauriPaths } from "../lib/tauriAdapters";
 import {
@@ -18,6 +19,7 @@ interface Props {
 }
 
 export function KeybindingsEditor({ onToast }: Props) {
+  const { t } = useTranslation();
   const theme = useApp((s) => s.resolvedTheme);
   const setEditDirty = useApp((s) => s.setEditDirty);
 
@@ -54,11 +56,11 @@ export function KeybindingsEditor({ onToast }: Props) {
       setBindings([...next.bindings]);
       setRawDraft(next.rawText);
     } catch (e) {
-      setError(`Load failed: ${e instanceof Error ? e.message : String(e)}`);
+      setError(t("configs.loadFailed", { message: e instanceof Error ? e.message : String(e) }));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void load();
@@ -91,11 +93,11 @@ export function KeybindingsEditor({ onToast }: Props) {
       setDoc(saved);
       setBindings([...saved.bindings]);
       setRawDraft(saved.rawText);
-      onToast?.("ok", "Saved ~/.claude/keybindings.json.");
+      onToast?.("ok", t("keybindings.savedToast"));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setError(`Save failed: ${msg}`);
-      onToast?.("error", `Save failed: ${msg}`);
+      setError(t("configs.saveFailed", { message: msg }));
+      onToast?.("error", t("configs.saveFailed", { message: msg }));
     } finally {
       setSaving(false);
     }
@@ -111,10 +113,10 @@ export function KeybindingsEditor({ onToast }: Props) {
     <section className="editor-pane configs-editor">
       <div className="editor-toolbar">
         <div className="editor-title">
-          Keybindings <span className="editor-subtitle">— ~/.claude/keybindings.json</span>
+          {t("keybindings.title")} <span className="editor-subtitle">— ~/.claude/keybindings.json</span>
         </div>
         <div className="editor-toolbar__actions">
-          <div className="pill-row" role="tablist" aria-label="Editor tab">
+          <div className="pill-row" role="tablist" aria-label={t("keybindings.editorTabAria")}>
             <button
               type="button"
               role="tab"
@@ -122,7 +124,7 @@ export function KeybindingsEditor({ onToast }: Props) {
               aria-selected={tab === "form"}
               onClick={() => setTab("form")}
             >
-              Form
+              {t("keybindings.form")}
             </button>
             <button
               type="button"
@@ -131,7 +133,7 @@ export function KeybindingsEditor({ onToast }: Props) {
               aria-selected={tab === "raw"}
               onClick={() => setTab("raw")}
             >
-              Raw JSON
+              {t("keybindings.rawJson")}
             </button>
           </div>
           <button
@@ -139,30 +141,30 @@ export function KeybindingsEditor({ onToast }: Props) {
             onClick={onSave}
             disabled={!dirty || saving || !doc}
           >
-            {saving ? "Saving…" : "Save"}
+            {saving ? t("configs.saving") : t("configs.save")}
           </button>
-          <button onClick={onRevert} disabled={!dirty || saving}>Revert</button>
-          <button onClick={() => void load()} disabled={loading}>Reload</button>
+          <button onClick={onRevert} disabled={!dirty || saving}>{t("configs.revert")}</button>
+          <button onClick={() => void load()} disabled={loading}>{t("configs.reload")}</button>
         </div>
       </div>
       {error && <div className="editor-error">{error}</div>}
       {tab === "form" ? (
         <div className="configs-body">
-          {loading && <div className="empty">Loading…</div>}
+          {loading && <div className="empty">{t("configs.loading")}</div>}
           {!loading && doc && (
             <>
               <table className="hooks-table">
                 <thead>
                   <tr>
-                    <th>Action</th>
-                    <th>Keys</th>
-                    <th>When</th>
-                    <th aria-label="actions" />
+                    <th>{t("keybindings.actionCol")}</th>
+                    <th>{t("keybindings.keysCol")}</th>
+                    <th>{t("keybindings.whenCol")}</th>
+                    <th aria-label={t("hooks.actionsAria")} />
                   </tr>
                 </thead>
                 <tbody>
                   {bindings.length === 0 && (
-                    <tr><td colSpan={4} className="hooks-empty">No bindings.</td></tr>
+                    <tr><td colSpan={4} className="hooks-empty">{t("keybindings.empty")}</td></tr>
                   )}
                   {bindings.map((b, idx) => (
                     <tr key={idx}>
@@ -170,7 +172,7 @@ export function KeybindingsEditor({ onToast }: Props) {
                         <input
                           type="text"
                           value={b.action}
-                          placeholder="action.name"
+                          placeholder={t("keybindings.actionPlaceholder")}
                           onChange={(e) => onUpdate(idx, { action: e.target.value })}
                         />
                       </td>
@@ -178,7 +180,7 @@ export function KeybindingsEditor({ onToast }: Props) {
                         <input
                           type="text"
                           value={b.keys}
-                          placeholder="ctrl+s"
+                          placeholder={t("keybindings.keysPlaceholder")}
                           onChange={(e) => onUpdate(idx, { keys: e.target.value })}
                         />
                       </td>
@@ -186,7 +188,7 @@ export function KeybindingsEditor({ onToast }: Props) {
                         <input
                           type="text"
                           value={b.when ?? ""}
-                          placeholder="(any context)"
+                          placeholder={t("keybindings.whenPlaceholder")}
                           onChange={(e) => {
                             const v = e.target.value;
                             onUpdate(idx, { when: v || undefined });
@@ -197,7 +199,7 @@ export function KeybindingsEditor({ onToast }: Props) {
                         <button
                           type="button"
                           className="link-btn"
-                          aria-label="Remove binding"
+                          aria-label={t("keybindings.removeBindingAria")}
                           onClick={() => onRemove(idx)}
                         >
                           ×
@@ -208,9 +210,9 @@ export function KeybindingsEditor({ onToast }: Props) {
                 </tbody>
               </table>
               <div className="hooks-add">
-                <button type="button" className="pill" onClick={onAdd}>+ Add binding</button>
+                <button type="button" className="pill" onClick={onAdd}>{t("keybindings.addBinding")}</button>
                 {!doc.exists && (
-                  <span>File will be created on save.</span>
+                  <span>{t("keybindings.willCreateOnSave")}</span>
                 )}
               </div>
             </>

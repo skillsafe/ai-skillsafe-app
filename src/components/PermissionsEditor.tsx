@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { useApp } from "../lib/store";
 import { tauriFs, tauriJoiner, tauriPaths } from "../lib/tauriAdapters";
 import {
@@ -14,17 +16,14 @@ import {
 import type { Permissions } from "../lib/configs/schemas";
 
 type Bucket = "allow" | "deny" | "ask";
-const BUCKETS: { id: Bucket; label: string }[] = [
-  { id: "allow", label: "Allow" },
-  { id: "deny", label: "Deny" },
-  { id: "ask", label: "Ask" },
-];
+const BUCKETS: Bucket[] = ["allow", "deny", "ask"];
 
 interface Props {
   onToast?: (kind: "ok" | "error", text: string) => void;
 }
 
 export function PermissionsEditor({ onToast }: Props) {
+  const { t } = useTranslation();
   const scope = useApp((s) => s.scope);
   const projectRoot = useApp((s) => s.projectRoot);
   const projectFilter = useApp((s) => s.projectFilter);
@@ -83,11 +82,11 @@ export function PermissionsEditor({ onToast }: Props) {
       setDoc(next);
       setDraft(clone(next.permissions));
     } catch (e) {
-      setError(`Load failed: ${e instanceof Error ? e.message : String(e)}`);
+      setError(t("configs.loadFailed", { message: e instanceof Error ? e.message : String(e) }));
     } finally {
       setLoading(false);
     }
-  }, [effectiveScope, activeProjectRoot, tier]);
+  }, [effectiveScope, activeProjectRoot, tier, t]);
 
   useEffect(() => {
     void load();
@@ -122,11 +121,11 @@ export function PermissionsEditor({ onToast }: Props) {
       const saved = await saveSettings(tauriFs, tauriJoiner, doc, { permissions: draft });
       setDoc(saved);
       setDraft(clone(saved.permissions));
-      onToast?.("ok", `Saved ${shortPath(saved.path)}.`);
+      onToast?.("ok", t("configs.savedToast", { path: shortPath(saved.path) }));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setError(`Save failed: ${msg}`);
-      onToast?.("error", `Save failed: ${msg}`);
+      setError(t("configs.saveFailed", { message: msg }));
+      onToast?.("error", t("configs.saveFailed", { message: msg }));
     } finally {
       setSaving(false);
     }
@@ -158,10 +157,16 @@ export function PermissionsEditor({ onToast }: Props) {
   if (effectiveScope === "project" && !activeProjectRoot) {
     return (
       <section className="editor-pane">
-        <div className="empty">Pick a project in the sidebar to edit project-scope permissions.</div>
+        <div className="empty">{t("permissions.pickProjectFirst")}</div>
       </section>
     );
   }
+
+  const bucketLabel: Record<Bucket, string> = {
+    allow: t("permissions.allow"),
+    deny: t("permissions.deny"),
+    ask: t("permissions.ask"),
+  };
 
   const filename = effectiveScope === "global"
     ? "~/.claude/settings.json"
@@ -173,20 +178,20 @@ export function PermissionsEditor({ onToast }: Props) {
     <section className="editor-pane configs-editor">
       <div className="editor-toolbar">
         <div className="editor-title">
-          Permissions <span className="editor-subtitle">— {filename}</span>
+          {t("permissions.title")} <span className="editor-subtitle">— {filename}</span>
         </div>
         <div className="editor-toolbar__actions">
           {effectiveScope === "project" && (
-            <div className="pill-row" role="tablist" aria-label="Settings tier">
+            <div className="pill-row" role="tablist" aria-label={t("configs.settingsTier")}>
               <button
                 type="button"
                 role="tab"
                 className={`pill ${tier === "local" ? "active" : ""}`}
                 aria-selected={tier === "local"}
                 onClick={() => setTier("local")}
-                title="settings.local.json — gitignored, your personal overrides"
+                title={t("permissions.localTitle")}
               >
-                Local
+                {t("configs.local")}
               </button>
               <button
                 type="button"
@@ -194,9 +199,9 @@ export function PermissionsEditor({ onToast }: Props) {
                 className={`pill ${tier === "shared" ? "active" : ""}`}
                 aria-selected={tier === "shared"}
                 onClick={() => setTier("shared")}
-                title="settings.json — checked into the repo, shared with the team"
+                title={t("permissions.sharedTitle")}
               >
-                Shared
+                {t("configs.shared")}
               </button>
             </div>
           )}
@@ -205,28 +210,30 @@ export function PermissionsEditor({ onToast }: Props) {
             onClick={onSave}
             disabled={!dirty || saving || !doc}
           >
-            {saving ? "Saving…" : "Save"}
+            {saving ? t("configs.saving") : t("configs.save")}
           </button>
           <button onClick={onRevert} disabled={!dirty || saving}>
-            Revert
+            {t("configs.revert")}
           </button>
           <button onClick={() => void load()} disabled={loading}>
-            Reload
+            {t("configs.reload")}
           </button>
         </div>
       </div>
       {error && <div className="editor-error">{error}</div>}
       <div className="configs-body">
-        {loading && <div className="empty">Loading…</div>}
+        {loading && <div className="empty">{t("configs.loading")}</div>}
         {!loading && doc && (
           <div className="permissions-grid">
             {BUCKETS.map((b) => (
               <BucketColumn
-                key={b.id}
-                label={b.label}
-                items={draft[b.id] ?? []}
-                onAdd={(v) => onAdd(b.id, v)}
-                onRemove={(i) => onRemove(b.id, i)}
+                key={b}
+                bucketKey={b}
+                label={bucketLabel[b]}
+                items={draft[b] ?? []}
+                onAdd={(v) => onAdd(b, v)}
+                onRemove={(i) => onRemove(b, i)}
+                t={t}
               />
             ))}
           </div>
@@ -234,7 +241,7 @@ export function PermissionsEditor({ onToast }: Props) {
         {!loading && doc && (
           <div className="permissions-default-mode">
             <label>
-              Default mode:{" "}
+              {t("permissions.defaultMode")}{" "}
               <select
                 value={draft.defaultMode ?? ""}
                 onChange={(e) => {
@@ -247,11 +254,11 @@ export function PermissionsEditor({ onToast }: Props) {
                   });
                 }}
               >
-                <option value="">(unset)</option>
-                <option value="auto">auto</option>
-                <option value="ask">ask</option>
-                <option value="deny">deny</option>
-                <option value="allow">allow</option>
+                <option value="">{t("permissions.defaultModeUnset")}</option>
+                <option value="auto">{t("permissions.modeAuto")}</option>
+                <option value="ask">{t("permissions.modeAsk")}</option>
+                <option value="deny">{t("permissions.modeDeny")}</option>
+                <option value="allow">{t("permissions.modeAllow")}</option>
               </select>
             </label>
           </div>
@@ -264,6 +271,7 @@ export function PermissionsEditor({ onToast }: Props) {
           onToggle={onToggleSuggest}
           onApply={(rule) => onAdd("allow", rule)}
           onReload={() => void loadSuggestions()}
+          t={t}
         />
       </div>
     </section>
@@ -271,29 +279,33 @@ export function PermissionsEditor({ onToast }: Props) {
 }
 
 function BucketColumn({
+  bucketKey,
   label,
   items,
   onAdd,
   onRemove,
+  t,
 }: {
+  bucketKey: Bucket;
   label: string;
   items: string[];
   onAdd: (v: string) => void;
   onRemove: (idx: number) => void;
+  t: TFunction;
 }) {
   const [draft, setDraft] = useState("");
   return (
     <div className="permissions-bucket">
       <h3>{label}</h3>
       <ul className="permissions-list">
-        {items.length === 0 && <li className="permissions-empty">(none)</li>}
+        {items.length === 0 && <li className="permissions-empty">{t("permissions.bucketEmpty")}</li>}
         {items.map((rule, idx) => (
           <li key={`${rule}-${idx}`} className="permissions-row">
             <code>{rule}</code>
             <button
               type="button"
               className="link-btn"
-              aria-label={`Remove ${rule}`}
+              aria-label={t("permissions.removeRule", { rule })}
               onClick={() => onRemove(idx)}
             >
               ×
@@ -313,10 +325,10 @@ function BucketColumn({
           type="text"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder='e.g. Bash(git status)'
-          aria-label={`Add ${label} rule`}
+          placeholder={t("permissions.addPlaceholder")}
+          aria-label={t("permissions.addAria", { bucket: bucketKey })}
         />
-        <button type="submit" disabled={!draft.trim()}>Add</button>
+        <button type="submit" disabled={!draft.trim()}>{t("permissions.addButton")}</button>
       </form>
     </div>
   );
@@ -330,6 +342,7 @@ function SuggestionPanel({
   onToggle,
   onApply,
   onReload,
+  t,
 }: {
   open: boolean;
   loading: boolean;
@@ -338,25 +351,26 @@ function SuggestionPanel({
   onToggle: () => void;
   onApply: (rule: string) => void;
   onReload: () => void;
+  t: TFunction;
 }) {
   return (
     <div className="suggestions-panel">
       <button type="button" className="suggestions-toggle link-btn" onClick={onToggle}>
-        {open ? "▾" : "▸"} Suggest from transcripts
+        {open ? "▾" : "▸"} {t("permissions.suggestToggle")}
       </button>
       {open && (
         <div className="suggestions-body">
-          {loading && <div className="empty">Scanning ~/.claude/projects/…</div>}
+          {loading && <div className="empty">{t("permissions.scanningTranscripts")}</div>}
           {!loading && suggestions.length === 0 && (
             <div className="empty">
-              No Bash patterns found. <button className="link-btn" onClick={onReload}>Re-scan</button>
+              {t("permissions.noPatterns")} <button className="link-btn" onClick={onReload}>{t("permissions.rescan")}</button>
             </div>
           )}
           {!loading && suggestions.length > 0 && (
             <>
               <div className="suggestions-header">
-                <span className="muted">{suggestions.length} suggestion{suggestions.length === 1 ? "" : "s"}</span>
-                <button className="link-btn" onClick={onReload}>Re-scan</button>
+                <span className="muted">{t("permissions.suggestionsCount", { count: suggestions.length })}</span>
+                <button className="link-btn" onClick={onReload}>{t("permissions.rescan")}</button>
               </div>
               <ul className="suggestions-list">
                 {suggestions.map((s) => {
@@ -371,7 +385,7 @@ function SuggestionPanel({
                         disabled={dupe}
                         onClick={() => onApply(s.rule)}
                       >
-                        {dupe ? "added" : "add to Allow"}
+                        {dupe ? t("permissions.alreadyAdded") : t("permissions.addToAllow")}
                       </button>
                     </li>
                   );

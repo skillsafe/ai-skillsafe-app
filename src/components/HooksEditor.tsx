@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useApp } from "../lib/store";
 import { tauriFs, tauriJoiner, tauriPaths } from "../lib/tauriAdapters";
 import {
@@ -24,6 +25,7 @@ interface Props {
 }
 
 export function HooksEditor({ onToast }: Props) {
+  const { t } = useTranslation();
   const scope = useApp((s) => s.scope);
   const projectRoot = useApp((s) => s.projectRoot);
   const projectFilter = useApp((s) => s.projectFilter);
@@ -74,11 +76,11 @@ export function HooksEditor({ onToast }: Props) {
       setDoc(next);
       setRows(flattenHooks(next.hooks));
     } catch (e) {
-      setError(`Load failed: ${e instanceof Error ? e.message : String(e)}`);
+      setError(t("configs.loadFailed", { message: e instanceof Error ? e.message : String(e) }));
     } finally {
       setLoading(false);
     }
-  }, [effectiveScope, activeProjectRoot, tier]);
+  }, [effectiveScope, activeProjectRoot, tier, t]);
 
   useEffect(() => {
     void load();
@@ -108,11 +110,11 @@ export function HooksEditor({ onToast }: Props) {
       });
       setDoc(saved);
       setRows(flattenHooks(saved.hooks));
-      onToast?.("ok", `Saved ${shortPath(saved.path)}.`);
+      onToast?.("ok", t("configs.savedToast", { path: shortPath(saved.path) }));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setError(`Save failed: ${msg}`);
-      onToast?.("error", `Save failed: ${msg}`);
+      setError(t("configs.saveFailed", { message: msg }));
+      onToast?.("error", t("configs.saveFailed", { message: msg }));
     } finally {
       setSaving(false);
     }
@@ -126,7 +128,7 @@ export function HooksEditor({ onToast }: Props) {
   if (effectiveScope === "project" && !activeProjectRoot) {
     return (
       <section className="editor-pane">
-        <div className="empty">Pick a project in the sidebar to edit project-scope hooks.</div>
+        <div className="empty">{t("hooks.pickProjectFirst")}</div>
       </section>
     );
   }
@@ -141,11 +143,11 @@ export function HooksEditor({ onToast }: Props) {
     <section className="editor-pane configs-editor">
       <div className="editor-toolbar">
         <div className="editor-title">
-          Hooks <span className="editor-subtitle">— {filename}</span>
+          {t("hooks.title")} <span className="editor-subtitle">— {filename}</span>
         </div>
         <div className="editor-toolbar__actions">
           {effectiveScope === "project" && (
-            <div className="pill-row" role="tablist" aria-label="Settings tier">
+            <div className="pill-row" role="tablist" aria-label={t("configs.settingsTier")}>
               <button
                 type="button"
                 role="tab"
@@ -153,7 +155,7 @@ export function HooksEditor({ onToast }: Props) {
                 aria-selected={tier === "local"}
                 onClick={() => setTier("local")}
               >
-                Local
+                {t("configs.local")}
               </button>
               <button
                 type="button"
@@ -162,7 +164,7 @@ export function HooksEditor({ onToast }: Props) {
                 aria-selected={tier === "shared"}
                 onClick={() => setTier("shared")}
               >
-                Shared
+                {t("configs.shared")}
               </button>
             </div>
           )}
@@ -171,32 +173,32 @@ export function HooksEditor({ onToast }: Props) {
             onClick={onSave}
             disabled={!dirty || saving || !doc}
           >
-            {saving ? "Saving…" : "Save"}
+            {saving ? t("configs.saving") : t("configs.save")}
           </button>
-          <button onClick={onRevert} disabled={!dirty || saving}>Revert</button>
-          <button onClick={() => void load()} disabled={loading}>Reload</button>
+          <button onClick={onRevert} disabled={!dirty || saving}>{t("configs.revert")}</button>
+          <button onClick={() => void load()} disabled={loading}>{t("configs.reload")}</button>
         </div>
       </div>
       {error && <div className="editor-error">{error}</div>}
       <div className="configs-body">
-        {loading && <div className="empty">Loading…</div>}
+        {loading && <div className="empty">{t("configs.loading")}</div>}
         {!loading && doc && (
           <>
             <table className="hooks-table">
               <thead>
                 <tr>
-                  <th>Event</th>
-                  <th>Matcher</th>
-                  <th>Command</th>
-                  <th>Timeout (s)</th>
-                  <th aria-label="actions" />
+                  <th>{t("hooks.eventCol")}</th>
+                  <th>{t("hooks.matcherCol")}</th>
+                  <th>{t("hooks.commandCol")}</th>
+                  <th>{t("hooks.timeoutCol")}</th>
+                  <th aria-label={t("hooks.actionsAria")} />
                 </tr>
               </thead>
               <tbody>
                 {rows.length === 0 && (
                   <tr>
                     <td colSpan={5} className="hooks-empty">
-                      No hooks configured. Pick an event below to add one.
+                      {t("hooks.empty")}
                     </td>
                   </tr>
                 )}
@@ -216,7 +218,7 @@ export function HooksEditor({ onToast }: Props) {
                       <input
                         type="text"
                         value={r.matcher}
-                        placeholder="(any)"
+                        placeholder={t("hooks.matcherPlaceholder")}
                         onChange={(e) => onUpdate(idx, { matcher: e.target.value })}
                       />
                     </td>
@@ -224,7 +226,7 @@ export function HooksEditor({ onToast }: Props) {
                       <input
                         type="text"
                         value={r.command}
-                        placeholder="echo hello"
+                        placeholder={t("hooks.commandPlaceholder")}
                         onChange={(e) => onUpdate(idx, { command: e.target.value })}
                       />
                     </td>
@@ -244,7 +246,7 @@ export function HooksEditor({ onToast }: Props) {
                       <button
                         type="button"
                         className="link-btn"
-                        aria-label="Remove hook"
+                        aria-label={t("hooks.removeHookAria")}
                         onClick={() => onRemove(idx)}
                       >
                         ×
@@ -255,7 +257,7 @@ export function HooksEditor({ onToast }: Props) {
               </tbody>
             </table>
             <div className="hooks-add">
-              <span>Add hook for:</span>
+              <span>{t("hooks.addHookFor")}</span>
               {HOOK_EVENTS.map((ev) => (
                 <button
                   key={ev}

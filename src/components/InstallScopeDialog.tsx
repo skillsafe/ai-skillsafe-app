@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { Tool } from "../lib/artifacts/types";
 import { ALL_AGENTS, displayNameOf, getAgentConfig } from "../lib/agents/registry";
 import { tauriPaths } from "../lib/tauriAdapters";
@@ -38,6 +39,7 @@ export function InstallScopeDialog({
   onConfirm,
   onCancel,
 }: Props) {
+  const { t } = useTranslation();
   const projects = useMemo(
     () => recentProjects.filter(Boolean),
     [recentProjects],
@@ -114,10 +116,10 @@ export function InstallScopeDialog({
   return (
     <div className="dialog-backdrop" onClick={busy ? undefined : onCancel}>
       <div className="dialog" onClick={(e) => e.stopPropagation()}>
-        <h3>Install {artifactName}</h3>
+        <h3>{t("installScope.title", { name: artifactName })}</h3>
 
         <div className="fm-field">
-          <label className="fm-label" htmlFor="install-scope-tool-select">target tool</label>
+          <label className="fm-label" htmlFor="install-scope-tool-select">{t("installScope.targetTool")}</label>
           <select
             id="install-scope-tool-select"
             value={tool}
@@ -131,7 +133,7 @@ export function InstallScopeDialog({
         </div>
 
         <div className="fm-field">
-          <label className="fm-label">target</label>
+          <label className="fm-label">{t("installScope.target")}</label>
           <div className="install-scope-options">
             <label className="install-scope-option">
               <input
@@ -143,11 +145,11 @@ export function InstallScopeDialog({
                 disabled={busy}
               />
               <span>
-                <strong>Global</strong>
+                <strong>{t("installScope.global")}</strong>
                 <span className="install-scope-hint">
                   {globalDirHint
                     ? `${globalDirHint}/${artifactName}`
-                    : `(resolving ${displayNameOf(tool)} skills dir…)`}
+                    : t("installScope.globalResolving", { tool: displayNameOf(tool) })}
                 </span>
               </span>
             </label>
@@ -164,10 +166,10 @@ export function InstallScopeDialog({
                 disabled={busy || projects.length === 0}
               />
               <span>
-                <strong>Project</strong>
+                <strong>{t("installScope.project")}</strong>
                 {projects.length === 0 ? (
                   <span className="install-scope-hint">
-                    No recent projects — open a project first to enable this option.
+                    {t("installScope.noRecentProjects")}
                   </span>
                 ) : (
                   <>
@@ -176,7 +178,7 @@ export function InstallScopeDialog({
                     </span>
                     {isClaudeProject && useSymlink && (
                       <span className="install-scope-hint">
-                        + symlink at &lt;projectRoot&gt;/.claude/skills/{artifactName}
+                        {t("installScope.projectPlusSymlink", { name: artifactName })}
                       </span>
                     )}
                   </>
@@ -188,7 +190,7 @@ export function InstallScopeDialog({
 
         {scope === "project" && projects.length > 0 && (
           <div className="fm-field">
-            <label className="fm-label">project</label>
+            <label className="fm-label">{t("installScope.projectField")}</label>
             <select
               value={projectRoot}
               onChange={(e) => setProjectRoot(e.target.value)}
@@ -211,18 +213,9 @@ export function InstallScopeDialog({
                 disabled={busy}
               />
               <span>
-                Use symlink (Save disk space and share with other tools)
+                {t("installScope.useSymlinkLabel")}
                 <span className="install-scope-hint">
-                  {useSymlink ? (
-                    <>
-                      Bundle lives in <code>.agents/skills</code>, with a symlink
-                      in <code>.claude/skills</code>.
-                    </>
-                  ) : (
-                    <>
-                      Bundle is written directly into <code>.claude/skills</code>.
-                    </>
-                  )}
+                  {useSymlink ? t("installScope.useSymlinkHintWith") : t("installScope.useSymlinkHintWithout")}
                 </span>
               </span>
             </label>
@@ -230,13 +223,13 @@ export function InstallScopeDialog({
         )}
 
         <div className="dialog-row">
-          <button onClick={onCancel} disabled={busy}>Cancel</button>
+          <button onClick={onCancel} disabled={busy}>{t("common.cancel")}</button>
           <button
             className="primary"
             onClick={handleConfirm}
             disabled={!canConfirm}
           >
-            {busy ? "Installing…" : "Install"}
+            {busy ? t("installScope.installing") : t("installScope.installButton")}
           </button>
         </div>
       </div>

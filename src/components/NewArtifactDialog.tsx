@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 interface Props {
   onCancel: () => void;
@@ -6,6 +7,7 @@ interface Props {
 }
 
 export function NewArtifactDialog({ onCancel, onCreate }: Props) {
+  const { t } = useTranslation();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
@@ -24,23 +26,23 @@ export function NewArtifactDialog({ onCancel, onCreate }: Props) {
   return (
     <div className="dialog-backdrop" onClick={onCancel}>
       <div className="dialog" onClick={(e) => e.stopPropagation()}>
-        <h3>New artifact</h3>
+        <h3>{t("newArtifact.title")}</h3>
         <div className="fm-field">
-          <label className="fm-label">name</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="my-skill" />
+          <label className="fm-label">{t("newArtifact.nameLabel")}</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("newArtifact.namePlaceholder")} />
         </div>
         <div className="fm-field">
-          <label className="fm-label">description</label>
+          <label className="fm-label">{t("newArtifact.descriptionLabel")}</label>
           <input
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="When the agent should reach for this"
+            placeholder={t("newArtifact.descriptionPlaceholder")}
           />
         </div>
         <div className="dialog-row">
-          <button onClick={onCancel}>Cancel</button>
+          <button onClick={onCancel}>{t("common.cancel")}</button>
           <button className="primary" onClick={submit} disabled={!name.trim() || busy}>
-            Create
+            {t("common.create")}
           </button>
         </div>
       </div>

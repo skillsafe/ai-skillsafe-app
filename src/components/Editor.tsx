@@ -1,6 +1,7 @@
 import Monaco from "@monaco-editor/react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { MarkdownArtifact } from "../lib/artifacts/types";
 import { atomicWrite, sha256Hex } from "../lib/fs";
 import { renderMarkdown } from "../lib/markdown";
@@ -22,6 +23,7 @@ interface EditState {
 }
 
 export function Editor({ artifact, onReload }: Props) {
+  const { t } = useTranslation();
   const theme = useApp((s) => s.resolvedTheme);
   const viewedFile = useApp((s) => s.viewedFile);
   const setViewedFile = useApp((s) => s.setViewedFile);
@@ -84,13 +86,13 @@ export function Editor({ artifact, onReload }: Props) {
       setEditState({ draft: disk, originalDisk: disk, originalSha: sha });
       setPreview(false);
     } catch (e) {
-      setError(`Could not enter edit mode: ${e instanceof Error ? e.message : String(e)}`);
+      setError(t("editor.enterEditFailed", { message: e instanceof Error ? e.message : String(e) }));
     }
   };
 
   const onCancel = () => {
     if (!editState) return;
-    if (dirty && !window.confirm("Discard unsaved changes?")) return;
+    if (dirty && !window.confirm(t("editor.discardPrompt"))) return;
     setEditState(null);
     setError(null);
   };
@@ -102,9 +104,7 @@ export function Editor({ artifact, onReload }: Props) {
     try {
       const currentDisk = await tauriFs.readTextFile(showing.path);
       if ((await sha256Hex(currentDisk)) !== editState.originalSha) {
-        const overwrite = window.confirm(
-          "This file has changed on disk since you started editing.\n\nClick OK to overwrite with your edits, or Cancel to abort the save.",
-        );
+        const overwrite = window.confirm(t("editor.diskChangedPrompt"));
         if (!overwrite) {
           setSaving(false);
           return;
@@ -121,7 +121,7 @@ export function Editor({ artifact, onReload }: Props) {
       await onReload?.();
       setEditState(null);
     } catch (e) {
-      setError(`Save failed: ${e instanceof Error ? e.message : String(e)}`);
+      setError(t("editor.saveFailed", { message: e instanceof Error ? e.message : String(e) }));
     } finally {
       setSaving(false);
     }
@@ -136,7 +136,7 @@ export function Editor({ artifact, onReload }: Props) {
   if (!artifact && !viewedFile) {
     return (
       <section className="editor-pane">
-        <div className="empty">Select an artifact on the left to view.</div>
+        <div className="empty">{t("editor.emptyHint")}</div>
       </section>
     );
   }
@@ -148,7 +148,7 @@ export function Editor({ artifact, onReload }: Props) {
         <div className="editor-toolbar__actions">
           {!editing && isMarkdown && (
             <button onClick={() => setPreview((p) => !p)}>
-              {preview ? "Source" : "Preview"}
+              {preview ? t("editor.source") : t("editor.preview")}
             </button>
           )}
           {!editing && (
@@ -157,13 +157,13 @@ export function Editor({ artifact, onReload }: Props) {
               disabled={!canEdit}
               title={
                 isImage
-                  ? "Images cannot be edited"
+                  ? t("editor.editTitleImages")
                   : tooLarge
-                    ? "File too large to edit in-app"
-                    : "Edit this file"
+                    ? t("editor.editTitleTooLarge")
+                    : t("editor.editTitle")
               }
             >
-              Edit
+              {t("editor.editButton")}
             </button>
           )}
           {editing && (
@@ -173,10 +173,10 @@ export function Editor({ artifact, onReload }: Props) {
                 onClick={onSave}
                 disabled={saving || !dirty}
               >
-                {saving ? "Saving…" : "Save"}
+                {saving ? t("editor.saving") : t("editor.saveButton")}
               </button>
               <button onClick={onCancel} disabled={saving}>
-                Cancel
+                {t("common.cancel")}
               </button>
             </>
           )}
@@ -185,7 +185,7 @@ export function Editor({ artifact, onReload }: Props) {
             disabled={!showing.path}
             className={historyPanelPath === showing.path ? "editor-toolbar__btn--active" : ""}
           >
-            History
+            {t("editor.history")}
           </button>
         </div>
       </div>

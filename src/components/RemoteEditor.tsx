@@ -1,5 +1,7 @@
 import Monaco from "@monaco-editor/react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { useApp } from "../lib/store";
 import {
   downloadBlob,
@@ -20,6 +22,7 @@ interface Props {
 }
 
 export function RemoteEditor({ onToast }: Props) {
+  const { t } = useTranslation();
   const {
     remoteArtifacts,
     remoteSelectedId,
@@ -159,7 +162,7 @@ export function RemoteEditor({ onToast }: Props) {
         if (cancelled) return;
         const msg = describeError(e);
         markRemoteFailed(cacheKey, msg);
-        onToastRef.current("error", `Couldn't load skill: ${msg}`);
+        onToastRef.current("error", t("remoteEditor.couldntLoadToast", { message: msg }));
       } finally {
         if (!cancelled) {
           setLoadStep(null);
@@ -169,7 +172,7 @@ export function RemoteEditor({ onToast }: Props) {
       }
     })();
     return () => { cancelled = true; };
-  }, [artifact, ns, activeVersion, cacheKey, cloudApiKey, cacheRemoteBody, markRemoteFailed]);
+  }, [artifact, ns, activeVersion, cacheKey, cloudApiKey, cacheRemoteBody, markRemoteFailed, t]);
 
   // Lazy-fetch the scan report alongside the manifest. Skip for private
   // skills — owner-only views don't need the public-trust signal, and the
@@ -219,7 +222,7 @@ export function RemoteEditor({ onToast }: Props) {
   if (!artifact) {
     return (
       <section className="editor-pane remote-editor-pane">
-        <div className="empty">Select a remote skill on the left to view.</div>
+        <div className="empty">{t("remoteEditor.empty")}</div>
       </section>
     );
   }
@@ -243,7 +246,7 @@ export function RemoteEditor({ onToast }: Props) {
             <button
               className="version-badge"
               onClick={() => setVersionMenuOpen((o) => !o)}
-              title="Show all versions"
+              title={t("remoteEditor.versionTitle")}
               aria-haspopup="listbox"
               aria-expanded={versionMenuOpen}
             >
@@ -252,9 +255,9 @@ export function RemoteEditor({ onToast }: Props) {
             </button>
             {versionMenuOpen && (
               <div className="version-menu" role="listbox">
-                {versionsLoading && <div className="version-menu-hint">Loading versions…</div>}
+                {versionsLoading && <div className="version-menu-hint">{t("remoteEditor.versionLoading")}</div>}
                 {!versionsLoading && versions && versions.length === 0 && (
-                  <div className="version-menu-hint">No published versions.</div>
+                  <div className="version-menu-hint">{t("remoteEditor.versionNonePublished")}</div>
                 )}
                 {versions?.map((v) => (
                   <button
@@ -268,7 +271,7 @@ export function RemoteEditor({ onToast }: Props) {
                     }}
                   >
                     v{v}
-                    {v === latestVersion && <span className="badge">latest</span>}
+                    {v === latestVersion && <span className="badge">{t("remoteEditor.versionLatest")}</span>}
                   </button>
                 ))}
               </div>
@@ -277,7 +280,7 @@ export function RemoteEditor({ onToast }: Props) {
         )}
         {isMarkdown && !unversioned && (
           <button onClick={() => setPreview((p) => !p)}>
-            {preview ? "Source" : "Preview"}
+            {preview ? t("editor.source") : t("editor.preview")}
           </button>
         )}
       </div>
@@ -298,8 +301,10 @@ export function RemoteEditor({ onToast }: Props) {
           </div>
           <div className="dl-progress-label">
             {loadStep === "manifest"
-              ? "Fetching manifest…"
-              : `Downloading SKILL.md${loadTotal ? ` (${formatBytes(loadBytes)} / ${formatBytes(loadTotal)})` : "…"}`}
+              ? t("remoteEditor.fetchingManifest")
+              : loadTotal
+                ? t("remoteEditor.downloadingSkillBytes", { current: formatBytes(loadBytes), total: formatBytes(loadTotal) })
+                : t("remoteEditor.downloadingSkill")}
           </div>
         </div>
       )}
@@ -310,6 +315,7 @@ export function RemoteEditor({ onToast }: Props) {
             name={artifact.name}
             description={description}
             repoUrl={repoUrl}
+            t={t}
           />
         ) : loadError ? (
           <LoadErrorHint
@@ -319,6 +325,7 @@ export function RemoteEditor({ onToast }: Props) {
             error={loadError}
             description={description}
             repoUrl={repoUrl}
+            t={t}
           />
         ) : isImage ? (
           <div className="img-preview">
@@ -362,6 +369,7 @@ function LoadErrorHint({
   error,
   description,
   repoUrl,
+  t,
 }: {
   ns: string;
   name: string;
@@ -369,6 +377,7 @@ function LoadErrorHint({
   error: string;
   description: string;
   repoUrl?: string;
+  t: TFunction;
 }) {
   // The API returns the same `not_found: ... does not exist` for two distinct
   // cases: (a) the skill genuinely isn't there, and (b) it's private and the
@@ -382,32 +391,22 @@ function LoadErrorHint({
       <h2>{ns}/{name}</h2>
       {description && <p>{description}</p>}
       <p style={{ color: "var(--error)" }}>
-        Couldn't load <code>v{version}</code> from skillsafe.ai: {error}
+        {t("remoteEditor.couldntLoadVersion", { version, error })}
       </p>
       {isMissingSkill ? (
         <>
           <p style={{ color: "var(--muted)" }}>
-            <strong>{ns}/{name}</strong> isn't reachable. A few things this
-            could mean:
+            <strong>{t("remoteEditor.isMissingHeader", { ns, name })}</strong>
           </p>
           <ul style={{ color: "var(--muted)", marginTop: 0 }}>
-            <li>
-              The publish didn't actually land at this namespace — confirm in
-              Settings that you're signed in as <code>{ns}</code>, then try
-              uploading again.
-            </li>
-            <li>
-              The skill is private and the current sign-in isn't its owner.
-              Sign in as the owner from Settings.
-            </li>
-            <li>The skill was deleted on skillsafe.ai.</li>
+            <li>{t("remoteEditor.missingPublishMismatch", { ns })}</li>
+            <li>{t("remoteEditor.missingPrivate")}</li>
+            <li>{t("remoteEditor.missingDeleted")}</li>
           </ul>
         </>
       ) : (
         <p style={{ color: "var(--muted)" }}>
-          The manifest or one of its blobs is missing on the server. Try a
-          different version from the dropdown above, or open the skill page
-          on skillsafe.ai.
+          {t("remoteEditor.manifestMissing")}
         </p>
       )}
       {repoUrl && (
@@ -426,19 +425,20 @@ function UnversionedHint({
   name,
   description,
   repoUrl,
+  t,
 }: {
   ns: string;
   name: string;
   description: string;
   repoUrl?: string;
+  t: TFunction;
 }) {
   return (
     <div className="md-preview">
       <h2>{ns}/{name}</h2>
       {description && <p>{description}</p>}
       <p style={{ color: "var(--muted)" }}>
-        This skill has no published version on skillsafe.ai yet, so the file
-        contents can't be fetched. Open the source repository to view it.
+        {t("remoteEditor.unversionedHint")}
       </p>
       {repoUrl && (
         <p>
