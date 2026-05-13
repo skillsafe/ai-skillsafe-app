@@ -45,10 +45,23 @@
     "lockfile": "Lockfile"
   },
   "types": {
-    "all": "All",
+    "all": "All artifacts",
     "skill": "Skills",
     "agent": "Agents",
     "command": "Commands"
+  },
+  "categories": {
+    "otherFiles": "Other files",
+    "memory": "History & Memory",
+    "plugins": "Plugins",
+    "settings": "Settings",
+    "tasksPlans": "Tasks & plans",
+    "history": "History",
+    "desktopConfig": "Claude Desktop",
+    "config": "Config",
+    "noFilesFound": "No files found in this category.",
+    "emptyHint": "Files mirrored to your backup destination for the {label} category appear here.",
+    "streaming": "Loading files…"
   },
   "sidebar": {
     "cloudPanelAria": "skillsafe.ai cloud panel",
@@ -277,7 +290,8 @@
     "missingPrivate": "The skill is private and the current sign-in isn't its owner. Sign in as the owner from Settings.",
     "missingDeleted": "The skill was deleted on skillsafe.ai.",
     "manifestMissing": "The manifest or one of its blobs is missing on the server. Try a different version from the dropdown above, or open the skill page on skillsafe.ai.",
-    "unversionedHint": "This skill has no published version on skillsafe.ai yet, so the file contents can't be fetched. Open the source repository to view it."
+    "unversionedHint": "This skill has no published version on skillsafe.ai yet, so the file contents can't be fetched. Open the source repository to view it.",
+    "binaryToast": "{name} is a binary file — download to view it externally."
   },
   "remoteList": {
     "filterPlaceholder": "Filter remote…",
@@ -487,7 +501,9 @@
     "enterEditFailed": "Could not enter edit mode: {message}",
     "discardPrompt": "Discard unsaved changes?",
     "diskChangedPrompt": "This file has changed on disk since you started editing.\n\nClick OK to overwrite with your edits, or Cancel to abort the save.",
-    "saveFailed": "Save failed: {message}"
+    "saveFailed": "Save failed: {message}",
+    "tooLargeToPreview": "File is too large to preview in-app ({size}). Open externally to view.",
+    "openExternally": "Open externally"
   },
   "configsList": {
     "permissionsLabel": "Permissions",

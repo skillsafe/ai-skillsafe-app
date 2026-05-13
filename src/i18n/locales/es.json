@@ -45,10 +45,23 @@
     "lockfile": "Lockfile"
   },
   "types": {
-    "all": "Todo",
+    "all": "Todos los artefactos",
     "skill": "Skills",
     "agent": "Agentes",
     "command": "Comandos"
+  },
+  "categories": {
+    "otherFiles": "Otros archivos",
+    "memory": "Historial y memoria",
+    "plugins": "Plugins",
+    "settings": "Ajustes",
+    "tasksPlans": "Tareas y planes",
+    "history": "Historial",
+    "desktopConfig": "Claude Desktop",
+    "config": "Configuración",
+    "noFilesFound": "No se encontraron archivos en esta categoría.",
+    "emptyHint": "Los archivos copiados al destino de copia de seguridad para la categoría {label} aparecen aquí.",
+    "streaming": "Cargando archivos…"
   },
   "sidebar": {
     "cloudPanelAria": "Panel de la nube skillsafe.ai",
@@ -277,7 +290,8 @@
     "missingPrivate": "El skill es privado y la sesión actual no es la del propietario. Inicia sesión como propietario desde Ajustes.",
     "missingDeleted": "El skill se eliminó en skillsafe.ai.",
     "manifestMissing": "El manifiesto o alguno de sus blobs no está en el servidor. Prueba con otra versión desde el menú de arriba, o abre la página del skill en skillsafe.ai.",
-    "unversionedHint": "Este skill aún no tiene ninguna versión publicada en skillsafe.ai, por lo que no se pueden obtener sus archivos. Abre el repositorio fuente para verlo."
+    "unversionedHint": "Este skill aún no tiene ninguna versión publicada en skillsafe.ai, por lo que no se pueden obtener sus archivos. Abre el repositorio fuente para verlo.",
+    "binaryToast": "{name} es un archivo binario; descárgalo para verlo externamente."
   },
   "remoteList": {
     "filterPlaceholder": "Filtrar remoto…",
@@ -487,7 +501,9 @@
     "enterEditFailed": "No se pudo entrar en modo edición: {message}",
     "discardPrompt": "¿Descartar los cambios sin guardar?",
     "diskChangedPrompt": "Este archivo ha cambiado en disco desde que empezaste a editar.\n\nHaz clic en OK para sobrescribirlo con tus cambios, o en Cancelar para abortar el guardado.",
-    "saveFailed": "Error al guardar: {message}"
+    "saveFailed": "Error al guardar: {message}",
+    "tooLargeToPreview": "Archivo demasiado grande para previsualizar en la app ({size}). Ábrelo externamente para verlo.",
+    "openExternally": "Abrir externamente"
   },
   "configsList": {
     "permissionsLabel": "Permisos",

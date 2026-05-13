@@ -1,10 +1,12 @@
 import Monaco from "@monaco-editor/react";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { MarkdownArtifact } from "../lib/artifacts/types";
 import { atomicWrite, sha256Hex } from "../lib/fs";
 import { renderMarkdown } from "../lib/markdown";
+import { PREVIEW_LANG, prettyForPreview } from "../lib/preview/fileClassify";
 import { tauriFs } from "../lib/tauriAdapters";
 import { getHistoryDeps } from "../lib/editHistory/runtime";
 import { recordSnapshot } from "../lib/editHistory/store";
@@ -40,7 +42,8 @@ export function Editor({ artifact, onReload }: Props) {
     ? { name: artifact.name, path: artifact.path, content: artifact.raw || artifact.body, language: "markdown" }
     : { name: "", path: "", content: "", language: "markdown" });
   const isMarkdown = showing.language === "markdown";
-  const isImage = showing.language === "image";
+  const isImage = showing.language === PREVIEW_LANG.image;
+  const isTooLargeToPreview = showing.language === PREVIEW_LANG.tooLarge;
   const editing = editState !== null;
   const showPreview = isMarkdown && preview && !editing;
   const dirty = editState !== null && editState.draft !== editState.originalDisk;
@@ -49,11 +52,15 @@ export function Editor({ artifact, onReload }: Props) {
     [showing.content],
   );
   const tooLarge = contentBytes > MAX_EDITABLE_BYTES;
-  const canEdit = !!showing.path && !isImage && !tooLarge;
+  const canEdit = !!showing.path && !isImage && !isTooLargeToPreview && !tooLarge;
 
   const previewHtml = useMemo(
     () => (showPreview ? renderMarkdown(showing.content) : ""),
     [showPreview, showing.content],
+  );
+  const monacoValue = useMemo(
+    () => (editing ? editState!.draft : prettyForPreview(showing.name, showing.content)),
+    [editing, editState, showing.name, showing.content],
   );
 
   // Switching to a different file/artifact while editing discards the draft.
@@ -195,6 +202,15 @@ export function Editor({ artifact, onReload }: Props) {
           <div className="img-preview">
             <img src={convertFileSrc(showing.path)} alt={showing.name} />
           </div>
+        ) : isTooLargeToPreview ? (
+          <div className="md-preview">
+            <p>{t("editor.tooLargeToPreview", { size: formatBytesShort(Number(showing.content) || 0) })}</p>
+            {showing.path && (
+              <button onClick={() => shellOpen(showing.path)}>
+                {t("editor.openExternally")}
+              </button>
+            )}
+          </div>
         ) : showPreview ? (
           <div className="md-preview" dangerouslySetInnerHTML={{ __html: previewHtml }} />
         ) : (
@@ -203,7 +219,7 @@ export function Editor({ artifact, onReload }: Props) {
             height="100%"
             language={showing.language}
             theme={theme === "light" ? "vs" : "vs-dark"}
-            value={editing ? editState!.draft : showing.content}
+            value={monacoValue}
             onChange={(v) => {
               if (!editState) return;
               setEditState({ ...editState, draft: v ?? "" });
@@ -222,4 +238,11 @@ export function Editor({ artifact, onReload }: Props) {
       </div>
     </section>
   );
+}
+
+function formatBytesShort(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }

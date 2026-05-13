@@ -45,10 +45,23 @@
     "lockfile": "Lockfile"
   },
   "types": {
-    "all": "全部",
+    "all": "全部资产",
     "skill": "Skills",
     "agent": "Agents",
     "command": "命令"
+  },
+  "categories": {
+    "otherFiles": "其他文件",
+    "memory": "历史与记忆",
+    "plugins": "插件",
+    "settings": "设置",
+    "tasksPlans": "任务与计划",
+    "history": "历史",
+    "desktopConfig": "Claude Desktop",
+    "config": "配置",
+    "noFilesFound": "该分类下未找到文件。",
+    "emptyHint": "镜像到备份目标的 {label} 分类文件将显示在这里。",
+    "streaming": "正在加载文件…"
   },
   "sidebar": {
     "cloudPanelAria": "skillsafe.ai 云端面板",
@@ -277,7 +290,8 @@
     "missingPrivate": "该 skill 是私有的，当前登录账户不是其所有者。请在设置中以所有者身份登录。",
     "missingDeleted": "该 skill 已在 skillsafe.ai 上被删除。",
     "manifestMissing": "manifest 或它的某个 blob 在服务器上缺失。请尝试上方下拉框中的其他版本，或打开 skillsafe.ai 上的 skill 页面。",
-    "unversionedHint": "该 skill 还没有在 skillsafe.ai 上发布任何版本，因此无法获取文件内容。请打开源代码仓库查看。"
+    "unversionedHint": "该 skill 还没有在 skillsafe.ai 上发布任何版本，因此无法获取文件内容。请打开源代码仓库查看。",
+    "binaryToast": "{name} 是二进制文件 — 下载后用外部应用查看。"
   },
   "remoteList": {
     "filterPlaceholder": "筛选远端…",
@@ -487,7 +501,9 @@
     "enterEditFailed": "无法进入编辑模式：{message}",
     "discardPrompt": "放弃尚未保存的更改？",
     "diskChangedPrompt": "自你开始编辑以来，该文件在磁盘上已发生变化。\n\n点击「确定」用你的更改覆盖，或点击「取消」中止保存。",
-    "saveFailed": "保存失败：{message}"
+    "saveFailed": "保存失败：{message}",
+    "tooLargeToPreview": "文件过大，无法在应用内预览（{size}）。请在外部应用中打开查看。",
+    "openExternally": "在外部应用中打开"
   },
   "configsList": {
     "permissionsLabel": "权限",

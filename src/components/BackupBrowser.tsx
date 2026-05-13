@@ -28,6 +28,13 @@ import {
 import type { MasterEntry } from "../lib/master/types";
 import { resolveArtifactDir } from "../lib/paths";
 import { renderMarkdown } from "../lib/markdown";
+import {
+  fileBasename,
+  inferLanguage,
+  isLikelyBinary,
+  isMarkdown,
+  prettyForPreview,
+} from "../lib/preview/fileClassify";
 import { parseFrontmatter } from "../lib/frontmatter";
 import { ArchiveIcon } from "./icons";
 import { TreeView } from "./TreeView";
@@ -1333,78 +1340,6 @@ function shortProjectName(root: string | undefined): string {
   if (!root) return "?";
   const parts = root.replace(/[\\/]+$/, "").split(/[\\/]/);
   return parts[parts.length - 1] || root;
-}
-
-function fileBasename(relPath: string): string {
-  const parts = relPath.split("/");
-  return parts[parts.length - 1] || relPath;
-}
-
-function ext(name: string): string {
-  return name.split(".").pop()?.toLowerCase() ?? "";
-}
-
-const MARKDOWN_EXT = new Set(["md", "mdx", "markdown"]);
-const BINARY_EXT = new Set([
-  "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico",
-  "pdf", "zip", "gz", "tgz", "tar", "7z", "exe", "dmg",
-  "bin", "so", "dylib", "dll", "wasm",
-  "mp3", "mp4", "mov", "wav", "ogg", "webm",
-  "ttf", "otf", "woff", "woff2",
-]);
-
-function isMarkdown(name: string): boolean {
-  return MARKDOWN_EXT.has(ext(fileBasename(name)));
-}
-function isLikelyBinary(name: string): boolean {
-  return BINARY_EXT.has(ext(fileBasename(name)));
-}
-
-// Pretty-print JSON / JSONL so a one-line dump like Claude's projects history
-// renders as something the user can read. Falls back to the raw text if a
-// line isn't valid JSON.
-function prettyForPreview(name: string, content: string): string {
-  const e = ext(fileBasename(name));
-  if (e === "json") {
-    try {
-      return JSON.stringify(JSON.parse(content), null, 2);
-    } catch {
-      return content;
-    }
-  }
-  if (e === "jsonl" || e === "ndjson") {
-    const lines = content.split(/\r?\n/);
-    const out: string[] = [];
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      try {
-        out.push(JSON.stringify(JSON.parse(trimmed), null, 2));
-      } catch {
-        out.push(line);
-      }
-    }
-    return out.join("\n\n");
-  }
-  return content;
-}
-
-function inferLanguage(name: string): string {
-  const e = ext(fileBasename(name));
-  const map: Record<string, string> = {
-    md: "markdown", mdx: "markdown", markdown: "markdown",
-    js: "javascript", mjs: "javascript", cjs: "javascript", jsx: "javascript",
-    ts: "typescript", tsx: "typescript",
-    py: "python", rb: "ruby", go: "go", rs: "rust", java: "java", kt: "kotlin",
-    swift: "swift", c: "c", cc: "cpp", cpp: "cpp", h: "c", hpp: "cpp", cs: "csharp",
-    sh: "shell", bash: "shell", zsh: "shell", fish: "shell", ps1: "powershell",
-    json: "json", jsonl: "json", ndjson: "json", yaml: "yaml", yml: "yaml", toml: "ini", ini: "ini",
-    html: "html", htm: "html", xml: "xml", svg: "xml",
-    css: "css", scss: "scss", sass: "scss",
-    sql: "sql", graphql: "graphql", gql: "graphql",
-    csv: "plaintext", tsv: "plaintext", txt: "plaintext", log: "plaintext",
-  };
-  return map[e] ?? "plaintext";
 }
 
 function formatBytes(n: number, t: TFunction): string {

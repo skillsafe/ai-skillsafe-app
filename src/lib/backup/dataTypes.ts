@@ -43,7 +43,7 @@ const CLAUDE: DataType[] = [
   { id: "plugins",      label: "Plugins",           paths: ["plugins"],      defaultEnabled: true,  kind: "tree" },
   {
     id: "memory",
-    label: "Memory & projects",
+    label: "History & Memory",
     description: "Auto-memory and per-project conversation history under ~/.claude/projects/",
     paths: ["projects"],
     defaultEnabled: true,

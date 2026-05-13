@@ -13,6 +13,7 @@ import {
 } from "../lib/skillsafe/client";
 import { findSkillMdPath, manifestToAttachments } from "../lib/skillsafe/asArtifact";
 import { renderMarkdown } from "../lib/markdown";
+import { PREVIEW_LANG, prettyForPreview } from "../lib/preview/fileClassify";
 import { ScanReportPanel } from "./ScanReportPanel";
 
 type LoadStep = "manifest" | "skill" | null;
@@ -212,11 +213,16 @@ export function RemoteEditor({ onToast }: Props) {
     ? { name: artifact.name, path: artifact.path, content: skillBody, language: "markdown" }
     : { name: "", path: "", content: "", language: "markdown" });
   const isMarkdown = showing.language === "markdown";
-  const isImage = showing.language === "image";
+  const isImage = showing.language === PREVIEW_LANG.image;
+  const isTooLarge = showing.language === PREVIEW_LANG.tooLarge;
   const showPreview = isMarkdown && preview;
   const previewHtml = useMemo(
     () => (showPreview ? renderMarkdown(showing.content || "") : ""),
     [showPreview, showing.content],
+  );
+  const monacoValue = useMemo(
+    () => prettyForPreview(showing.name, showing.content),
+    [showing.name, showing.content],
   );
 
   if (!artifact) {
@@ -331,6 +337,10 @@ export function RemoteEditor({ onToast }: Props) {
           <div className="img-preview">
             <img src={showing.content} alt={showing.name} />
           </div>
+        ) : isTooLarge ? (
+          <div className="md-preview">
+            <p>{t("editor.tooLargeToPreview", { size: formatBytes(Number(showing.content) || 0) })}</p>
+          </div>
         ) : showPreview ? (
           <div className="md-with-scan">
             {showScanPanel && <ScanReportPanel report={scanReport} />}
@@ -342,7 +352,7 @@ export function RemoteEditor({ onToast }: Props) {
             height="100%"
             language={showing.language}
             theme={resolvedTheme === "light" ? "vs" : "vs-dark"}
-            value={showing.content}
+            value={monacoValue}
             // Monaco's automatic layout collapses to 5×5 when the parent is
             // briefly small at mount time; nudge it once mounted so window
             // resizes and bottom-row reveals fix themselves.

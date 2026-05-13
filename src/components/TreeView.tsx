@@ -5,6 +5,7 @@
 // `.tree-folder-header`, `.tree-folder-children`, `.tree-chevron`,
 // `.tree-folder-icon`, `.tree-folder-name`, `.file-item`, `.file-name`,
 // `.file-size`.
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Attachment } from "../lib/artifacts/types";
 
@@ -119,33 +120,36 @@ interface NodeProps {
   depth: number;
   activePath: string | null;
   loadingPath?: string | null;
+  /** When false, folders render collapsed at first mount. They still
+   *  auto-open when an active descendant comes into view, and toggling is
+   *  always available to the user. Default true preserves the historical
+   *  always-open behaviour for skill-bundle previews. */
+  defaultExpanded: boolean;
+  /** Fired the first time a folder is opened. Used by lazy-loading
+   *  category browsers so they can walk one subtree on demand instead of
+   *  paying for the whole tree up front. */
+  onExpandFolder?: (node: Attachment) => void;
+  /** Set of dir paths currently mid-load. Folders render a hint when
+   *  open + in this set + still empty. */
+  loadingFolders?: ReadonlySet<string>;
   onOpen: (node: Attachment) => void;
 }
 
-function Node({ node, depth, activePath, loadingPath, onOpen }: NodeProps) {
+function Node({ node, depth, activePath, loadingPath, defaultExpanded, onExpandFolder, loadingFolders, onOpen }: NodeProps) {
   const indent = 12 + depth * 16;
   if (node.isDir) {
-    const onPath = containsActive(node.children ?? [], activePath);
     return (
-      <details className={`tree-folder ${onPath ? "tree-folder-active" : ""}`} open>
-        <summary className="tree-folder-header" style={{ paddingLeft: indent }}>
-          <ChevronIcon />
-          <FolderIcon />
-          <span className="tree-folder-name">{node.name}</span>
-        </summary>
-        <div className="tree-folder-children">
-          {(node.children ?? []).map((c) => (
-            <Node
-              key={c.path}
-              node={c}
-              depth={depth + 1}
-              activePath={activePath}
-              loadingPath={loadingPath}
-              onOpen={onOpen}
-            />
-          ))}
-        </div>
-      </details>
+      <FolderNode
+        node={node}
+        depth={depth}
+        indent={indent}
+        activePath={activePath}
+        loadingPath={loadingPath}
+        defaultExpanded={defaultExpanded}
+        onExpandFolder={onExpandFolder}
+        loadingFolders={loadingFolders}
+        onOpen={onOpen}
+      />
     );
   }
   const active = node.path === activePath;
@@ -175,6 +179,81 @@ function Node({ node, depth, activePath, loadingPath, onOpen }: NodeProps) {
   );
 }
 
+interface FolderNodeProps extends NodeProps {
+  indent: number;
+}
+
+function FolderNode({
+  node,
+  depth,
+  indent,
+  activePath,
+  loadingPath,
+  defaultExpanded,
+  onExpandFolder,
+  loadingFolders,
+  onOpen,
+}: FolderNodeProps) {
+  const { t } = useTranslation();
+  const onPath = containsActive(node.children ?? [], activePath);
+  // Local toggle state — initialised from defaultExpanded so opening
+  // History & Memory shows collapsed folders, while skill-bundle previews
+  // still start expanded. Auto-opens if a descendant becomes active later
+  // (e.g. user clicks a deep file from search results).
+  const [open, setOpen] = useState<boolean>(defaultExpanded || onPath);
+  useEffect(() => {
+    if (onPath) setOpen(true);
+  }, [onPath]);
+  // Fire the lazy-load callback once per folder, the first time it opens.
+  // Parent owns the dedup; this side just signals "user wants this".
+  const askedRef = useRef(false);
+  useEffect(() => {
+    if (open && !askedRef.current && onExpandFolder) {
+      askedRef.current = true;
+      onExpandFolder(node);
+    }
+  }, [open, onExpandFolder, node]);
+  const children = node.children ?? [];
+  const isLoading = loadingFolders?.has(node.path) === true;
+  return (
+    <details
+      className={`tree-folder ${onPath ? "tree-folder-active" : ""}`}
+      open={open}
+      onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}
+    >
+      <summary className="tree-folder-header" style={{ paddingLeft: indent }}>
+        <ChevronIcon />
+        <FolderIcon />
+        <span className="tree-folder-name">{node.name}</span>
+      </summary>
+      <div className="tree-folder-children">
+        {isLoading && children.length === 0 ? (
+          <div
+            className="tree-empty"
+            style={{ paddingLeft: indent + 16 }}
+          >
+            {t("treeView.loadingFolder", { defaultValue: "Loading…" })}
+          </div>
+        ) : (
+          children.map((c) => (
+            <Node
+              key={c.path}
+              node={c}
+              depth={depth + 1}
+              activePath={activePath}
+              loadingPath={loadingPath}
+              defaultExpanded={defaultExpanded}
+              onExpandFolder={onExpandFolder}
+              loadingFolders={loadingFolders}
+              onOpen={onOpen}
+            />
+          ))
+        )}
+      </div>
+    </details>
+  );
+}
+
 export interface TopItem {
   name: string;
   path: string;
@@ -188,6 +267,16 @@ interface TreeViewProps {
   topItem?: TopItem;
   activePath: string | null;
   loadingPath?: string | null;
+  /** Initial open state for every folder. Default true keeps skill-bundle
+   *  previews fully expanded; CategoryBrowser passes false so large
+   *  history trees open collapsed. */
+  defaultExpanded?: boolean;
+  /** Called the first time a folder opens. Parent decides whether to walk
+   *  the subtree — used by lazy-loaded category browsers. */
+  onExpandFolder?: (node: Attachment) => void;
+  /** Set of dir paths currently being loaded. Folders in this set render
+   *  a "Loading…" placeholder while their `children` is still empty. */
+  loadingFolders?: ReadonlySet<string>;
   onOpen: (node: Attachment) => void;
 }
 
@@ -200,7 +289,16 @@ function countFiles(nodes: Attachment[]): number {
   return n;
 }
 
-export function TreeView({ attachments, topItem, activePath, loadingPath, onOpen }: TreeViewProps) {
+export function TreeView({
+  attachments,
+  topItem,
+  activePath,
+  loadingPath,
+  defaultExpanded = true,
+  onExpandFolder,
+  loadingFolders,
+  onOpen,
+}: TreeViewProps) {
   const { t } = useTranslation();
   const total = countFiles(attachments) + (topItem ? 1 : 0);
   return (
@@ -239,6 +337,9 @@ export function TreeView({ attachments, topItem, activePath, loadingPath, onOpen
             depth={0}
             activePath={activePath}
             loadingPath={loadingPath}
+            defaultExpanded={defaultExpanded}
+            onExpandFolder={onExpandFolder}
+            loadingFolders={loadingFolders}
             onOpen={onOpen}
           />
         ))}

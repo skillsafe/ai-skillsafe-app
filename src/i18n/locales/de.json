@@ -45,10 +45,23 @@
     "lockfile": "Lockfile"
   },
   "types": {
-    "all": "Alle",
+    "all": "Alle Artefakte",
     "skill": "Skills",
     "agent": "Agents",
     "command": "Befehle"
+  },
+  "categories": {
+    "otherFiles": "Weitere Dateien",
+    "memory": "Verlauf & Speicher",
+    "plugins": "Plugins",
+    "settings": "Einstellungen",
+    "tasksPlans": "Aufgaben & Pläne",
+    "history": "Verlauf",
+    "desktopConfig": "Claude Desktop",
+    "config": "Konfiguration",
+    "noFilesFound": "Keine Dateien in dieser Kategorie gefunden.",
+    "emptyHint": "Dateien, die zu deinem Backup-Ziel für die Kategorie {label} gespiegelt werden, erscheinen hier.",
+    "streaming": "Dateien werden geladen…"
   },
   "sidebar": {
     "cloudPanelAria": "skillsafe.ai Cloud-Panel",
@@ -277,7 +290,8 @@
     "missingPrivate": "Der Skill ist privat und die aktuelle Anmeldung ist nicht der Besitzer. Melde dich in den Einstellungen als Besitzer an.",
     "missingDeleted": "Der Skill wurde auf skillsafe.ai gelöscht.",
     "manifestMissing": "Das Manifest oder einer seiner Blobs fehlt auf dem Server. Versuche eine andere Version aus dem Dropdown oben oder öffne die Skill-Seite auf skillsafe.ai.",
-    "unversionedHint": "Dieser Skill hat noch keine veröffentlichte Version auf skillsafe.ai, daher kann der Dateiinhalt nicht abgerufen werden. Öffne das Quell-Repository, um ihn anzusehen."
+    "unversionedHint": "Dieser Skill hat noch keine veröffentlichte Version auf skillsafe.ai, daher kann der Dateiinhalt nicht abgerufen werden. Öffne das Quell-Repository, um ihn anzusehen.",
+    "binaryToast": "{name} ist eine Binärdatei — herunterladen, um sie extern anzusehen."
   },
   "remoteList": {
     "filterPlaceholder": "Remote filtern…",
@@ -487,7 +501,9 @@
     "enterEditFailed": "Bearbeitungsmodus konnte nicht aktiviert werden: {message}",
     "discardPrompt": "Nicht gespeicherte Änderungen verwerfen?",
     "diskChangedPrompt": "Diese Datei wurde auf der Festplatte geändert, seit du mit dem Bearbeiten begonnen hast.\n\nKlicke auf OK, um mit deinen Änderungen zu überschreiben, oder auf Abbrechen, um den Speichervorgang abzubrechen.",
-    "saveFailed": "Speichern fehlgeschlagen: {message}"
+    "saveFailed": "Speichern fehlgeschlagen: {message}",
+    "tooLargeToPreview": "Datei zu groß zum Anzeigen in der App ({size}). Extern öffnen, um sie anzusehen.",
+    "openExternally": "Extern öffnen"
   },
   "configsList": {
     "permissionsLabel": "Berechtigungen",

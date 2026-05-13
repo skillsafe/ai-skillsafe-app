@@ -1,9 +1,27 @@
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import type { ArtifactType, Scope, Tool } from "../lib/artifacts/types";
 import { ALL_AGENTS, displayNameOf } from "../lib/agents/registry";
+import { dataTypesFor } from "../lib/backup/dataTypes";
 import { useApp } from "../lib/store";
 import { ArchiveIcon, GearIcon, GlobeIcon, ShieldIcon } from "./icons";
+
+// Data-type ids already represented by the main TYPES row (skill/agent/
+// command via the artifact pipeline) — surfacing them as a second pill
+// would just duplicate the user's view.
+const ARTIFACT_TYPE_DUPS: ReadonlySet<string> = new Set([
+  "skills",
+  "agents",
+  "commands",
+  "prompts",
+  "agents-md",
+]);
+
+// camelCase the data-type id for i18n key lookup. Mirrors CategoryBrowser.
+function categoryI18nKey(id: string): string {
+  return id.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+}
 
 // Sourced from the registry so adding an agent in src/lib/agents/registry.ts
 // (mirroring vercel-labs/skills) automatically shows up here. Sorted by
@@ -33,12 +51,25 @@ interface SidebarProps {
 export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: SidebarProps = {}) {
   const { t } = useTranslation();
   const {
-    tool, scope, type, recentTools, recentProjects, projectFilter, bottomPanel,
+    tool, scope, type, category, backupTools, backupDataTypes,
+    recentTools, recentProjects, projectFilter, bottomPanel,
     view,
-    setTool, setScope, setType, setProjectRoot, setProjectFilter,
+    setTool, setScope, setType, setCategory, setProjectRoot, setProjectFilter,
     setView,
     setSettingsScrollTarget,
   } = useApp();
+  // Eligible categories for the current tool: enabled in backup settings AND
+  // not already covered by the TYPES row. When no tool is enabled for backup
+  // at all (toolBackupOn === false), we still show the row only if a category
+  // is somehow active — protects against orphaned localStorage state.
+  const toolBackupOn = backupTools.includes(tool);
+  const eligibleCategories = useMemo(() => {
+    if (!toolBackupOn) return [];
+    const enabled = new Set(backupDataTypes[tool] ?? []);
+    return dataTypesFor(tool).filter(
+      (dt) => enabled.has(dt.id) && !ARTIFACT_TYPE_DUPS.has(dt.id),
+    );
+  }, [tool, toolBackupOn, backupDataTypes]);
   const isConfigs = view === "configs";
   const isWorkbench = view === "workbench";
   // Configs/Workbench don't have an "all" scope; coerce silently when
@@ -139,21 +170,35 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
 
       <div className="section-label" id="sidebar-scope-label">{t("sidebar.scope")}</div>
       <div className="pill-row" role="tablist" aria-labelledby="sidebar-scope-label">
-        {(isConfigs ? CONFIG_SCOPES : SCOPES).map((s) => (
-          <button
-            key={s}
-            type="button"
-            role="tab"
-            aria-selected={effectiveScope === s}
-            className={`pill ${effectiveScope === s ? "active" : ""}`}
-            onClick={() => {
-              if (s === "project" && recentProjects.length === 0) pickProject();
-              setScope(s);
-            }}
-          >
-            {t(`scopes.${s}`)}
-          </button>
-        ))}
+        {(isConfigs ? CONFIG_SCOPES : SCOPES).map((s) => {
+          const active = !isConfigs && !isWorkbench && effectiveScope === s;
+          return (
+            <button
+              key={s}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              className={`pill ${active ? "active" : ""}`}
+              onClick={() => {
+                if (s === "project" && recentProjects.length === 0) pickProject();
+                setView("artifacts");
+                setScope(s);
+              }}
+            >
+              {t(`scopes.${s}`)}
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          role="tab"
+          aria-selected={isConfigs || isWorkbench}
+          className={`pill ${isConfigs || isWorkbench ? "active" : ""}`}
+          onClick={() => setView("workbench")}
+          title={t("sidebar.masterTooltip")}
+        >
+          {t("sidebar.master")}
+        </button>
       </div>
 
       {effectiveScope === "project" && recentProjects.length === 0 && (
@@ -223,31 +268,46 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
 
       <div className="section-label" id="sidebar-type-label">{t("sidebar.type")}</div>
       <div className="pill-row" role="tablist" aria-labelledby="sidebar-type-label">
-        {TYPES.map((tt) => (
-          <button
-            key={tt}
-            type="button"
-            role="tab"
-            aria-selected={!isConfigs && !isWorkbench && type === tt}
-            className={`pill ${!isConfigs && !isWorkbench && type === tt ? "active" : ""}`}
-            onClick={() => {
-              setView("artifacts");
-              setType(tt);
-            }}
-          >
-            {t(`types.${tt}`)}
-          </button>
-        ))}
-        <button
-          type="button"
-          role="tab"
-          aria-selected={isConfigs || isWorkbench}
-          className={`pill ${isConfigs || isWorkbench ? "active" : ""}`}
-          onClick={() => setView("workbench")}
-          title={t("sidebar.masterTooltip")}
-        >
-          {t("sidebar.master")}
-        </button>
+        {TYPES.map((tt) => {
+          const active = !isConfigs && !isWorkbench && category === null && type === tt;
+          return (
+            <button
+              key={tt}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              className={`pill ${active ? "active" : ""}`}
+              onClick={() => {
+                setView("artifacts");
+                setType(tt);
+              }}
+            >
+              {t(`types.${tt}`)}
+            </button>
+          );
+        })}
+        {!isConfigs && !isWorkbench && eligibleCategories.map((dt) => {
+          const active = category === dt.id;
+          const label = t(`categories.${categoryI18nKey(dt.id)}`, {
+            defaultValue: dt.label,
+          });
+          return (
+            <button
+              key={`cat-${dt.id}`}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              className={`pill ${active ? "active" : ""}`}
+              title={dt.description ?? label}
+              onClick={() => {
+                setView("artifacts");
+                setCategory(dt.id);
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
       </div>
 
     </aside>

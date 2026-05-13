@@ -7,6 +7,7 @@ import type { BackupStats } from "./backup/manifest";
 import type { BackupProgress } from "./backup/runBackup";
 import type { ScheduleSpec } from "./backup/generateScripts";
 import {
+  dataTypesFor,
   defaultDataTypeIdsFor,
   defaultEnabledExtraSourceIds,
   isExtraSource,
@@ -62,6 +63,7 @@ const BACKUP_TOOLS_KEY = "skill-manager.backupTools";
 // unchecks one isn't fighting the migration on every launch.
 const BACKUP_TOOLS_SEEDED_KEY = "skill-manager.backupToolsSeeded";
 const BACKUP_DATA_TYPES_KEY = "skill-manager.backupDataTypes";
+const CATEGORY_FILTER_KEY = "skill-manager.categoryFilter";
 const BACKUP_SCHEDULE_KEY = "skill-manager.backupSchedule";
 const LAYOUT_KEY = "skill-manager.layout";
 const AUTO_UPDATE_KEY = "skill-manager.autoUpdate";
@@ -312,6 +314,12 @@ function initialBackupDataTypes(tools: Tool[]): Record<Tool, string[]> {
   return out;
 }
 
+function initialCategoryFilter(): string | null {
+  const v = browser.localStorage?.getItem(CATEGORY_FILTER_KEY);
+  if (typeof v === "string" && v.length > 0) return v;
+  return null;
+}
+
 function initialRemoteFilter(): RemoteFilter {
   const v = browser.localStorage?.getItem(REMOTE_FILTER_KEY);
   // "mine" was the old label for the private+shared union — now resurrected
@@ -389,6 +397,11 @@ interface AppState {
   tool: Tool;
   scope: Scope;
   type: ArtifactType;
+  // Backup-data-type filter. When non-null, the main list pane shows a file
+  // tree of that category's source paths instead of the bundle-based
+  // ArtifactList. Mutually exclusive with `type` — selecting either resets
+  // the other to its default.
+  category: string | null;
   projectRoot: string | null;
   recentProjects: string[]; // newest-first list of folders the user has worked with
   // null = show artifacts from every project; otherwise narrows the
@@ -513,6 +526,7 @@ interface AppState {
   setTool: (t: Tool) => void;
   setScope: (s: Scope) => void;
   setType: (t: ArtifactType) => void;
+  setCategory: (c: string | null) => void;
   setProjectRoot: (p: string | null) => void;
   setProjectFilter: (p: string | null) => void;
   removeRecentProject: (p: string) => void;
@@ -610,6 +624,7 @@ export const useApp = create<AppState>((set) => ({
   // Type isn't persisted, so each launch starts on "All". Matches the
   // first-launch default for scope above.
   type: "all",
+  category: initialCategoryFilter(),
   projectRoot: initialProjectRoot(),
   recentProjects: initialRecentProjects(),
   projectFilter: initialProjectFilter(),
@@ -700,14 +715,35 @@ export const useApp = create<AppState>((set) => ({
   },
   setCloudAccount: (cloudAccount) => set({ cloudAccount }),
   setTool: (tool) =>
-    set((state) => ({
-      tool,
-      selectedId: null,
-      viewedFile: null,
-      recentTools: bumpRecent(state.recentTools, tool),
-    })),
+    set((state) => {
+      // If the new tool doesn't expose the currently-active category, drop
+      // the filter rather than leaving a dead pill selected. dataTypesFor()
+      // is the registry source of truth.
+      const stillValid =
+        state.category !== null &&
+        dataTypesFor(tool).some((dt) => dt.id === state.category);
+      const category = stillValid ? state.category : null;
+      if (!stillValid) browser.localStorage?.removeItem(CATEGORY_FILTER_KEY);
+      return {
+        tool,
+        category,
+        selectedId: null,
+        viewedFile: null,
+        recentTools: bumpRecent(state.recentTools, tool),
+      };
+    }),
   setScope: (scope) => set({ scope, selectedId: null, viewedFile: null }),
-  setType: (type) => set({ type, selectedId: null, viewedFile: null }),
+  setType: (type) => {
+    // TYPES and categories are mutually exclusive — selecting a type clears
+    // any active category filter.
+    browser.localStorage?.removeItem(CATEGORY_FILTER_KEY);
+    set({ type, category: null, selectedId: null, viewedFile: null });
+  },
+  setCategory: (category) => {
+    if (category) browser.localStorage?.setItem(CATEGORY_FILTER_KEY, category);
+    else browser.localStorage?.removeItem(CATEGORY_FILTER_KEY);
+    set({ category, selectedId: null, viewedFile: null });
+  },
   setProjectRoot: (projectRoot) =>
     set((state) => {
       // Persist last-used so reopening the app restores it without explicit pick.

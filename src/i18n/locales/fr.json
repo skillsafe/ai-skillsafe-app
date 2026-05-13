@@ -45,10 +45,23 @@
     "lockfile": "Lockfile"
   },
   "types": {
-    "all": "Tout",
+    "all": "Tous les artefacts",
     "skill": "Skills",
     "agent": "Agents",
     "command": "Commandes"
+  },
+  "categories": {
+    "otherFiles": "Autres fichiers",
+    "memory": "Historique & Mémoire",
+    "plugins": "Plugins",
+    "settings": "Paramètres",
+    "tasksPlans": "Tâches & plans",
+    "history": "Historique",
+    "desktopConfig": "Claude Desktop",
+    "config": "Config",
+    "noFilesFound": "Aucun fichier trouvé dans cette catégorie.",
+    "emptyHint": "Les fichiers copiés vers ta destination de sauvegarde pour la catégorie {label} apparaissent ici.",
+    "streaming": "Chargement des fichiers…"
   },
   "sidebar": {
     "cloudPanelAria": "Panneau cloud skillsafe.ai",
@@ -277,7 +290,8 @@
     "missingPrivate": "Ce skill est privé et la connexion actuelle n'en est pas le propriétaire. Connectez-vous en tant que propriétaire depuis les Paramètres.",
     "missingDeleted": "Le skill a été supprimé sur skillsafe.ai.",
     "manifestMissing": "Le manifeste ou l'un de ses blobs est absent du serveur. Essayez une autre version dans le menu ci-dessus, ou ouvrez la page du skill sur skillsafe.ai.",
-    "unversionedHint": "Ce skill n'a encore aucune version publiée sur skillsafe.ai ; le contenu des fichiers ne peut donc pas être récupéré. Ouvrez le dépôt source pour le consulter."
+    "unversionedHint": "Ce skill n'a encore aucune version publiée sur skillsafe.ai ; le contenu des fichiers ne peut donc pas être récupéré. Ouvrez le dépôt source pour le consulter.",
+    "binaryToast": "{name} est un fichier binaire — téléchargez-le pour le consulter en externe."
   },
   "remoteList": {
     "filterPlaceholder": "Filtrer le cloud…",
@@ -487,7 +501,9 @@
     "enterEditFailed": "Impossible d'entrer en mode édition : {message}",
     "discardPrompt": "Abandonner les modifications non enregistrées ?",
     "diskChangedPrompt": "Ce fichier a été modifié sur le disque depuis que vous avez commencé à le modifier.\n\nCliquez sur OK pour écraser avec vos modifications, ou sur Annuler pour interrompre l'enregistrement.",
-    "saveFailed": "Échec de l'enregistrement : {message}"
+    "saveFailed": "Échec de l'enregistrement : {message}",
+    "tooLargeToPreview": "Fichier trop volumineux pour être prévisualisé dans l'app ({size}). Ouvrez-le en externe pour le consulter.",
+    "openExternally": "Ouvrir en externe"
   },
   "configsList": {
     "permissionsLabel": "Permissions",

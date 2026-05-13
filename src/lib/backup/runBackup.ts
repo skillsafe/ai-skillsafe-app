@@ -51,7 +51,7 @@ export interface RunBackupOptions {
 
 const TYPES: ReadonlyArray<Exclude<ArtifactType, "all">> = ["skill", "agent", "command"];
 
-const PROJECTS_EXCLUDE_DIRS = new Set([
+export const PROJECTS_EXCLUDE_DIRS: ReadonlySet<string> = new Set([
   "cache",
   "debug",
   "session-env",
@@ -69,14 +69,14 @@ const PROJECTS_EXCLUDE_DIRS = new Set([
   "__pycache__",
 ]);
 
-const ARTIFACT_EXCLUDE_DIRS = new Set([".DS_Store"]);
+export const ARTIFACT_EXCLUDE_DIRS: ReadonlySet<string> = new Set([".DS_Store"]);
 
 // vercel-labs/skills layout reserves dot-prefixed top-level dirs (`.system`,
 // `.curated`, `.experimental`) under `<tool>/skills/` for bundles shipped by
 // the tool's installer. The app only manages user-installed skills, so skill
 // mirrors skip those at the source root. (Sub-dirs further down still mirror
 // normally — a user skill bundle with a `.git` inside is fair game.)
-const SKILL_TOP_LEVEL_EXCLUDE_PREFIXES: ReadonlyArray<string> = ["."];
+export const SKILL_TOP_LEVEL_EXCLUDE_PREFIXES: ReadonlyArray<string> = ["."];
 
 interface ToolAcc {
   counts: BackupCounts;
@@ -467,7 +467,7 @@ export interface MirrorContext {
     type?: Exclude<ArtifactType, "all">;
     projectRoot?: string;
   };
-  excludeDirNames: Set<string>;
+  excludeDirNames: ReadonlySet<string>;
   // Names starting with any of these prefixes are skipped at the top level
   // of the source tree only (rel === ""). Subdirectories pass through
   // unchanged. Used to drop tool-shipped category dirs (`.system`, …) from

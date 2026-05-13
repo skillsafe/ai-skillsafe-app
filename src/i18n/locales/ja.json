@@ -45,10 +45,23 @@
     "lockfile": "Lockfile"
   },
   "types": {
-    "all": "すべて",
+    "all": "すべてのアーティファクト",
     "skill": "Skills",
     "agent": "Agents",
     "command": "コマンド"
+  },
+  "categories": {
+    "otherFiles": "その他のファイル",
+    "memory": "履歴とメモリ",
+    "plugins": "プラグイン",
+    "settings": "設定",
+    "tasksPlans": "タスクとプラン",
+    "history": "履歴",
+    "desktopConfig": "Claude Desktop",
+    "config": "設定ファイル",
+    "noFilesFound": "このカテゴリにファイルはありません。",
+    "emptyHint": "バックアップ先にミラーされる {label} カテゴリのファイルがここに表示されます。",
+    "streaming": "ファイルを読み込み中…"
   },
   "sidebar": {
     "cloudPanelAria": "skillsafe.ai クラウドパネル",
@@ -277,7 +290,8 @@
     "missingPrivate": "この skill はプライベートで、現在のサインインは所有者ではありません。設定から所有者としてサインインしてください。",
     "missingDeleted": "この skill は skillsafe.ai 上で削除されました。",
     "manifestMissing": "manifest またはその blob のいずれかがサーバー上に見つかりません。上のドロップダウンから別のバージョンを試すか、skillsafe.ai の skill ページを開いてみてください。",
-    "unversionedHint": "この skill はまだ skillsafe.ai に公開バージョンがないため、ファイル内容を取得できません。ソースリポジトリを開いて確認してください。"
+    "unversionedHint": "この skill はまだ skillsafe.ai に公開バージョンがないため、ファイル内容を取得できません。ソースリポジトリを開いて確認してください。",
+    "binaryToast": "{name} はバイナリファイルです。外部で表示するにはダウンロードしてください。"
   },
   "remoteList": {
     "filterPlaceholder": "リモートを絞り込み…",
@@ -487,7 +501,9 @@
     "enterEditFailed": "編集モードに入れませんでした：{message}",
     "discardPrompt": "保存していない変更を破棄しますか？",
     "diskChangedPrompt": "編集を開始してからディスク上のこのファイルが変更されています。\n\nOK をクリックするとあなたの変更で上書きされ、キャンセルをクリックすると保存を中止します。",
-    "saveFailed": "保存に失敗しました：{message}"
+    "saveFailed": "保存に失敗しました：{message}",
+    "tooLargeToPreview": "ファイルが大きすぎてアプリ内で表示できません（{size}）。外部で開いて表示してください。",
+    "openExternally": "外部で開く"
   },
   "configsList": {
     "permissionsLabel": "権限",

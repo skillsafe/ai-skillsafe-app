@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Sidebar } from "./components/Sidebar";
 import { ArtifactList } from "./components/ArtifactList";
+import { CategoryBrowser } from "./components/CategoryBrowser";
 import { Editor } from "./components/Editor";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { DiffViewOverlay } from "./components/DiffViewOverlay";
@@ -52,6 +53,7 @@ export default function App() {
     tool,
     scope,
     type,
+    category,
     projectRoot,
     recentProjects,
     projectFilter,
@@ -262,6 +264,15 @@ export default function App() {
   }, []);
 
   const reload = useCallback(async () => {
+    // Category mode browses on-disk backup-data-type paths directly via
+    // CategoryBrowser; the artifact-pipeline reload is a no-op there.
+    if (category !== null) {
+      setArtifacts([]);
+      setLoading(false);
+      setError(null);
+      setDrift({});
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -326,7 +337,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [tool, scope, type, projectRoot, recentProjects, projectFilter, setArtifacts, setLoading, setError, setDrift]);
+  }, [tool, scope, type, category, projectRoot, recentProjects, projectFilter, setArtifacts, setLoading, setError, setDrift]);
 
   async function refreshDrift(list: MarkdownArtifact[], root: string) {
     const lockPath = await tauriJoiner.join(root, "skills-lock.json");
@@ -739,16 +750,20 @@ export default function App() {
       />
       {view === "artifacts" && (
         <>
-          <ArtifactList
-            onReload={reload}
-            onDelete={(a) => setPendingDelete(a)}
-            onBackup={(a) => {
-              if (backingUpId) return;
-              handleBackupFromRow(a);
-            }}
-            onUpload={handleUploadFromRow}
-          />
-          <Editor artifact={selected} onReload={reload} />
+          {category ? (
+            <CategoryBrowser />
+          ) : (
+            <ArtifactList
+              onReload={reload}
+              onDelete={(a) => setPendingDelete(a)}
+              onBackup={(a) => {
+                if (backingUpId) return;
+                handleBackupFromRow(a);
+              }}
+              onUpload={handleUploadFromRow}
+            />
+          )}
+          <Editor artifact={category ? null : selected} onReload={reload} />
           <HistoryPanel onReload={reload} />
           <DiffViewOverlay />
         </>
