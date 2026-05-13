@@ -795,6 +795,7 @@
     "changeTitle": "Elegir otra carpeta",
     "openFolderBtn": "Abrir carpeta",
     "openFolderTitle": "Abrir la carpeta de copia en Finder/Explorador",
+    "openPathTitle": "Abrir {path}",
     "clearBtn": "Borrar",
     "clearTitle": "Olvidar destino (no elimina archivos)",
     "chooseFolderBtn": "Elegir carpeta…",

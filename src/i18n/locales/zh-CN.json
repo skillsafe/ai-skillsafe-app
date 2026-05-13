@@ -795,6 +795,7 @@
     "changeTitle": "选择其他文件夹",
     "openFolderBtn": "打开文件夹",
     "openFolderTitle": "在访达/资源管理器中打开备份文件夹",
+    "openPathTitle": "打开 {path}",
     "clearBtn": "清除",
     "clearTitle": "忘记目标（不会删除文件）",
     "chooseFolderBtn": "选择文件夹…",

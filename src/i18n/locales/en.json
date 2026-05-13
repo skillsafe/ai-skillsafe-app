@@ -795,6 +795,7 @@
     "changeTitle": "Pick a different folder",
     "openFolderBtn": "Open folder",
     "openFolderTitle": "Open the backup folder in Finder/Explorer",
+    "openPathTitle": "Open {path}",
     "clearBtn": "Clear",
     "clearTitle": "Forget destination (does not delete files)",
     "chooseFolderBtn": "Choose folder…",

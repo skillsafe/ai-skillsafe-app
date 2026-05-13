@@ -795,6 +795,7 @@
     "changeTitle": "別のフォルダを選択",
     "openFolderBtn": "フォルダを開く",
     "openFolderTitle": "バックアップフォルダを Finder/エクスプローラーで開く",
+    "openPathTitle": "{path} を開く",
     "clearBtn": "クリア",
     "clearTitle": "保存先を解除（ファイルは削除しません）",
     "chooseFolderBtn": "フォルダを選択…",

@@ -16,10 +16,16 @@
 # Runs once per architecture (the workflow matrix has x64 and arm64). Both
 # the bundled tool and `appimagetool` need to match the runner's arch.
 #
-# Note: this invalidates the `.AppImage.sig` that Tauri's bundler emitted
-# (the file's bytes changed). That .sig was only used by Tauri's plugin-
-# updater, which we no longer use on Linux — so the loss is intentional.
-# AppImageUpdate has its own integrity check (zsync's per-chunk SHA1 chain).
+# Note: rewriting the AppImage invalidates Tauri's emitted `.AppImage.sig`.
+# v0.2.11+ Linux clients ignore that .sig entirely (they bypass Tauri's
+# plugin-updater and use AppImageUpdate's zsync per-chunk SHA1 chain
+# instead). But pre-v0.2.11 AppImage installs in the wild DO consult
+# `latest.json` through Tauri's plugin-updater and need a verifying
+# signature to land on v0.2.11. So when TAURI_SIGNING_PRIVATE_KEY is in
+# the env (CI), we re-sign the modified AppImage; when it isn't (local
+# dev / unsigned builds), we drop the stale .sig and skip. Once the
+# pre-v0.2.11 cohort is gone, this re-sign step + the linux-* keys in
+# make-latest-json.py can be removed.
 set -euo pipefail
 
 APPIMAGE_BUNDLE_DIR="src-tauri/target/release/bundle/appimage"
@@ -155,10 +161,21 @@ for APPIMAGE in "${APPIMAGES[@]}"; do
     zsyncmake -u "https://github.com/${ZSYNC_REPO}/releases/latest/download/${AP_NAME}" "$AP_NAME"
   )
 
-  # 5. Tauri's signed .sig is now stale (we rewrote the AppImage bytes).
-  # Remove it so it doesn't get mistakenly uploaded — Linux clients no
-  # longer use Tauri's plugin-updater anyway.
+  # 5. Re-sign for the v0.2.10 → v0.2.11 Tauri-updater bridge (see header).
+  # `tauri signer sign` writes `<file>.sig` with the same format as the
+  # bundler's auto-signing, picking up TAURI_SIGNING_PRIVATE_KEY[_PASSWORD]
+  # from the env. The old .sig is overwritten in place.
   rm -f "${OUT}.sig"
+  if [[ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
+    echo "==> Re-signing $AP_NAME"
+    npx --no-install tauri signer sign "$OUT"
+    if [[ ! -f "${OUT}.sig" ]]; then
+      echo "::error::tauri signer sign did not produce ${OUT}.sig"
+      exit 1
+    fi
+  else
+    echo "::notice::TAURI_SIGNING_PRIVATE_KEY not set — leaving $AP_NAME unsigned. Pre-v0.2.11 clients will not be able to auto-update from this build."
+  fi
 
-  echo "==> Done: $OUT (+ $(basename "$OUT").zsync)"
+  echo "==> Done: $OUT (+ $(basename "$OUT").zsync$( [[ -f "${OUT}.sig" ]] && echo " + .sig" ))"
 done

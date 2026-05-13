@@ -795,6 +795,7 @@
     "changeTitle": "Choisir un autre dossier",
     "openFolderBtn": "Ouvrir le dossier",
     "openFolderTitle": "Ouvrir le dossier de sauvegarde dans le Finder/l'Explorateur",
+    "openPathTitle": "Ouvrir {path}",
     "clearBtn": "Effacer",
     "clearTitle": "Oublier la destination (ne supprime pas les fichiers)",
     "chooseFolderBtn": "Choisir un dossier…",

@@ -795,6 +795,7 @@
     "changeTitle": "Anderen Ordner wählen",
     "openFolderBtn": "Ordner öffnen",
     "openFolderTitle": "Sicherungsordner im Finder/Explorer öffnen",
+    "openPathTitle": "{path} öffnen",
     "clearBtn": "Löschen",
     "clearTitle": "Ziel vergessen (Dateien werden nicht gelöscht)",
     "chooseFolderBtn": "Ordner wählen…",

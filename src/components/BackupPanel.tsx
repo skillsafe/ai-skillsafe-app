@@ -1083,7 +1083,7 @@ export function BackupPanel({ onToast }: Props) {
                     <button
                       className="link-btn"
                       onClick={() => openEntry(c.destPath)}
-                      title={`Open ${c.destPath}`}
+                      title={t("backupPanel.openPathTitle", { path: c.destPath })}
                       style={{
                         textAlign: "left",
                         overflow: "hidden",
