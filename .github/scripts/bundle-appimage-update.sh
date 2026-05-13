@@ -102,6 +102,10 @@ export ARCH="$TOOL_ARCH"
 export APPIMAGE_EXTRACT_AND_RUN=1
 
 for APPIMAGE in "${APPIMAGES[@]}"; do
+  # `find` returns the path relative to the workflow cwd, but we `cd` into a
+  # tmp dir for the extract step (and possibly for `npx tauri signer sign`),
+  # at which point the relative path no longer resolves. Anchor it now.
+  APPIMAGE="$(realpath "$APPIMAGE")"
   echo
   echo "==> Patching $(basename "$APPIMAGE")"
   AP_DIR="$(dirname "$APPIMAGE")"
