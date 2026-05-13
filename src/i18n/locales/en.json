@@ -1,0 +1,86 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "close": "Close",
+    "delete": "Delete",
+    "remove": "Remove",
+    "working": "Working…",
+    "loading": "Loading…",
+    "yes": "Yes",
+    "no": "No",
+    "on": "On",
+    "off": "Off"
+  },
+  "settings": {
+    "title": "Settings",
+    "closeAria": "Close settings",
+    "account": {
+      "title": "Account",
+      "notSignedIn": "Not signed in",
+      "signedInHint": "Sign in with skillsafe.ai to install, save, and share skills.",
+      "signIn": "Sign in",
+      "signingIn": "Waiting…",
+      "signOut": "Sign out",
+      "unverified": "unverified"
+    },
+    "projects": {
+      "title": "Projects",
+      "addButton": "+ Add project…",
+      "empty": "No projects added yet. Click {addLabel} to pick a folder. Each project's .claude/, .codex/, .cursor/, or .agents/ directory is read when you pick the “Project” scope.",
+      "addLabel": "Add project…",
+      "active": "active",
+      "removeTooltip": "Remove {name} from this list (your folder is not deleted)",
+      "removeAria": "Remove {name}",
+      "removeLabel": "Remove"
+    },
+    "about": {
+      "title": "About",
+      "appName": "AI SkillSafe",
+      "versionPrefix": "v",
+      "upToDate": "You're on the latest version.",
+      "updateAvailable": "Update available: v{version}",
+      "checkButton": "Check for updates",
+      "checking": "Checking…",
+      "autoUpdateHint": "Automatically download new versions in the background and install them on next launch.",
+      "downloading": "Downloading{versionSuffix}{percentSuffix}",
+      "installing": "Installing…",
+      "readyToInstall": "v{version} is downloaded and ready to install.",
+      "restartAndInstall": "Restart and install v{version}",
+      "restartingInstalling": "Installing…"
+    },
+    "appearance": {
+      "title": "Appearance",
+      "system": "System",
+      "systemTitle": "Follow OS preference",
+      "dark": "Dark",
+      "light": "Light"
+    },
+    "layout": {
+      "title": "Layout",
+      "hint": "Reset the sidebar, artifact-list, and bottom-panel sizes to their defaults.",
+      "resetButton": "Reset panel sizes",
+      "resetToast": "Panel sizes reset to defaults."
+    },
+    "language": {
+      "title": "Language",
+      "hint": "Choose the language used throughout AI SkillSafe.",
+      "auto": "Match system"
+    }
+  },
+  "toast": {
+    "openBrowser": "Approve sign-in in your browser…",
+    "couldNotOpenBrowser": "Couldn't open browser ({reason}). Open manually: {url}",
+    "signedInAs": "Signed in as {namespace}",
+    "signOutDone": "Signed out.",
+    "signInFailed": "Sign-in failed: {message}",
+    "alreadyLatest": "You're on the latest version (v{version}).",
+    "updateOpeningDownload": "Update v{version} available — opening download page…",
+    "couldNotOpenDownload": "Couldn't open download page: {message}",
+    "updateFailed": "Update failed: {message}",
+    "updateAvailableShort": "Update available: v{version}.",
+    "updateCheckFailed": "Update check failed: {message}",
+    "installFailed": "Install failed: {message}",
+    "updateNoLongerAvailable": "Update is no longer available."
+  }
+}

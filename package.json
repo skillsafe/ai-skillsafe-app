@@ -28,9 +28,12 @@
     "@tauri-apps/plugin-updater": "^2.0.0",
     "fflate": "^0.8.2",
     "gray-matter": "^4.0.3",
+    "i18next": "^25.10.10",
+    "i18next-icu": "^2.4.3",
     "marked": "^18.0.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-i18next": "^15.7.4",
     "zod": "^3.23.8",
     "zustand": "^5.0.2"
   },

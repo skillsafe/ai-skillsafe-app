@@ -108,9 +108,18 @@ export async function buildAndWriteManifest(
 
   try {
     await opts.fs.writeTextFile(manifestPath, serializeManifest(manifest));
-  } catch {
-    // Manifest write isn't load-bearing for the backup itself — the data
-    // already mirrored. Swallow + return stats so the UI can still render.
+  } catch (e) {
+    // Manifest write isn't load-bearing for the data copy — files already
+    // mirrored — but losing the manifest means BackupBrowser can't find the
+    // backup ("No backup found at this folder yet"). Surface the error in
+    // manifest.errors so the BackupPanel "N errors" pill explains why,
+    // instead of swallowing silently. Common Windows cause: destination is
+    // outside the Tauri fs:scope allowlist (capabilities/default.json), so
+    // plugin-fs returns "forbidden path".
+    const msg = e instanceof Error ? e.message : String(e);
+    manifest.errors.push(`manifest write failed: ${manifestPath}: ${msg}`);
+    // eslint-disable-next-line no-console
+    console.error("[skillsafe-backup] manifest write failed", manifestPath, e);
   }
 
   return { manifest, stats: summarize(manifest) };

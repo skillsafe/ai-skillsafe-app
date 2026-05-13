@@ -14,5 +14,5 @@
     "composite": true,
     "types": ["node", "vitest/globals"]
   },
-  "include": ["tests", "src/lib"]
+  "include": ["tests", "src/lib", "src/i18n"]
 }

@@ -16,6 +16,11 @@ import type { UpdateProgress } from "./update/runner";
 import { clearApiKey, loadApiKey, storeApiKey } from "./skillsafe/auth";
 import type { ConfigKind, ProjectSettingsTier } from "./configs/types";
 import type { InventorySnapshot } from "./inventory/types";
+import {
+  type Locale as I18nLocale,
+  isSupported as isSupportedLocale,
+  setLocale as i18nSetLocale,
+} from "../i18n";
 
 declare const __APP_VERSION__: string;
 
@@ -39,6 +44,7 @@ export interface ViewedFile {
 }
 
 const THEME_KEY = "skill-manager.theme";
+const LOCALE_KEY = "skill-manager.locale";
 const RECENT_TOOLS_KEY = "skill-manager.recentTools";
 const CLOUD_OPEN_KEY = "skill-manager.cloudOpen";
 const BOTTOM_PANEL_KEY = "skill-manager.bottomPanel";
@@ -94,6 +100,11 @@ export function resolveTheme(theme: Theme): ResolvedTheme {
     return browser.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark";
   }
   return theme;
+}
+
+function initialLocale(): I18nLocale {
+  const saved = browser.localStorage?.getItem(LOCALE_KEY);
+  return isSupportedLocale(saved) ? saved : "en";
 }
 
 function initialRecentTools(initial: Tool): Tool[] {
@@ -391,6 +402,7 @@ interface AppState {
   viewedFile: ViewedFile | null;
   theme: Theme;
   resolvedTheme: ResolvedTheme;
+  locale: I18nLocale;
   recentTools: Tool[];
   cloudApiKey: string | null;
   cloudAccount: CloudAccount | null;
@@ -514,6 +526,7 @@ interface AppState {
   setViewedFile: (v: ViewedFile | null) => void;
   setTheme: (t: Theme) => void;
   setResolvedTheme: (t: ResolvedTheme) => void;
+  setLocale: (l: I18nLocale) => void;
 
   setCloudOpen: (b: boolean) => void;
   toggleCloudOpen: () => void;
@@ -608,6 +621,7 @@ export const useApp = create<AppState>((set) => ({
   viewedFile: null,
   theme: initialTheme(),
   resolvedTheme: resolveTheme(initialTheme()),
+  locale: initialLocale(),
   recentTools: initialRecentTools(initialDefaultTool()),
   cloudApiKey: loadApiKey(),
   cloudAccount: null,
@@ -746,6 +760,10 @@ export const useApp = create<AppState>((set) => ({
     set({ theme, resolvedTheme: resolveTheme(theme) });
   },
   setResolvedTheme: (resolvedTheme) => set({ resolvedTheme }),
+  setLocale: (locale) => {
+    set({ locale });
+    void i18nSetLocale(locale);
+  },
 
   setCloudOpen: (b) => {
     const panel: BottomPanel = b ? "cloud" : null;

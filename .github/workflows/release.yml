@@ -86,6 +86,14 @@ jobs:
             unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
           fi
           npm run tauri build -- --target aarch64-pc-windows-msvc
+      - name: Bundle appimageupdatetool + zsync metadata (Linux)
+        if: startsWith(matrix.platform, 'ubuntu')
+        shell: bash
+        run: |
+          # Post-process the AppImage Tauri just built: embed update-info,
+          # bundle appimageupdatetool inside, generate the .zsync sidecar.
+          # See .github/scripts/bundle-appimage-update.sh for the why.
+          bash .github/scripts/bundle-appimage-update.sh
       - name: Inject pre-baked DMG .DS_Store (macOS)
         if: matrix.platform == 'macos-latest'
         shell: bash
@@ -122,6 +130,7 @@ jobs:
             src-tauri/target/**/release/bundle/**/*.deb
             src-tauri/target/**/release/bundle/**/*.AppImage
             src-tauri/target/**/release/bundle/**/*.AppImage.tar.gz
+            src-tauri/target/**/release/bundle/**/*.AppImage.zsync
             src-tauri/target/**/release/bundle/**/*.exe
             src-tauri/target/**/release/bundle/**/*.app.tar.gz
             src-tauri/target/**/release/bundle/**/*.nsis.zip
@@ -144,20 +153,25 @@ jobs:
             - `*_arm64-setup.exe` — NSIS installer
 
             ### Linux (x64 — Intel/AMD)
-            - `*_amd64.AppImage` — portable, auto-updates supported. `chmod +x *.AppImage && ./*.AppImage`
+            - `*_amd64.AppImage` — portable, auto-updates via bundled AppImageUpdate (zsync delta). `chmod +x *.AppImage && ./*.AppImage`
             - `*_amd64.deb` — `sudo apt install ./*.deb` (manual-update only)
 
             ### Linux (ARM64 — Raspberry Pi 4/5, Ampere, Apple Silicon VMs)
-            - `*_arm64.AppImage` — portable, auto-updates supported. `chmod +x *.AppImage && ./*.AppImage`
+            - `*_aarch64.AppImage` — portable, auto-updates via bundled AppImageUpdate. `chmod +x *.AppImage && ./*.AppImage`
             - `*_arm64.deb` — `sudo apt install ./*.deb` (manual-update only)
 
             ### Auto-updates
-            The app fetches `latest.json` from this release on launch and verifies the downloaded bundle against the matching `.sig` file. The `*.app.tar.gz` (macOS), `*-setup.exe` (Windows), and `*.AppImage` (Linux) bundles plus their `.sig` files are for the updater — you don't need to download them manually. (Linux `.deb` installs are manual-update only: Tauri's bundler doesn't auto-sign `.deb`, so the updater can't verify them. Switch to the AppImage to get auto-updates.)
+            macOS / Windows: the app fetches `latest.json` from this release on launch and verifies the downloaded bundle against the matching `.sig` file (so `*.app.tar.gz`, `*-setup.exe`, and their `.sig` files are for the updater — you don't download them manually).
+
+            Linux AppImage: the app ships AppImageUpdate inside. On update it reads the embedded zsync URL pattern, downloads only the changed chunks from the `*.AppImage.zsync` sidecar in this release, atomically rewrites your local AppImage, and relaunches from the on-disk path so the new SquashFS payload is mounted cleanly.
+
+            Linux `.deb`: manual-update only. Tauri's bundler doesn't auto-sign `.deb` and dpkg/apt need root, so the app opens the download page on update. Switch to the AppImage if you want hands-off updates.
           files: |
             src-tauri/target/**/release/bundle/**/*.dmg
             src-tauri/target/**/release/bundle/**/*.deb
             src-tauri/target/**/release/bundle/**/*.AppImage
             src-tauri/target/**/release/bundle/**/*.AppImage.tar.gz
+            src-tauri/target/**/release/bundle/**/*.AppImage.zsync
             src-tauri/target/**/release/bundle/**/*.exe
             src-tauri/target/**/release/bundle/**/*.app.tar.gz
             src-tauri/target/**/release/bundle/**/*.nsis.zip

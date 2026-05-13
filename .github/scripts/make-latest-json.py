@@ -47,24 +47,22 @@ def main() -> int:
     # no .tar.gz / .zip wrap (except macOS, which has to tar the .app dir):
     #   * macOS: *.app.tar.gz (universal) + .sig
     #   * Windows: *_<arch>-setup.exe + .sig (NSIS — we no longer ship MSI)
-    #   * Linux:  *_<arch>.AppImage + .sig — note Tauri labels the ARM
-    #     AppImage `_aarch64.AppImage` while the same-arch .deb is
-    #     `_arm64.deb`. Don't "normalize" the script to one label.
-    # Linux .deb installs are manual-update only: the Tauri bundler doesn't
-    # auto-sign .deb (only AppImage / NSIS / MSI / app.tar.gz), so we have no
-    # signed .deb to publish. Users on .deb need a one-time manual update to
-    # the AppImage to start receiving auto-updates.
+    #
+    # Linux is NOT published here. AppImage installs auto-update via the
+    # bundled AppImageUpdate tool + the `*.AppImage.zsync` sidecar in the
+    # release — they don't consult `latest.json` at all. .deb installs are
+    # manual-update only (Tauri's bundler doesn't auto-sign .deb, and apt/
+    # dpkg need root anyway). Either way, no `linux-*` keys here would be
+    # used — and the bundle-appimage-update.sh CI step deletes the stale
+    # .AppImage.sig that Tauri emitted (rewriting the AppImage to embed
+    # update info invalidates the signature).
     mac_sig = first_match("*.app.tar.gz.sig")
     win_x64_sig = first_match("*_x64-setup.exe.sig")
     win_arm64_sig = first_match("*_arm64-setup.exe.sig")
-    linux_x64_sig = first_match("*_amd64.AppImage.sig")
-    linux_arm64_sig = first_match("*_aarch64.AppImage.sig")
 
     mac = entry(mac_sig, base)
     win_x64 = entry(win_x64_sig, base)
     win_arm64 = entry(win_arm64_sig, base)
-    linux_x64 = entry(linux_x64_sig, base)
-    linux_arm64 = entry(linux_arm64_sig, base)
 
     platforms: dict[str, dict] = {}
     if mac:
@@ -74,10 +72,6 @@ def main() -> int:
         platforms["windows-x86_64"] = win_x64
     if win_arm64:
         platforms["windows-aarch64"] = win_arm64
-    if linux_x64:
-        platforms["linux-x86_64"] = linux_x64
-    if linux_arm64:
-        platforms["linux-aarch64"] = linux_arm64
 
     if not platforms:
         print("error: no .sig files found in cwd", file=sys.stderr)

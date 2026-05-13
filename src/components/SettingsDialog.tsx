@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import { useApp } from "../lib/store";
@@ -7,6 +8,7 @@ import { SkillSafeError } from "../lib/skillsafe/client";
 import { CloseIcon, FolderIcon, MonitorIcon, MoonIcon, SunIcon, TrashIcon } from "./icons";
 import { BackupPanel } from "./BackupPanel";
 import { checkForUpdate, installAndRelaunch, isManualUpdate } from "../lib/update/runner";
+import { NATIVE_NAME, SUPPORTED, type Locale } from "../i18n";
 
 interface Props {
   onClose: () => void;
@@ -14,9 +16,12 @@ interface Props {
 }
 
 export function SettingsDialog({ onClose, onToast }: Props) {
+  const { t } = useTranslation();
   const {
     theme,
     setTheme,
+    locale,
+    setLocale,
     cloudApiKey,
     cloudAccount,
     setCloudAuth,
@@ -42,8 +47,6 @@ export function SettingsDialog({ onClose, onToast }: Props) {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [restarting, setRestarting] = useState(false);
 
-  // Deep-link: callers can request a section to be scrolled into view
-  // (e.g. clicking "Configure & back up…" in the BackupBrowser).
   useEffect(() => {
     if (!settingsScrollTarget) return;
     const id = settingsScrollTarget;
@@ -60,37 +63,30 @@ export function SettingsDialog({ onClose, onToast }: Props) {
       const update = await checkForUpdate();
       if (!update) {
         setAvailableUpdate(null);
-        onToast("ok", `You're on the latest version (v${currentVersion}).`);
+        onToast("ok", t("toast.alreadyLatest", { version: currentVersion }));
         return;
       }
       setAvailableUpdate({ version: update.version, notes: update.body ?? "", date: update.date });
-      if (isManualUpdate(update)) {
-        // Linux: no auto-installable bundle. installAndRelaunch on a manual
-        // update opens the download page; do that explicitly so the toast
-        // text matches the action.
-        onToast("ok", `Update v${update.version} available — opening download page…`);
+      if (isManualUpdate(update) && update.kind === "download-page") {
+        onToast("ok", t("toast.updateOpeningDownload", { version: update.version }));
         try {
           await shellOpen(update.downloadPageUrl);
         } catch (e) {
-          onToast("error", `Couldn't open download page: ${e instanceof Error ? e.message : String(e)}`);
+          onToast("error", t("toast.couldNotOpenDownload", { message: e instanceof Error ? e.message : String(e) }));
         }
       } else if (autoUpdate) {
-        // Stream the download via the same orchestrator path. We trigger the
-        // 6h cycle indirectly by showing the user the version is available;
-        // a full cycle will pick it up. For an explicit "check" we just
-        // download-and-install here so the user gets immediate feedback.
         try {
           await installAndRelaunch(update, setUpdateProgress);
         } catch (e) {
           setUpdateError(e instanceof Error ? e.message : String(e));
-          onToast("error", `Update failed: ${e instanceof Error ? e.message : String(e)}`);
+          onToast("error", t("toast.updateFailed", { message: e instanceof Error ? e.message : String(e) }));
         }
       } else {
-        onToast("ok", `Update available: v${update.version}.`);
+        onToast("ok", t("toast.updateAvailableShort", { version: update.version }));
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      onToast("error", `Update check failed: ${msg}`);
+      onToast("error", t("toast.updateCheckFailed", { message: msg }));
     } finally {
       setCheckingUpdate(false);
     }
@@ -99,21 +95,17 @@ export function SettingsDialog({ onClose, onToast }: Props) {
   async function handleRestartAndInstall() {
     setRestarting(true);
     try {
-      // The pending Update handle lives in the orchestrator (App.tsx) and
-      // is not reachable from here, so we re-check and download-and-install
-      // fresh. `check()` returns a *new* Update handle each call — its
-      // download state is not carried over from any prior check, so calling
-      // install() directly would fail with "Update.install called before
-      // Update.download". `installAndRelaunch` runs downloadAndInstall.
+      // `check()` returns a fresh Update handle each call; install() can't be
+      // called before download(), so we re-check and downloadAndInstall here.
       const update = await checkForUpdate();
       if (!update) {
-        onToast("ok", "Update is no longer available.");
+        onToast("ok", t("toast.updateNoLongerAvailable"));
         setUpdateReadyToInstall(false);
         return;
       }
       await installAndRelaunch(update, setUpdateProgress);
     } catch (e) {
-      onToast("error", `Install failed: ${e instanceof Error ? e.message : String(e)}`);
+      onToast("error", t("toast.installFailed", { message: e instanceof Error ? e.message : String(e) }));
     } finally {
       setRestarting(false);
     }
@@ -125,21 +117,21 @@ export function SettingsDialog({ onClose, onToast }: Props) {
       const apiKey = await runDeviceFlow({
         onAuthUrl: (url) => {
           shellOpen(url).then(
-            () => onToast("ok", "Approve sign-in in your browser…"),
+            () => onToast("ok", t("toast.openBrowser")),
             (e) => {
               console.error("shell.open failed:", e);
               const msg = e instanceof SkillSafeError ? `${e.code}: ${e.message}` : (e instanceof Error ? e.message : String(e));
-              onToast("error", `Couldn't open browser (${msg}). Open manually: ${url}`);
+              onToast("error", t("toast.couldNotOpenBrowser", { reason: msg, url }));
             },
           );
         },
       });
       const account = await fetchAccount(apiKey);
       setCloudAuth(apiKey, account);
-      onToast("ok", `Signed in as ${account.namespace}`);
+      onToast("ok", t("toast.signedInAs", { namespace: account.namespace }));
     } catch (e) {
       const msg = e instanceof SkillSafeError ? `${e.code}: ${e.message}` : String(e);
-      onToast("error", `Sign-in failed: ${msg}`);
+      onToast("error", t("toast.signInFailed", { message: msg }));
     } finally {
       setSigningIn(false);
     }
@@ -147,7 +139,7 @@ export function SettingsDialog({ onClose, onToast }: Props) {
 
   function handleSignOut() {
     setCloudAuth(null, null);
-    onToast("ok", "Signed out.");
+    onToast("ok", t("toast.signOutDone"));
   }
 
   async function pickFolder() {
@@ -160,14 +152,29 @@ export function SettingsDialog({ onClose, onToast }: Props) {
     return segments[segments.length - 1] || path;
   }
 
+  const downloading =
+    updateProgress?.phase === "downloading" || updateProgress?.phase === "installing";
+  const dlTotal = updateProgress?.totalBytes ?? 0;
+  const dlPct =
+    dlTotal > 0 && updateProgress
+      ? Math.min(100, Math.round((updateProgress.downloadedBytes / dlTotal) * 100))
+      : null;
+  const dlLabel =
+    updateProgress?.phase === "installing"
+      ? t("settings.about.installing")
+      : t("settings.about.downloading", {
+          versionSuffix: availableUpdate ? ` v${availableUpdate.version}` : "",
+          percentSuffix: dlPct !== null ? ` — ${dlPct}%` : "…",
+        });
+
   return (
     <div className="dialog-backdrop" onClick={onClose}>
       <div className="dialog settings-dialog" onClick={(e) => e.stopPropagation()}>
         <header className="settings-header">
-          <h3>Settings</h3>
+          <h3>{t("settings.title")}</h3>
           <button
             className="settings-close icon-btn"
-            aria-label="Close settings"
+            aria-label={t("settings.closeAria")}
             onClick={onClose}
           >
             <CloseIcon size={14} />
@@ -175,9 +182,8 @@ export function SettingsDialog({ onClose, onToast }: Props) {
         </header>
 
         <div className="settings-body">
-          {/* Account */}
           <section className="settings-section">
-            <div className="settings-section-title">Account</div>
+            <div className="settings-section-title">{t("settings.account.title")}</div>
             {cloudApiKey ? (
               <div className="account-card">
                 <div className="account-avatar">
@@ -190,7 +196,7 @@ export function SettingsDialog({ onClose, onToast }: Props) {
                       <span className="badge tier">{cloudAccount.tier}</span>
                     )}
                     {cloudAccount && !cloudAccount.email_verified && (
-                      <span className="badge drift">unverified</span>
+                      <span className="badge drift">{t("settings.account.unverified")}</span>
                     )}
                   </div>
                   {cloudAccount?.email && (
@@ -198,41 +204,36 @@ export function SettingsDialog({ onClose, onToast }: Props) {
                   )}
                 </div>
                 <button className="account-signout" onClick={handleSignOut}>
-                  Sign out
+                  {t("settings.account.signOut")}
                 </button>
               </div>
             ) : (
               <div className="account-card account-card-signedout">
                 <div className="account-info">
-                  <div className="account-namespace">Not signed in</div>
+                  <div className="account-namespace">{t("settings.account.notSignedIn")}</div>
                   <div className="account-email">
-                    Sign in with skillsafe.ai to install, save, and share skills.
+                    {t("settings.account.signedInHint")}
                   </div>
                 </div>
                 <button className="primary" onClick={handleSignIn} disabled={signingIn}>
-                  {signingIn ? "Waiting…" : "Sign in"}
+                  {signingIn ? t("settings.account.signingIn") : t("settings.account.signIn")}
                 </button>
               </div>
             )}
           </section>
 
-          {/* Local Backup — surfaced near the top because it protects user data
-              and the bottom-row Backup panel deep-links here. */}
           <div id="settings-backup">
             <BackupPanel onToast={onToast} />
           </div>
 
-          {/* Projects */}
           <section id="settings-projects" className="settings-section">
             <div className="settings-section-title-row">
-              <div className="settings-section-title">Projects</div>
-              <button className="link-btn" onClick={pickFolder}>+ Add project…</button>
+              <div className="settings-section-title">{t("settings.projects.title")}</div>
+              <button className="link-btn" onClick={pickFolder}>{t("settings.projects.addButton")}</button>
             </div>
             {recentProjects.length === 0 ? (
               <div className="projects-empty">
-                No projects added yet. Click <strong>Add project…</strong> to pick a folder.
-                Each project's <code>.claude/</code>, <code>.codex/</code>, <code>.cursor/</code>, or
-                <code>.agents/</code> directory is read when you pick the “Project” scope.
+                {t("settings.projects.empty", { addLabel: t("settings.projects.addLabel") })}
               </div>
             ) : (
               <ul className="projects-list">
@@ -253,15 +254,15 @@ export function SettingsDialog({ onClose, onToast }: Props) {
                         <div className="project-item-name">{name}</div>
                         <div className="project-item-path">{p}</div>
                       </div>
-                      {active && <span className="badge tier">active</span>}
+                      {active && <span className="badge tier">{t("settings.projects.active")}</span>}
                       <button
                         className="project-item-remove"
-                        title={`Remove ${name} from this list (your folder is not deleted)`}
-                        aria-label={`Remove ${name}`}
+                        title={t("settings.projects.removeTooltip", { name })}
+                        aria-label={t("settings.projects.removeAria", { name })}
                         onClick={(e) => { e.stopPropagation(); removeRecentProject(p); }}
                       >
                         <TrashIcon size={14} />
-                        <span className="project-item-remove-text">Remove</span>
+                        <span className="project-item-remove-text">{t("settings.projects.removeLabel")}</span>
                       </button>
                     </li>
                   );
@@ -270,126 +271,124 @@ export function SettingsDialog({ onClose, onToast }: Props) {
             )}
           </section>
 
-          {/* About / Updates */}
           <section className="settings-section">
-            <div className="settings-section-title">About</div>
+            <div className="settings-section-title">{t("settings.about.title")}</div>
             <div className="account-card account-card-signedout">
               <div className="account-info">
                 <div className="account-line-1">
-                  <span className="account-namespace">AI SkillSafe</span>
+                  <span className="account-namespace">{t("settings.about.appName")}</span>
                   <span className="badge tier">v{currentVersion}</span>
                 </div>
                 <div className="account-email">
                   {availableUpdate && availableUpdate.version !== currentVersion
-                    ? `Update available: v${availableUpdate.version}`
-                    : "You're on the latest version."}
+                    ? t("settings.about.updateAvailable", { version: availableUpdate.version })
+                    : t("settings.about.upToDate")}
                 </div>
               </div>
               <button onClick={handleCheckForUpdates} disabled={checkingUpdate}>
-                {checkingUpdate ? "Checking…" : "Check for updates"}
+                {checkingUpdate ? t("settings.about.checking") : t("settings.about.checkButton")}
               </button>
             </div>
             <div className="layout-reset-row" style={{ marginTop: 8 }}>
               <div className="layout-reset-text">
-                Automatically download new versions in the background and install them on next launch.
+                {t("settings.about.autoUpdateHint")}
               </div>
               <div className="segmented">
                 <button
                   className={`segmented-btn ${autoUpdate ? "active" : ""}`}
                   onClick={() => setAutoUpdate(true)}
                 >
-                  <span>On</span>
+                  <span>{t("common.on")}</span>
                 </button>
                 <button
                   className={`segmented-btn ${!autoUpdate ? "active" : ""}`}
                   onClick={() => setAutoUpdate(false)}
                 >
-                  <span>Off</span>
+                  <span>{t("common.off")}</span>
                 </button>
               </div>
             </div>
-            {(() => {
-              const downloading =
-                updateProgress?.phase === "downloading" || updateProgress?.phase === "installing";
-              if (!downloading) return null;
-              const total = updateProgress?.totalBytes ?? 0;
-              const pct =
-                total > 0 && updateProgress
-                  ? Math.min(100, Math.round((updateProgress.downloadedBytes / total) * 100))
-                  : null;
-              const label =
-                updateProgress?.phase === "installing"
-                  ? "Installing…"
-                  : `Downloading${availableUpdate ? ` v${availableUpdate.version}` : ""}${
-                      pct !== null ? ` — ${pct}%` : "…"
-                    }`;
-              return (
-                <div className="layout-reset-row" style={{ marginTop: 8, flexDirection: "column", alignItems: "stretch", gap: 6 }}>
-                  <div className="layout-reset-text">{label}</div>
-                  {pct !== null && updateProgress?.phase === "downloading" && (
-                    <div className="update-progress" aria-hidden="true">
-                      <div className="update-progress-bar" style={{ width: `${pct}%` }} />
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
+            {downloading && (
+              <div className="layout-reset-row" style={{ marginTop: 8, flexDirection: "column", alignItems: "stretch", gap: 6 }}>
+                <div className="layout-reset-text">{dlLabel}</div>
+                {dlPct !== null && updateProgress?.phase === "downloading" && (
+                  <div className="update-progress" aria-hidden="true">
+                    <div className="update-progress-bar" style={{ width: `${dlPct}%` }} />
+                  </div>
+                )}
+              </div>
+            )}
             {updateReadyToInstall && availableUpdate && (
               <div className="layout-reset-row" style={{ marginTop: 8 }}>
                 <div className="layout-reset-text">
-                  v{availableUpdate.version} is downloaded and ready to install.
+                  {t("settings.about.readyToInstall", { version: availableUpdate.version })}
                 </div>
                 <button className="primary" onClick={handleRestartAndInstall} disabled={restarting}>
-                  {restarting ? "Installing…" : `Restart and install v${availableUpdate.version}`}
+                  {restarting
+                    ? t("settings.about.restartingInstalling")
+                    : t("settings.about.restartAndInstall", { version: availableUpdate.version })}
                 </button>
               </div>
             )}
           </section>
 
-          {/* Appearance */}
           <section className="settings-section">
-            <div className="settings-section-title">Appearance</div>
+            <div className="settings-section-title">{t("settings.appearance.title")}</div>
             <div className="segmented">
               <button
                 className={`segmented-btn ${theme === "system" ? "active" : ""}`}
                 onClick={() => setTheme("system")}
-                title="Follow OS preference"
+                title={t("settings.appearance.systemTitle")}
               >
                 <MonitorIcon size={14} />
-                <span>System</span>
+                <span>{t("settings.appearance.system")}</span>
               </button>
               <button
                 className={`segmented-btn ${theme === "dark" ? "active" : ""}`}
                 onClick={() => setTheme("dark")}
               >
                 <MoonIcon size={14} />
-                <span>Dark</span>
+                <span>{t("settings.appearance.dark")}</span>
               </button>
               <button
                 className={`segmented-btn ${theme === "light" ? "active" : ""}`}
                 onClick={() => setTheme("light")}
               >
                 <SunIcon size={14} />
-                <span>Light</span>
+                <span>{t("settings.appearance.light")}</span>
               </button>
             </div>
           </section>
 
-          {/* Layout */}
+          <section className="settings-section" id="settings-language">
+            <div className="settings-section-title">{t("settings.language.title")}</div>
+            <div className="layout-reset-row">
+              <div className="layout-reset-text">{t("settings.language.hint")}</div>
+              <select
+                className="language-select"
+                value={locale}
+                onChange={(e) => setLocale(e.target.value as Locale)}
+              >
+                {SUPPORTED.map((l) => (
+                  <option key={l} value={l}>{NATIVE_NAME[l]}</option>
+                ))}
+              </select>
+            </div>
+          </section>
+
           <section className="settings-section">
-            <div className="settings-section-title">Layout</div>
+            <div className="settings-section-title">{t("settings.layout.title")}</div>
             <div className="layout-reset-row">
               <div className="layout-reset-text">
-                Reset the sidebar, artifact-list, and bottom-panel sizes to
-                their defaults.
+                {t("settings.layout.hint")}
               </div>
               <button
                 onClick={() => {
                   resetLayout();
-                  onToast("ok", "Panel sizes reset to defaults.");
+                  onToast("ok", t("settings.layout.resetToast"));
                 }}
               >
-                Reset panel sizes
+                {t("settings.layout.resetButton")}
               </button>
             </div>
           </section>

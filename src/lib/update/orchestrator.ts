@@ -161,7 +161,17 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
 
   async function acceptPromptedUpdate(onProgress: ProgressHandler) {
     if (!state.promptedUpdate) return;
-    await runner.installAndRelaunch(state.promptedUpdate, onProgress);
+    const update = state.promptedUpdate;
+    await runner.installAndRelaunch(update, onProgress);
+    // Non-manual updates exit the process inside installAndRelaunch (relaunch),
+    // so this point is only reached for ManualUpdate (Linux) — shellOpen has
+    // returned, the user is now in their browser. Close the dialog so the
+    // click visibly took effect, and clear the prompted handle so this same
+    // session's periodic re-checks don't re-pop the same dialog while the
+    // user is downloading. Next-launch detection will pick up the new version
+    // naturally once they install.
+    state.promptedUpdate = null;
+    store.setShowUpdateDialog(false);
   }
 
   function dismissPromptedUpdate(skipVersion: boolean, setDismissed: (v: string) => void) {

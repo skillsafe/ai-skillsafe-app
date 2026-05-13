@@ -26,13 +26,15 @@ fn create_symlink(target: String, link: String) -> Result<(), String> {
 }
 
 // On Linux, reports how the running app was installed so JS can decide
-// whether the Tauri auto-updater can apply an update in place. The bundler
-// only auto-signs `.AppImage.tar.gz` (and Win/Mac bundles) — `.deb` and `.rpm`
-// have no signed updater artifact, so check() either errors with "fallback
-// platforms not found" or downloads an AppImage tarball that dpkg/rpm can't
-// install. The `APPIMAGE` env var is set by AppImageKit when the AppImage
-// binds itself; its absence on Linux means we're running from a system
-// install (.deb / .rpm). Other platforms always return "supported".
+// which update path to take. The `APPIMAGE` env var is set by AppImageKit
+// when the AppImage launches itself; its absence on Linux means we're
+// running from a system install (.deb / .rpm). Other platforms always
+// return "supported".
+//
+// Routing on Linux:
+//   "appimage" → run bundled appimageupdatetool ($APPIMAGE → zsync delta
+//      update → atomic rename, prompts user to restart)
+//   "system"   → ManualUpdate sentinel → open download page
 #[tauri::command]
 fn linux_installer_kind() -> &'static str {
     #[cfg(target_os = "linux")]
@@ -46,6 +48,95 @@ fn linux_installer_kind() -> &'static str {
     #[cfg(not(target_os = "linux"))]
     {
         "supported"
+    }
+}
+
+// Run `appimageupdatetool` against the currently-running AppImage, then
+// relaunch from the on-disk path so the new SquashFS payload is mounted.
+//
+// The tool reads update info embedded in our AppImage's `.upd_info` ELF
+// section (`gh-releases-zsync|skillsafe|ai-skillsafe-app|latest|AI.SkillSafe_*_<arch>.AppImage.zsync`),
+// downloads the zsync sidecar, computes the diff against the local file,
+// fetches only the changed chunks, writes the new bytes to a temp file
+// (`<APPIMAGE>.zs-tmp.*`), and atomically renames it over $APPIMAGE. The
+// running FUSE mount keeps serving the old inode until process exit, so
+// there's no race during the write.
+//
+// For relaunch we deliberately do NOT use Tauri's `process::relaunch` (or
+// `current_exe()`): those resolve to a path INSIDE the still-mounted old
+// SquashFS (e.g. `/tmp/.mount_XXXXX/usr/bin/app`), so the new child would
+// re-exec the old bytes. Spawning $APPIMAGE directly (the on-disk path)
+// invokes the AppImage runtime, which mounts a fresh SquashFS from the
+// updated file at a NEW mount point — picking up the new version.
+//
+// The tool ships inside our AppImage at `usr/bin/appimageupdatetool` (added
+// by the CI post-build step). We try $APPDIR (set by AppImage runtime)
+// first so we always use the bundled copy, then fall back to PATH so dev
+// runs still work.
+//
+// Returns Ok with the tool's stdout (so the UI can show "Already on the
+// latest version" vs. "Updated to X" hints from zsync2). Rejects with
+// stderr+exitcode on failure so the UI can surface real errors (network,
+// signature mismatch) instead of a generic "update failed".
+#[tauri::command]
+fn linux_appimage_update(_app: tauri::AppHandle) -> Result<String, String> {
+    #[cfg(target_os = "linux")]
+    {
+        let appimage = std::env::var("APPIMAGE")
+            .map_err(|_| "$APPIMAGE not set — not running as AppImage".to_string())?;
+
+        // Prefer the bundled copy. AppImage's runtime sets $APPDIR to the
+        // mount root; the tool lives at <APPDIR>/usr/bin/appimageupdatetool.
+        let tool = if let Some(appdir) = std::env::var_os("APPDIR") {
+            let bundled = std::path::PathBuf::from(appdir).join("usr/bin/appimageupdatetool");
+            if bundled.exists() {
+                bundled.into_os_string()
+            } else {
+                std::ffi::OsString::from("appimageupdatetool")
+            }
+        } else {
+            std::ffi::OsString::from("appimageupdatetool")
+        };
+
+        let output = std::process::Command::new(&tool)
+            // `-O` writes back to $APPIMAGE (atomic rename, see above).
+            // Without it the tool picks an alongside filename, leaving two
+            // AppImages on disk with no automatic swap.
+            .args(["-O", &appimage])
+            .output()
+            .map_err(|e| format!("spawn {}: {}", tool.to_string_lossy(), e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            return Err(format!(
+                "appimageupdatetool exited {} — {}{}",
+                output.status.code().unwrap_or(-1),
+                stderr.trim(),
+                if stdout.trim().is_empty() {
+                    String::new()
+                } else {
+                    format!(" (stdout: {})", stdout.trim())
+                },
+            ));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+
+        // Spawn the new instance from $APPIMAGE (disk path), detached from
+        // this process so it survives our exit. Then schedule a graceful
+        // exit via Tauri so plugins shut down cleanly.
+        std::process::Command::new(&appimage)
+            .spawn()
+            .map_err(|e| format!("relaunch from {}: {}", appimage, e))?;
+        _app.exit(0);
+
+        Ok(stdout)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = _app;
+        Err("AppImage update only applies on Linux".to_string())
     }
 }
 
@@ -121,7 +212,7 @@ fn main() {
     });
 
     builder
-        .invoke_handler(tauri::generate_handler![create_symlink, remove_if_symlink, linux_installer_kind])
+        .invoke_handler(tauri::generate_handler![create_symlink, remove_if_symlink, linux_installer_kind, linux_appimage_update])
         .run(tauri::generate_context!())
         .expect("error while running skillsafe");
 }

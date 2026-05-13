@@ -55,9 +55,14 @@ interface RunnerCounts {
   downloadAndInstall: number;
 }
 
-function makeManualStub(version = "0.2.0", body = "Notes"): ManualUpdate {
+function makeManualStub(
+  version = "0.2.0",
+  body = "Notes",
+  kind: "appimage" | "download-page" = "download-page",
+): ManualUpdate {
   return {
     __manual: true,
+    kind,
     version,
     body,
     date: "2026-04-25T00:00:00Z",
