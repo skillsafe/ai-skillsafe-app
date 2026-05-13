@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import Monaco from "@monaco-editor/react";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import { useApp } from "../lib/store";
@@ -67,8 +69,8 @@ const _SLOT_LABEL_CACHE = new Map<string, string>();
 function slotLabelFor(slot: string): string {
   const cached = _SLOT_LABEL_CACHE.get(slot);
   if (cached !== undefined) return cached;
-  for (const t of ALL_TOOLS) {
-    const types = dataTypesFor(t.id);
+  for (const tool of ALL_TOOLS) {
+    const types = dataTypesFor(tool.id);
     const match = types.find((d) => d.id === slot);
     if (match) {
       _SLOT_LABEL_CACHE.set(slot, match.label);
@@ -123,6 +125,7 @@ interface Props {
 }
 
 export function BackupBrowser({ onToast }: Props) {
+  const { t } = useTranslation();
   const {
     backupDestination,
     backupLastRun,
@@ -189,10 +192,10 @@ export function BackupBrowser({ onToast }: Props) {
         // the root-level <dest>/LAST_BACKUP.json that the bash/PowerShell
         // backup script's post-walk (summary.ts) writes.
         const partials: BackupManifest[] = [];
-        for (const t of ALL_TOOLS) {
+        for (const tool of ALL_TOOLS) {
           const path = await tauriJoiner.join(
             backupDestination,
-            toolBackupSubdir(t.id),
+            toolBackupSubdir(tool.id),
             MANIFEST_FILENAME,
           );
           if (!(await tauriFs.exists(path))) continue;
@@ -235,7 +238,7 @@ export function BackupBrowser({ onToast }: Props) {
             const text = await tauriFs.readTextFile(legacyPath);
             if (cancelled) return;
             baseManifest = parseManifest(text);
-            if (!baseManifest) setLoadError("Manifest file is unreadable.");
+            if (!baseManifest) setLoadError(t("backupBrowser.manifestUnreadable"));
           }
         }
 
@@ -270,7 +273,9 @@ export function BackupBrowser({ onToast }: Props) {
         if (cancelled) return;
         setManifest(null);
         setLoadError(
-          e instanceof Error ? `Couldn't read backup manifest: ${e.message}` : "Couldn't read backup manifest.",
+          e instanceof Error
+            ? t("backupBrowser.manifestReadFailed", { message: e.message })
+            : t("backupBrowser.manifestReadFailedShort"),
         );
       } finally {
         if (!cancelled) setLoading(false);
@@ -288,11 +293,11 @@ export function BackupBrowser({ onToast }: Props) {
   // that tool. The "All" pill is always available so the user can browse
   // across tools.
   const visibleTools = useMemo(
-    () => ALL_TOOLS.filter((t) => (toolCounts[t.id] ?? 0) > 0),
+    () => ALL_TOOLS.filter((tool) => (toolCounts[tool.id] ?? 0) > 0),
     [toolCounts],
   );
   const totalToolItems = useMemo(
-    () => visibleTools.reduce((n, t) => n + (toolCounts[t.id] ?? 0), 0),
+    () => visibleTools.reduce((n, tool) => n + (toolCounts[tool.id] ?? 0), 0),
     [visibleTools, toolCounts],
   );
 
@@ -350,14 +355,14 @@ export function BackupBrowser({ onToast }: Props) {
 
   const items: BrowserItem[] = useMemo(() => {
     if (!manifest) return [];
-    const base = collectBrowserItems(manifest, selectedTool, group, scopeFilter);
+    const base = collectBrowserItems(manifest, selectedTool, group, scopeFilter, t);
     const q = filter.toLowerCase().trim();
     if (!q) return base;
     return base.filter((i) =>
       i.label.toLowerCase().includes(q) ||
       (i.sub ?? "").toLowerCase().includes(q),
     );
-  }, [manifest, group, selectedTool, scopeFilter, filter]);
+  }, [manifest, group, selectedTool, scopeFilter, filter, t]);
 
   // Auto-jump only when the user lands on an empty selection. With "All"
   // available we never need to override their explicit choice — the
@@ -464,7 +469,11 @@ export function BackupBrowser({ onToast }: Props) {
         setFileContent(text);
       } catch (e) {
         if (cancelled) return;
-        setFileContent(`Could not read file:\n${e instanceof Error ? e.message : String(e)}`);
+        setFileContent(
+          t("backupBrowser.errors.readFileFailed", {
+            message: e instanceof Error ? e.message : String(e),
+          }),
+        );
       } finally {
         if (!cancelled) setFileLoading(false);
       }
@@ -479,7 +488,7 @@ export function BackupBrowser({ onToast }: Props) {
     try {
       await shellOpen(destPath);
     } catch (e) {
-      onToast("error", `Open failed: ${e instanceof Error ? e.message : String(e)}`);
+      onToast("error", t("backupBrowser.errors.openFailed", { message: e instanceof Error ? e.message : String(e) }));
     }
   }
 
@@ -501,26 +510,23 @@ export function BackupBrowser({ onToast }: Props) {
         const entry = m.entries.find((e) => e.masterPath === masterRel);
         const source = entry?.sources[0];
         if (!entry || !source) {
-          onToast(
-            "error",
-            "This master file has no recorded source. Use the Workbench → Transfer to push it to a tool.",
-          );
+          onToast("error", t("backupBrowser.errors.masterNoSource"));
           return;
         }
         setRestoreTargetDir(source.absPath);
         setRestoreTargetExists(await tauriFs.exists(source.absPath));
         setRestorePending(item);
       } catch (e) {
-        onToast("error", `Couldn't prepare master restore: ${e instanceof Error ? e.message : String(e)}`);
+        onToast("error", t("backupBrowser.errors.masterPrepareFailed", { message: e instanceof Error ? e.message : String(e) }));
       }
       return;
     }
     if (!firstEntry.tool || !firstEntry.scope || !firstEntry.type) {
-      onToast("error", "Backup entry is missing tool/scope/type — can't restore.");
+      onToast("error", t("backupBrowser.errors.missingFields"));
       return;
     }
     if (firstEntry.scope === "project" && !firstEntry.projectRoot) {
-      onToast("error", "Project-scoped backup is missing its project root — can't restore.");
+      onToast("error", t("backupBrowser.errors.missingProjectRoot"));
       return;
     }
     try {
@@ -539,7 +545,7 @@ export function BackupBrowser({ onToast }: Props) {
       setRestoreTargetExists(exists);
       setRestorePending(item);
     } catch (e) {
-      onToast("error", `Couldn't resolve restore target: ${e instanceof Error ? e.message : String(e)}`);
+      onToast("error", t("backupBrowser.errors.resolveTargetFailed", { message: e instanceof Error ? e.message : String(e) }));
     }
   }
 
@@ -567,14 +573,14 @@ export function BackupBrowser({ onToast }: Props) {
         const entry = m.entries.find((e) => e.masterPath === masterRel);
         const source = entry?.sources[0];
         if (!entry || !source) {
-          onToast("error", "Master entry is missing — try refreshing the panel.");
+          onToast("error", t("backupBrowser.errors.masterMissing"));
           return;
         }
         await restoreSourceFromMaster(tauriFs, tauriJoiner, root, entry, source, item.label);
-        onToast("ok", `Restored master → ${source.absPath}`);
+        onToast("ok", t("backupBrowser.ok.restoredMaster", { path: source.absPath }));
         setRestorePending(null);
       } catch (e) {
-        onToast("error", `Restore failed: ${e instanceof Error ? e.message : String(e)}`);
+        onToast("error", t("backupBrowser.errors.restoreFailed", { message: e instanceof Error ? e.message : String(e) }));
       } finally {
         setRestoreBusy(false);
       }
@@ -602,11 +608,11 @@ export function BackupBrowser({ onToast }: Props) {
       });
       onToast(
         "ok",
-        `Restored ${result.written.length} file${result.written.length === 1 ? "" : "s"} → ${result.targetDir}`,
+        t("backupBrowser.ok.restoredFiles", { copied: result.written.length, dir: result.targetDir }),
       );
       setRestorePending(null);
     } catch (e) {
-      onToast("error", `Restore failed: ${e instanceof Error ? e.message : String(e)}`);
+      onToast("error", t("backupBrowser.errors.restoreFailed", { message: e instanceof Error ? e.message : String(e) }));
     } finally {
       setRestoreBusy(false);
     }
@@ -616,17 +622,17 @@ export function BackupBrowser({ onToast }: Props) {
   // No destination → useEffect above auto-opens Settings. Render an empty
   // shell so the panel area isn't a flash of "set things up here" copy.
   if (!backupDestination) return <BackupEmpty />;
-  if (loading && !manifest) return <BackupEmpty>Loading backup manifest…</BackupEmpty>;
+  if (loading && !manifest) return <BackupEmpty>{t("backupBrowser.loadingManifest")}</BackupEmpty>;
   if (!manifest) {
     return (
       <BackupEmpty>
         <div className="backup-empty-title">
-          {loadError ?? "No backup found at this folder yet."}
+          {loadError ?? t("backupBrowser.noBackupYet")}
         </div>
-        <div className="backup-empty-action">
-          Open <strong>Settings → Local Backup</strong> and click{" "}
-          <strong>Back up now</strong> to create one.
-        </div>
+        <div
+          className="backup-empty-action"
+          dangerouslySetInnerHTML={{ __html: t("backupBrowser.emptyAction") }}
+        />
       </BackupEmpty>
     );
   }
@@ -638,7 +644,7 @@ export function BackupBrowser({ onToast }: Props) {
       <aside className="sidebar cloud-info-pane">
         <div className="brand">
           <span className="brand-globe"><ArchiveIcon size={18} /></span>
-          <div className="brand-title">Local Backup</div>
+          <div className="brand-title">{t("backupBrowser.title")}</div>
         </div>
 
         <div className="settings-row" style={{ paddingLeft: 6 }}>
@@ -648,19 +654,19 @@ export function BackupBrowser({ onToast }: Props) {
             disabled={backupBusy}
             title={
               backupBusy
-                ? "Backup in progress…"
-                : "Pick which tools to back up and run the backup"
+                ? t("backupBrowser.backupBusyTitle")
+                : t("backupBrowser.configureBackupTitle")
             }
           >
-            {backupBusy ? "Backing up…" : "Configure & back up…"}
+            {backupBusy ? t("backupBrowser.backingUp") : t("backupBrowser.configureBackup")}
           </button>
         </div>
 
-        <div className="section-label">Tools</div>
+        <div className="section-label">{t("backupBrowser.tools")}</div>
         <div className="pill-row" style={{ flexWrap: "wrap" }}>
           {visibleTools.length === 0 ? (
             <div className="empty" style={{ padding: 0 }}>
-              Nothing backed up yet — click "Back up now" to start.
+              {t("backupBrowser.nothingBackedUp")}
             </div>
           ) : (
             <>
@@ -676,34 +682,38 @@ export function BackupBrowser({ onToast }: Props) {
                     setSelectedTool("all");
                   }
                 }}
-                title={`Browse content from every tool · ${totalToolItems} backed up`}
+                title={t("backupBrowser.allTooltip", { count: totalToolItems })}
               >
-                All
+                {t("backupBrowser.all")}
                 <span className="backup-tool-count">{totalToolItems}</span>
               </div>
-              {visibleTools.map((t) => {
-                const count = toolCounts[t.id] ?? 0;
+              {visibleTools.map((tool) => {
+                const count = toolCounts[tool.id] ?? 0;
+                const label =
+                  tool.id === MASTER_BROWSER_KEY ? t("backupBrowser.masterLabel") : tool.label;
+                const tooltip =
+                  tool.id === MASTER_BROWSER_KEY ? t("backupBrowser.masterTooltip") : tool.tooltip;
                 return (
                   <div
-                    key={t.id}
-                    className={`pill ${selectedTool === t.id ? "active" : ""}`}
-                    onClick={() => setSelectedTool(t.id)}
+                    key={tool.id}
+                    className={`pill ${selectedTool === tool.id ? "active" : ""}`}
+                    onClick={() => setSelectedTool(tool.id)}
                     role="tab"
-                    aria-selected={selectedTool === t.id}
+                    aria-selected={selectedTool === tool.id}
                     tabIndex={0}
                     onKeyDown={(e) => {
                       if (e.key === " " || e.key === "Enter") {
                         e.preventDefault();
-                        setSelectedTool(t.id);
+                        setSelectedTool(tool.id);
                       }
                     }}
                     title={
-                      t.tooltip
-                        ? `${t.tooltip} · ${count} backed up`
-                        : `${t.label} · ${count} backed up`
+                      tooltip
+                        ? t("backupBrowser.toolTooltipDesc", { tooltip, count })
+                        : t("backupBrowser.toolTooltip", { label, count })
                     }
                   >
-                    {t.label}
+                    {label}
                     <span className="backup-tool-count">{count}</span>
                   </div>
                 );
@@ -718,25 +728,30 @@ export function BackupBrowser({ onToast }: Props) {
               <div className="dl-progress-fill backup-progress-indeterminate" />
             </div>
             <div className="dl-progress-label">
-              {backupProgress.phase} · scanned {backupProgress.filesProcessed} ({formatBytes(backupProgress.bytesProcessed)})
-              · copied {backupProgress.filesCopied} ({formatBytes(backupProgress.bytesCopied)})
+              {t("backupBrowser.progressLabel", {
+                phase: backupProgress.phase,
+                filesProcessed: backupProgress.filesProcessed,
+                bytesProcessed: formatBytes(backupProgress.bytesProcessed, t),
+                filesCopied: backupProgress.filesCopied,
+                bytesCopied: formatBytes(backupProgress.bytesCopied, t),
+              })}
             </div>
           </div>
         )}
 
         <div className="backup-last-run">
-          {backupLastRun && backupStats ? (
-            <>
-              Last backup: {formatRelative(backupLastRun)} · +{backupStats.counts.added} ~
-              {backupStats.counts.changed} -{backupStats.counts.removed} ·{" "}
-              {formatBytes(backupStats.totalBytes)}
-            </>
-          ) : (
-            "Never backed up"
-          )}
+          {backupLastRun && backupStats
+            ? t("backupBrowser.lastBackupLine", {
+                relative: formatRelative(backupLastRun, t),
+                added: backupStats.counts.added,
+                changed: backupStats.counts.changed,
+                removed: backupStats.counts.removed,
+                bytes: formatBytes(backupStats.totalBytes, t),
+              })
+            : t("backupBrowser.neverBackedUp")}
         </div>
 
-        <div className="section-label">Group</div>
+        <div className="section-label">{t("backupBrowser.group")}</div>
         <div className="pill-row" style={{ flexWrap: "wrap" }}>
           <div
             className={`pill ${group === "all" ? "active" : ""}`}
@@ -744,7 +759,7 @@ export function BackupBrowser({ onToast }: Props) {
             role="tab"
             aria-selected={group === "all"}
           >
-            All
+            {t("backupBrowser.all")}
             <span className="backup-tool-count">{totalGroupItems}</span>
           </div>
           {groupOrder.map((g) => {
@@ -767,14 +782,14 @@ export function BackupBrowser({ onToast }: Props) {
 
         {scopeCounts.global + scopeCounts.project > 0 && (
           <>
-            <div className="section-label">Scope</div>
+            <div className="section-label">{t("backupBrowser.scope")}</div>
             <div className="pill-row">
               <div
                 className={`pill ${scopeFilter === "all" ? "active" : ""}`}
                 onClick={() => setScopeFilter("all")}
                 role="tab"
               >
-                All
+                {t("backupBrowser.all")}
                 <span className="backup-tool-count">{scopeCounts.global + scopeCounts.project}</span>
               </div>
               <div
@@ -782,7 +797,7 @@ export function BackupBrowser({ onToast }: Props) {
                 onClick={() => scopeCounts.global > 0 && setScopeFilter("global")}
                 role="tab"
               >
-                Global
+                {t("backupBrowser.global")}
                 <span className="backup-tool-count">{scopeCounts.global}</span>
               </div>
               <div
@@ -790,7 +805,7 @@ export function BackupBrowser({ onToast }: Props) {
                 onClick={() => scopeCounts.project > 0 && setScopeFilter("project")}
                 role="tab"
               >
-                Project
+                {t("backupBrowser.project")}
                 <span className="backup-tool-count">{scopeCounts.project}</span>
               </div>
             </div>
@@ -805,10 +820,10 @@ export function BackupBrowser({ onToast }: Props) {
             className="search"
             placeholder={
               group === "all"
-                ? "Filter…"
+                ? t("backupBrowser.filterPlaceholder")
                 : group === "history"
-                  ? "Filter history…"
-                  : `Filter ${slotLabelFor(group).toLowerCase()}…`
+                  ? t("backupBrowser.filterHistoryPlaceholder")
+                  : t("backupBrowser.filterSlotPlaceholder", { slot: slotLabelFor(group).toLowerCase() })
             }
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
@@ -816,11 +831,11 @@ export function BackupBrowser({ onToast }: Props) {
           <button
             onClick={() => setRefreshTick((n) => n + 1)}
             disabled={loading}
-            aria-label="Reload backup view"
+            aria-label={t("backupBrowser.reloadAria")}
             title={
               loading
-                ? "Reloading…"
-                : "Re-read the backup destination and master folder from disk"
+                ? t("backupBrowser.reloading")
+                : t("backupBrowser.reloadTitle")
             }
             data-testid="backup-browser-refresh"
           >
@@ -830,12 +845,12 @@ export function BackupBrowser({ onToast }: Props) {
         {items.length === 0 ? (
           <div className="empty">
             {filter
-              ? "No matches."
+              ? t("backupBrowser.noMatches")
               : group === "all"
-                ? "Nothing in this backup."
+                ? t("backupBrowser.nothingInBackup")
                 : group === "history"
-                  ? "No project history in this backup."
-                  : `No ${slotLabelFor(group).toLowerCase()} backed up for this tool.`}
+                  ? t("backupBrowser.noHistory")
+                  : t("backupBrowser.noSlotForTool", { slot: slotLabelFor(group).toLowerCase() })}
           </div>
         ) : (
           items.map((item) => {
@@ -867,9 +882,9 @@ export function BackupBrowser({ onToast }: Props) {
                         const folder = bundleFolder(item.files);
                         if (folder) openExternally(folder);
                       }}
-                      title="Open this item's folder in Finder/Explorer"
+                      title={t("backupBrowser.openFolderTitle")}
                     >
-                      Open folder
+                      {t("backupBrowser.openFolder")}
                     </button>
                     {item.files[0]?.entry.kind === "artifact" && (
                       <button
@@ -878,9 +893,9 @@ export function BackupBrowser({ onToast }: Props) {
                           e.stopPropagation();
                           startRestore(item);
                         }}
-                        title="Restore this item back to its original location"
+                        title={t("backupBrowser.restoreBtnTitle")}
                       >
-                        Restore
+                        {t("backupBrowser.restoreBtn")}
                       </button>
                     )}
                   </div>
@@ -913,21 +928,19 @@ export function BackupBrowser({ onToast }: Props) {
 
       {restorePending && (
         <ConfirmDialog
-          title={`Restore ${restorePending.label}`}
+          title={t("backupBrowser.restoreDialogTitle", { label: restorePending.label })}
           message={
             <>
-              <div>
-                Copy this item's files back to:
-              </div>
+              <div>{t("backupBrowser.restoreDialogIntro")}</div>
               <div className="confirm-target-path">{restoreTargetDir}</div>
               {restoreTargetExists && (
                 <div className="confirm-warning">
-                  ⚠ Files already exist there and will be overwritten.
+                  {t("backupBrowser.restoreWarn")}
                 </div>
               )}
             </>
           }
-          confirmLabel="Restore"
+          confirmLabel={t("backupBrowser.restoreConfirm")}
           danger={restoreTargetExists}
           busy={restoreBusy}
           onConfirm={confirmRestore}
@@ -949,18 +962,18 @@ export function BackupBrowser({ onToast }: Props) {
           )}
           {selectedFile && (
             <button onClick={() => openExternally(selectedFile.destPath)}>
-              Open externally
+              {t("backupBrowser.openExternally")}
             </button>
           )}
         </div>
         <div className="body-only">
           {!selectedFile ? (
-            <div className="md-preview"><p>Select an item to preview its files.</p></div>
+            <div className="md-preview"><p>{t("backupBrowser.selectToPreview")}</p></div>
           ) : fileLoading ? (
-            <div className="md-preview"><p>Loading…</p></div>
+            <div className="md-preview"><p>{t("backupBrowser.loading")}</p></div>
           ) : fileBinary ? (
             <div className="md-preview">
-              <p>This file isn't text. Click <strong>Open externally</strong> to view it in the system default app.</p>
+              <p dangerouslySetInnerHTML={{ __html: t("backupBrowser.binaryHint") }} />
               <p style={{ color: "var(--muted)", fontSize: 12 }}>{selectedFile.destPath}</p>
             </div>
           ) : isMarkdown(selectedFile.relPath) ? (
@@ -1103,19 +1116,20 @@ function collectBrowserItems(
   selectedTool: Tool | "all",
   group: Group | "all",
   scopeFilter: ScopeFilter,
+  t: TFunction,
 ): BrowserItem[] {
   const out: BrowserItem[] = [];
   const tools: Tool[] =
-    selectedTool === "all" ? ALL_TOOLS.map((t) => t.id) : [selectedTool];
+    selectedTool === "all" ? ALL_TOOLS.map((x) => x.id) : [selectedTool];
   for (const tool of tools) {
-    out.push(...itemsForTool(m, tool, group, scopeFilter));
+    out.push(...itemsForTool(m, tool, group, scopeFilter, t));
   }
   // Legacy project-kind entries (from the older runBackup-based manifest)
   // are still rendered as "history" items for backwards compatibility.
   const includeHistory =
     (selectedTool === "all" || selectedTool === "claude") &&
     (group === "all" || group === "history");
-  if (includeHistory) out.push(...groupProjectItems(m));
+  if (includeHistory) out.push(...groupProjectItems(m, t));
   return out.sort((a, b) => a.label.localeCompare(b.label));
 }
 
@@ -1140,6 +1154,7 @@ function itemsForTool(
   tool: Tool,
   group: Group | "all",
   scope: ScopeFilter,
+  t: TFunction,
 ): BrowserItem[] {
   const buckets = new Map<string, BrowserItem>();
   for (const e of m.entries) {
@@ -1161,12 +1176,12 @@ function itemsForTool(
     let label: string;
     let relInItem: string;
     if (BUNDLE_SLOTS.has(slot)) {
-      const bundle = rest[0] ?? "(unnamed)";
+      const bundle = rest[0] ?? t("backupBrowser.unnamed");
       key = `${slot}::${tool}::${e.scope ?? ""}::${e.projectRoot ?? ""}::${bundle}`;
       label = bundle;
       relInItem = rest.slice(1).join("/") || rest[0] || "";
     } else {
-      const fileName = rest.join("/") || "(unnamed)";
+      const fileName = rest.join("/") || t("backupBrowser.unnamed");
       key = `${slot}::${tool}::${e.scope ?? ""}::${e.projectRoot ?? ""}::${fileName}`;
       label = fileName;
       relInItem = fileName;
@@ -1192,26 +1207,29 @@ function itemsForTool(
   }
   for (const item of buckets.values()) {
     const totalBytes = item.files.reduce((sum, f) => sum + f.entry.bytes, 0);
-    item.sub = `${item.files.length} file${item.files.length === 1 ? "" : "s"} · ${formatBytes(totalBytes)}`;
+    item.sub = t("backupBrowser.fileSummary", {
+      count: item.files.length,
+      bytes: formatBytes(totalBytes, t),
+    });
   }
   return Array.from(buckets.values()).sort((a, b) => a.label.localeCompare(b.label));
 }
 
-function groupProjectItems(m: BackupManifest): BrowserItem[] {
+function groupProjectItems(m: BackupManifest, t: TFunction): BrowserItem[] {
   const buckets = new Map<string, BrowserItem>();
   for (const e of m.entries) {
     if (e.kind !== "project") continue;
     const parts = e.relPath.split("/");
     // relPath = claude/history/<dirName>/<rest...>
     // (older manifests may use "projects" as the second segment — accept both.)
-    const dirName = parts[2] ?? "(root)";
+    const dirName = parts[2] ?? t("backupBrowser.rootFolder");
     const relInItem = parts.slice(3).join("/") || parts[parts.length - 1];
     let item = buckets.get(dirName);
     if (!item) {
       item = {
         id: `project::${dirName}`,
         label: dirName,
-        badges: ["history"],
+        badges: [t("backupBrowser.historyBadge")],
         meta: undefined,
         files: [],
       };
@@ -1221,7 +1239,10 @@ function groupProjectItems(m: BackupManifest): BrowserItem[] {
   }
   for (const item of buckets.values()) {
     const totalBytes = item.files.reduce((sum, f) => sum + f.entry.bytes, 0);
-    item.sub = `${item.files.length} file${item.files.length === 1 ? "" : "s"} · ${formatBytes(totalBytes)}`;
+    item.sub = t("backupBrowser.fileSummary", {
+      count: item.files.length,
+      bytes: formatBytes(totalBytes, t),
+    });
   }
   return Array.from(buckets.values()).sort((a, b) => a.label.localeCompare(b.label));
 }
@@ -1386,20 +1407,20 @@ function inferLanguage(name: string): string {
   return map[e] ?? "plaintext";
 }
 
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
-  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+function formatBytes(n: number, t: TFunction): string {
+  if (n < 1024) return t("backupPanel.bytes.b", { n });
+  if (n < 1024 * 1024) return t("backupPanel.bytes.kb", { n: (n / 1024).toFixed(1) });
+  if (n < 1024 * 1024 * 1024) return t("backupPanel.bytes.mb", { n: (n / 1024 / 1024).toFixed(1) });
+  return t("backupPanel.bytes.gb", { n: (n / 1024 / 1024 / 1024).toFixed(2) });
 }
 
-function formatRelative(ts: number): string {
+function formatRelative(ts: number, t: TFunction): string {
   const ms = Date.now() - ts;
   const minutes = Math.floor(ms / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 1) return t("backupPanel.relative.justNow");
+  if (minutes < 60) return t("backupPanel.relative.minutes", { count: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} hr ago`;
+  if (hours < 24) return t("backupPanel.relative.hours", { count: hours });
   const days = Math.floor(hours / 24);
-  return `${days} day${days === 1 ? "" : "s"} ago`;
+  return t("backupPanel.relative.days", { count: days });
 }

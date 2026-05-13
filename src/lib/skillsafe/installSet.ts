@@ -13,7 +13,6 @@ export interface InstallSetOptions {
   tool: Tool;
   scope: Scope;
   projectRoot?: string;
-  useSymlink?: boolean;
   // Per-skill installer. Defaults to the production `installSkill`; tests
   // inject a mock to avoid network calls.
   installSkill: (opts: {
@@ -24,7 +23,6 @@ export interface InstallSetOptions {
     tool: Tool;
     scope: Scope;
     projectRoot?: string;
-    useSymlink?: boolean;
   }) => Promise<{ targetDir: string; entries: string[] }>;
   fs: FsAdapter;
   paths: PathResolverDeps;
@@ -72,7 +70,6 @@ export async function installSet(opts: InstallSetOptions): Promise<InstallSetRes
         tool: opts.tool,
         scope: opts.scope,
         projectRoot: opts.projectRoot,
-        useSymlink: opts.useSymlink,
       });
       installed.push(ref);
       opts.onProgress?.({ kind: "skill-ok", ref, targetDir: res.targetDir });

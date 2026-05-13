@@ -541,7 +541,6 @@ export default function App() {
           tool: choice.tool,
           scope: choice.scope,
           projectRoot: choice.scope === "project" ? choice.projectRoot : undefined,
-          useSymlink: choice.useSymlink,
         });
         emitToast(
           "ok",

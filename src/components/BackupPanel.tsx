@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { Command, open as shellOpen } from "@tauri-apps/plugin-shell";
 import { type as osType } from "@tauri-apps/plugin-os";
@@ -67,6 +69,7 @@ interface Props {
 }
 
 export function BackupPanel({ onToast }: Props) {
+  const { t } = useTranslation();
   const {
     backupDestination,
     backupLastRun,
@@ -85,13 +88,13 @@ export function BackupPanel({ onToast }: Props) {
     setBackupSchedule,
   } = useApp();
 
-  function toggleTool(t: Tool) {
-    if (backupTools.includes(t)) {
-      const next = backupTools.filter((x) => x !== t);
+  function toggleTool(tool: Tool) {
+    if (backupTools.includes(tool)) {
+      const next = backupTools.filter((x) => x !== tool);
       // Allow zero tools — the script will no-op and log "nothing to back up".
       setBackupTools(next);
     } else {
-      setBackupTools([...backupTools, t]);
+      setBackupTools([...backupTools, tool]);
     }
   }
 
@@ -221,7 +224,7 @@ export function BackupPanel({ onToast }: Props) {
       });
       setDiag(result);
     } catch (e) {
-      onToast("error", `Diagnose failed: ${describeErr(e)}`);
+      onToast("error", t("backupPanel.errors.diagnoseFailed", { message: describeErr(e) }));
     }
   }
 
@@ -232,7 +235,7 @@ export function BackupPanel({ onToast }: Props) {
       setScheduleStatus(status);
       await refreshLog();
     } catch (e) {
-      onToast("error", `Status check failed: ${describeErr(e)}`);
+      onToast("error", t("backupPanel.errors.statusCheckFailed", { message: describeErr(e) }));
     } finally {
       setScheduleBusy(null);
     }
@@ -383,7 +386,7 @@ export function BackupPanel({ onToast }: Props) {
     cronStagePath: string | null;
     outDir: string;
   }> {
-    if (!backupDestination) throw new Error("Pick a destination folder first.");
+    if (!backupDestination) throw new Error(t("backupPanel.errors.pickDestination"));
     const home = await tauriPaths.homeDir();
     const paths = await resolvePlatformPaths();
     // Local copy lives outside OneDrive/Dropbox so the scheduler can read it
@@ -429,7 +432,7 @@ export function BackupPanel({ onToast }: Props) {
         await winInstall({ scriptPath, schedule: backupSchedule });
         const status = await probeStatus();
         setScheduleStatus(status);
-        onToast("ok", `Daily backup installed. ${scheduleSummary(backupSchedule)}`);
+        onToast("ok", t("backupPanel.ok.scheduleInstalled", { summary: scheduleSummary(backupSchedule, t) }));
         return;
       }
       if (platform === "linux") {
@@ -442,7 +445,7 @@ export function BackupPanel({ onToast }: Props) {
         });
         const status = await probeStatus();
         setScheduleStatus(status);
-        onToast("ok", `Daily backup installed. ${scheduleSummary(backupSchedule)}`);
+        onToast("ok", t("backupPanel.ok.scheduleInstalled", { summary: scheduleSummary(backupSchedule, t) }));
         return;
       }
       // macOS: read the generated plist and bootstrap it via launchctl. The
@@ -461,9 +464,9 @@ export function BackupPanel({ onToast }: Props) {
       });
       const status = await probeStatus();
       setScheduleStatus(status);
-      onToast("ok", `Daily backup installed. ${scheduleSummary(backupSchedule)}`);
+      onToast("ok", t("backupPanel.ok.scheduleInstalled", { summary: scheduleSummary(backupSchedule, t) }));
     } catch (e) {
-      onToast("error", `Install failed: ${describeErr(e)}`);
+      onToast("error", t("backupPanel.errors.installFailed", { message: describeErr(e) }));
     } finally {
       setScheduleBusy(null);
     }
@@ -476,7 +479,7 @@ export function BackupPanel({ onToast }: Props) {
         await winUninstall();
         const status = await probeStatus();
         setScheduleStatus(status);
-        onToast("ok", "Daily backup uninstalled.");
+        onToast("ok", t("backupPanel.ok.scheduleUninstalled"));
         return;
       }
       if (platform === "linux") {
@@ -488,7 +491,7 @@ export function BackupPanel({ onToast }: Props) {
         });
         const status = await probeStatus();
         setScheduleStatus(status);
-        onToast("ok", "Daily backup uninstalled.");
+        onToast("ok", t("backupPanel.ok.scheduleUninstalled"));
         return;
       }
       const home = await tauriPaths.homeDir();
@@ -506,18 +509,18 @@ export function BackupPanel({ onToast }: Props) {
       const status = await probeStatus();
       setScheduleStatus(status);
       if (result.removed) {
-        onToast("ok", "Daily backup uninstalled.");
+        onToast("ok", t("backupPanel.ok.scheduleUninstalled"));
       } else {
-        // bootout already stopped the service. macOS just blocks Tauri from
-        // deleting files in ~/Library/LaunchAgents/. Hand the user a copy-
-        // pasteable command they can run themselves.
         onToast(
           "error",
-          `Service stopped, but macOS blocked the plist removal. Run this in Terminal to finish cleanup:\n\n${result.manualCommand}\n\n(${result.reason ?? "Operation not permitted"})`,
+          t("backupPanel.errors.manualUninstall", {
+            command: result.manualCommand,
+            reason: result.reason ?? t("backupPanel.errors.operationNotPermitted"),
+          }),
         );
       }
     } catch (e) {
-      onToast("error", `Uninstall failed: ${describeErr(e)}`);
+      onToast("error", t("backupPanel.errors.uninstallFailed", { message: describeErr(e) }));
     } finally {
       setScheduleBusy(null);
     }
@@ -534,7 +537,7 @@ export function BackupPanel({ onToast }: Props) {
       } else {
         await runScheduleNow();
       }
-      onToast("ok", "Triggered scheduled backup.");
+      onToast("ok", t("backupPanel.ok.scheduleTriggered"));
       // Re-poll status after a short delay so the user sees the running PID.
       setTimeout(() => {
         probeStatus().then(setScheduleStatus).catch(() => {});
@@ -543,7 +546,7 @@ export function BackupPanel({ onToast }: Props) {
       // the top of every run so the user sees activity even before files copy.
       setTimeout(() => { refreshLog(); }, 1500);
     } catch (e) {
-      onToast("error", `Run failed: ${describeErr(e)}`);
+      onToast("error", t("backupPanel.errors.runFailed", { message: describeErr(e) }));
     } finally {
       setScheduleBusy(null);
     }
@@ -551,12 +554,12 @@ export function BackupPanel({ onToast }: Props) {
 
   async function handleApplySchedule() {
     if (!isValidSchedule(draftSchedule)) {
-      onToast("error", "Hour must be 0–23 and minute must be 0–59.");
+      onToast("error", t("backupPanel.errors.invalidTime"));
       return;
     }
     setBackupSchedule(draftSchedule);
     if (scheduleStatus.kind !== "loaded") {
-      onToast("ok", "Schedule saved. Click Install daily backup to apply.");
+      onToast("ok", t("backupPanel.ok.scheduleSaved"));
       return;
     }
     // Already installed — re-install with the new schedule.
@@ -587,9 +590,9 @@ export function BackupPanel({ onToast }: Props) {
       }
       const status = await probeStatus();
       setScheduleStatus(status);
-      onToast("ok", "Schedule updated.");
+      onToast("ok", t("backupPanel.ok.scheduleUpdated"));
     } catch (e) {
-      onToast("error", `Schedule update failed: ${describeErr(e)}`);
+      onToast("error", t("backupPanel.errors.scheduleUpdateFailed", { message: describeErr(e) }));
     } finally {
       setScheduleBusy(null);
     }
@@ -619,13 +622,13 @@ export function BackupPanel({ onToast }: Props) {
   async function browseBackupFolder() {
     const target = backupStats?.backupRoot ?? backupDestination;
     if (!target) {
-      onToast("error", "Pick a destination folder first.");
+      onToast("error", t("backupPanel.errors.pickDestination"));
       return;
     }
     try {
       await shellOpen(target);
     } catch (e) {
-      onToast("error", `Open failed: ${e instanceof Error ? e.message : String(e)}`);
+      onToast("error", t("backupPanel.errors.openFailed", { message: e instanceof Error ? e.message : String(e) }));
     }
   }
 
@@ -633,7 +636,7 @@ export function BackupPanel({ onToast }: Props) {
     try {
       await shellOpen(destPath);
     } catch (e) {
-      onToast("error", `Open failed: ${e instanceof Error ? e.message : String(e)}`);
+      onToast("error", t("backupPanel.errors.openFailed", { message: e instanceof Error ? e.message : String(e) }));
     }
   }
 
@@ -644,7 +647,7 @@ export function BackupPanel({ onToast }: Props) {
 
   async function handleBackup() {
     if (!backupDestination) {
-      onToast("error", "Pick a destination folder first.");
+      onToast("error", t("backupPanel.errors.pickDestination"));
       return;
     }
     setBackupBusy(true);
@@ -704,13 +707,13 @@ export function BackupPanel({ onToast }: Props) {
       }
       refreshLog();
       if (out.code === 2) {
-        onToast("error", "Backup completed with errors. Check the log.");
+        onToast("error", t("backupPanel.errors.backupCompletedWithErrors"));
       } else {
-        onToast("ok", "Backup complete.");
+        onToast("ok", t("backupPanel.ok.backupComplete"));
       }
     } catch (e) {
       const raw = e instanceof Error ? e.message : String(e);
-      onToast("error", `Backup failed: ${friendlyBackupError(raw)}`);
+      onToast("error", t("backupPanel.errors.backupFailed", { message: friendlyBackupError(raw, t) }));
     } finally {
       setBackupBusy(false);
       setBackupProgress(null);
@@ -719,7 +722,7 @@ export function BackupPanel({ onToast }: Props) {
 
   async function handleRestoreScan(mirror: boolean) {
     if (!backupDestination) {
-      onToast("error", "Pick a destination folder first.");
+      onToast("error", t("backupPanel.errors.pickDestination"));
       return;
     }
     setRestoreState({ phase: "scanning", mirror });
@@ -741,7 +744,7 @@ export function BackupPanel({ onToast }: Props) {
       });
       if (conflicts.length === 0) {
         setRestoreState({ phase: "idle" });
-        onToast("ok", "Live tree already matches the backup. Nothing to restore.");
+        onToast("ok", t("backupPanel.ok.nothingToRestore"));
         return;
       }
       // Default-select every conflict — the user starts from "restore
@@ -750,13 +753,13 @@ export function BackupPanel({ onToast }: Props) {
       setRestoreState({ phase: "preview", conflicts, selected, mirror });
     } catch (e) {
       setRestoreState({ phase: "idle" });
-      onToast("error", `Restore scan failed: ${describeErr(e)}`);
+      onToast("error", t("backupPanel.errors.restoreScanFailed", { message: describeErr(e) }));
     }
   }
 
   async function handleRestoreApply(items: ConflictItem[]) {
     if (items.length === 0) {
-      onToast("error", "No files selected.");
+      onToast("error", t("backupPanel.errors.noFilesSelected"));
       return;
     }
     setRestoreState({
@@ -785,18 +788,25 @@ export function BackupPanel({ onToast }: Props) {
           .join("\n");
         onToast(
           "error",
-          `Restored ${result.copied} file${result.copied === 1 ? "" : "s"}` +
-            ` (${result.deleted} deleted), ${result.failed.length} failed.\n\n${sample}`,
+          t("backupPanel.ok.restoreFailedSome", {
+            copied: result.copied,
+            deleted: result.deleted,
+            failed: result.failed.length,
+            sample,
+          }),
         );
       } else {
+        const deletedSuffix =
+          result.deleted > 0
+            ? t("backupPanel.ok.restoreDeletedSuffix", { count: result.deleted })
+            : "";
         onToast(
           "ok",
-          `Restored ${result.copied} file${result.copied === 1 ? "" : "s"}` +
-            (result.deleted > 0 ? ` (${result.deleted} deleted)` : ""),
+          t("backupPanel.ok.restoreSuccess", { copied: result.copied, deletedSuffix }),
         );
       }
     } catch (e) {
-      onToast("error", `Restore failed: ${describeErr(e)}`);
+      onToast("error", t("backupPanel.errors.restoreFailed", { message: describeErr(e) }));
     } finally {
       setRestoreState({ phase: "idle" });
     }
@@ -831,7 +841,7 @@ export function BackupPanel({ onToast }: Props) {
 
   async function handleGenerateScript() {
     if (!backupDestination) {
-      onToast("error", "Pick a destination folder first.");
+      onToast("error", t("backupPanel.errors.pickDestination"));
       return;
     }
     setGenerating(true);
@@ -854,10 +864,10 @@ export function BackupPanel({ onToast }: Props) {
         tools: backupTools,
         dataTypes: backupDataTypes,
       });
-      onToast("ok", `Generated ${result.files.length} files in ${outDir}`);
+      onToast("ok", t("backupPanel.ok.scriptsGenerated", { count: result.files.length, dir: outDir }));
       shellOpen(outDir).catch(() => {});
     } catch (e) {
-      onToast("error", `Script generation failed: ${e instanceof Error ? e.message : String(e)}`);
+      onToast("error", t("backupPanel.errors.scriptGenerationFailed", { message: e instanceof Error ? e.message : String(e) }));
     } finally {
       setGenerating(false);
     }
@@ -865,7 +875,7 @@ export function BackupPanel({ onToast }: Props) {
 
   return (
     <section className="settings-section">
-      <div className="settings-section-title">Local Backup</div>
+      <div className="settings-section-title">{t("backupPanel.title")}</div>
 
       {/* Backup folder card — the most prominent setting. Without a folder
           the "Back up now" button is disabled, so we want this to read like
@@ -875,42 +885,41 @@ export function BackupPanel({ onToast }: Props) {
           <FolderIcon size={18} />
         </div>
         <div className="backup-folder-text">
-          <div className="backup-folder-label">Backup folder</div>
+          <div className="backup-folder-label">{t("backupPanel.folderLabel")}</div>
           {backupDestination ? (
             <div className="backup-folder-path" title={backupDestination}>
               {backupDestination}
             </div>
           ) : (
             <div className="backup-folder-hint">
-              Pick a folder inside your OneDrive / Dropbox / iCloud Drive to
-              back up to.
+              {t("backupPanel.folderHint")}
             </div>
           )}
         </div>
         <div className="backup-folder-actions">
           {backupDestination ? (
             <>
-              <button className="link-btn" onClick={pickDestination} title="Pick a different folder">
-                Change…
+              <button className="link-btn" onClick={pickDestination} title={t("backupPanel.changeTitle")}>
+                {t("backupPanel.changeBtn")}
               </button>
               <button
                 className="link-btn"
                 onClick={browseBackupFolder}
-                title="Open the backup folder in Finder/Explorer"
+                title={t("backupPanel.openFolderTitle")}
               >
-                Open folder
+                {t("backupPanel.openFolderBtn")}
               </button>
               <button
                 className="link-btn"
                 onClick={() => setConfirmClearDest(true)}
-                title="Forget destination (does not delete files)"
+                title={t("backupPanel.clearTitle")}
               >
-                Clear
+                {t("backupPanel.clearBtn")}
               </button>
             </>
           ) : (
             <button className="primary" onClick={pickDestination}>
-              Choose folder…
+              {t("backupPanel.chooseFolderBtn")}
             </button>
           )}
         </div>
@@ -927,12 +936,6 @@ export function BackupPanel({ onToast }: Props) {
           setBackupDataTypes(tool, next);
         }}
       />
-      <div className="backup-symlink-note">
-        Symlinks pointing outside the source tree (for example, a Claude skill
-        linked to <code>.agents/skills/</code>) are dereferenced into the
-        backup so the linked content travels with the backup.
-      </div>
-
       <div className="settings-row" style={{ flexWrap: "wrap" }}>
         <button
           className="primary"
@@ -940,13 +943,13 @@ export function BackupPanel({ onToast }: Props) {
           disabled={!backupDestination || backupBusy}
           title={
             !backupDestination
-              ? "Pick a backup folder above to enable backups"
+              ? t("backupPanel.backupDisabledTitle")
               : backupBusy
-                ? "Backup in progress…"
-                : "Run a one-time backup of the selected tools"
+                ? t("backupPanel.backupBusyTitle")
+                : t("backupPanel.backupRunTitle")
           }
         >
-          {backupBusy ? "Backing up…" : "Back up now"}
+          {backupBusy ? t("backupPanel.backingUp") : t("backupPanel.backupNow")}
         </button>
         <button
           onClick={() => handleRestoreScan(false)}
@@ -958,15 +961,15 @@ export function BackupPanel({ onToast }: Props) {
           }
           title={
             !backupDestination
-              ? "Pick a backup folder above"
-              : "Scan the backup against your live tree; warns before overwriting anything"
+              ? t("backupPanel.restoreDisabledTitle")
+              : t("backupPanel.restoreEnabledTitle")
           }
         >
           {restoreState.phase === "scanning"
-            ? "Scanning…"
+            ? t("backupPanel.scanning")
             : restoreState.phase === "applying"
-              ? "Restoring…"
-              : "Restore from backup…"}
+              ? t("backupPanel.restoring")
+              : t("backupPanel.restoreBtn")}
         </button>
       </div>
 
@@ -977,9 +980,13 @@ export function BackupPanel({ onToast }: Props) {
             <div className="dl-progress-fill backup-progress-indeterminate" />
           </div>
           <div className="dl-progress-label">
-            {backupProgress.phase} · scanned {backupProgress.filesProcessed}{" "}
-            ({formatBytes(backupProgress.bytesProcessed)}) · copied{" "}
-            {backupProgress.filesCopied} ({formatBytes(backupProgress.bytesCopied)})
+            {t("backupPanel.progressLabel", {
+              phase: backupProgress.phase,
+              filesProcessed: backupProgress.filesProcessed,
+              bytesProcessed: formatBytes(backupProgress.bytesProcessed, t),
+              filesCopied: backupProgress.filesCopied,
+              bytesCopied: formatBytes(backupProgress.bytesCopied, t),
+            })}
           </div>
         </div>
       )}
@@ -987,21 +994,28 @@ export function BackupPanel({ onToast }: Props) {
       {backupLastRun && backupStats && (
         <div className="projects-summary-text" style={{ paddingLeft: 6 }}>
           <div>
-            Last backup: {formatRelative(backupLastRun)} · +{backupStats.counts.added} ~
-            {backupStats.counts.changed} -{backupStats.counts.removed} ·{" "}
-            {formatBytes(backupStats.totalBytes)}
+            {t("backupPanel.lastBackupLine", {
+              relative: formatRelative(backupLastRun, t),
+              added: backupStats.counts.added,
+              changed: backupStats.counts.changed,
+              removed: backupStats.counts.removed,
+              bytes: formatBytes(backupStats.totalBytes, t),
+            })}
             {backupStats.errorCount > 0 && (
               <span className="badge drift" style={{ marginLeft: 8 }}>
-                {backupStats.errorCount} error{backupStats.errorCount === 1 ? "" : "s"}
+                {t("backupPanel.errorBadge", { count: backupStats.errorCount })}
               </span>
             )}
           </div>
           {backupStats.errorSamples && backupStats.errorSamples.length > 0 && (
             <details style={{ marginTop: 6 }}>
               <summary style={{ cursor: "pointer", color: "var(--error)" }}>
-                Show {backupStats.errorSamples.length === backupStats.errorCount
-                  ? `${backupStats.errorCount} error${backupStats.errorCount === 1 ? "" : "s"}`
-                  : `first ${backupStats.errorSamples.length} of ${backupStats.errorCount}`}
+                {backupStats.errorSamples.length === backupStats.errorCount
+                  ? t("backupPanel.errorsShowAll", { count: backupStats.errorCount })
+                  : t("backupPanel.errorsShowFirst", {
+                      shown: backupStats.errorSamples.length,
+                      total: backupStats.errorCount,
+                    })}
               </summary>
               <pre
                 style={{
@@ -1025,12 +1039,13 @@ export function BackupPanel({ onToast }: Props) {
           {backupStats.recentChanges && backupStats.recentChanges.length > 0 && (
             <details style={{ marginTop: 6 }} open>
               <summary style={{ cursor: "pointer" }}>
-                Recent changes ({backupStats.recentChanges.length}
                 {backupStats.counts.added + backupStats.counts.changed >
-                  backupStats.recentChanges.length
-                  ? ` of ${backupStats.counts.added + backupStats.counts.changed}`
-                  : ""}
-                )
+                backupStats.recentChanges.length
+                  ? t("backupPanel.recentChangesOf", {
+                      shown: backupStats.recentChanges.length,
+                      total: backupStats.counts.added + backupStats.counts.changed,
+                    })
+                  : t("backupPanel.recentChanges", { shown: backupStats.recentChanges.length })}
               </summary>
               <ul
                 style={{
@@ -1084,7 +1099,7 @@ export function BackupPanel({ onToast }: Props) {
                     <span
                       style={{ color: "var(--muted)", fontVariantNumeric: "tabular-nums" }}
                     >
-                      {formatBytes(c.bytes)}
+                      {formatBytes(c.bytes, t)}
                     </span>
                   </li>
                 ))}
@@ -1097,16 +1112,16 @@ export function BackupPanel({ onToast }: Props) {
       {/* Daily schedule (macOS launchd) */}
       <div className="settings-section-title-row" style={{ marginTop: 12 }}>
         <div className="settings-section-title" style={{ fontSize: 12 }}>
-          Daily schedule
+          {t("backupPanel.dailySchedule")}
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button
             className="link-btn"
             onClick={handleGenerateScript}
             disabled={!backupDestination || generating}
-            title="Emit a daily-backup script + scheduler config you can install yourself"
+            title={t("backupPanel.exportScriptTitle")}
           >
-            {generating ? "Generating…" : "Export script…"}
+            {generating ? t("backupPanel.generating") : t("backupPanel.exportScript")}
           </button>
           <button
             className="link-btn"
@@ -1114,18 +1129,18 @@ export function BackupPanel({ onToast }: Props) {
             disabled={!!scheduleBusy}
             title={
               platform === "windows"
-                ? "Refresh Task Scheduler status"
-                : "Refresh launchd status"
+                ? t("backupPanel.refreshWindowsTitle")
+                : t("backupPanel.refreshUnixTitle")
             }
           >
-            {scheduleBusy === "refresh" ? "Checking…" : "Refresh"}
+            {scheduleBusy === "refresh" ? t("backupPanel.checking") : t("backupPanel.refresh")}
           </button>
           <button
             className="link-btn"
             onClick={runDiagnose}
-            title="Run all status probes and dump raw output for debugging"
+            title={t("backupPanel.diagnoseTitle")}
           >
-            Diagnose
+            {t("backupPanel.diagnose")}
           </button>
         </div>
       </div>
@@ -1148,7 +1163,7 @@ export function BackupPanel({ onToast }: Props) {
                   flexShrink: 0,
                 }}
               />
-              {scheduleStatusLabel(scheduleStatus, platform)}
+              {scheduleStatusLabel(scheduleStatus, platform, t)}
             </span>
             <div className="settings-row-actions">
               {scheduleStatus.kind === "loaded" ? (
@@ -1158,14 +1173,14 @@ export function BackupPanel({ onToast }: Props) {
                     onClick={handleScheduleRunNow}
                     disabled={!!scheduleBusy}
                   >
-                    {scheduleBusy === "run" ? "Running…" : "Run now"}
+                    {scheduleBusy === "run" ? t("backupPanel.running") : t("backupPanel.runNow")}
                   </button>
                   <button
                     className="link-btn"
                     onClick={() => setConfirmUninstall(true)}
                     disabled={!!scheduleBusy}
                   >
-                    {scheduleBusy === "uninstall" ? "Uninstalling…" : "Uninstall"}
+                    {scheduleBusy === "uninstall" ? t("backupPanel.uninstalling") : t("backupPanel.uninstall")}
                   </button>
                 </>
               ) : scheduleStatus.kind === "installed_not_loaded" ? (
@@ -1174,16 +1189,16 @@ export function BackupPanel({ onToast }: Props) {
                     className="primary"
                     onClick={handleScheduleInstall}
                     disabled={!!scheduleBusy}
-                    title="Re-load the plist into launchd"
+                    title={t("backupPanel.reloadTitle")}
                   >
-                    {scheduleBusy === "install" ? "Reloading…" : "Reload"}
+                    {scheduleBusy === "install" ? t("backupPanel.reloading") : t("backupPanel.reload")}
                   </button>
                   <button
                     className="link-btn"
                     onClick={() => setConfirmUninstall(true)}
                     disabled={!!scheduleBusy}
                   >
-                    {scheduleBusy === "uninstall" ? "Uninstalling…" : "Uninstall"}
+                    {scheduleBusy === "uninstall" ? t("backupPanel.uninstalling") : t("backupPanel.uninstall")}
                   </button>
                 </>
               ) : scheduleStatus.kind === "unsupported" ? (
@@ -1196,13 +1211,13 @@ export function BackupPanel({ onToast }: Props) {
                   style={{ fontSize: 11, color: "var(--muted)" }}
                   title={
                     platform === "windows"
-                      ? "Task Scheduler (schtasks.exe) was not found on this system."
+                      ? t("backupPanel.schedulerUnavailableWindows")
                       : platform === "linux"
-                        ? "cron(1) was not found. Install your distro's cron package (e.g. cronie, vixie-cron) and reopen this dialog."
-                        : "launchctl was not found. This is unusual on macOS — try restarting the app."
+                        ? t("backupPanel.schedulerUnavailableLinux")
+                        : t("backupPanel.schedulerUnavailableMac")
                   }
                 >
-                  Scheduler unavailable
+                  {t("backupPanel.schedulerUnavailable")}
                 </span>
               ) : (
                 <button
@@ -1211,27 +1226,27 @@ export function BackupPanel({ onToast }: Props) {
                   disabled={!!scheduleBusy || !backupDestination}
                   title={
                     !backupDestination
-                      ? "Pick a destination first"
+                      ? t("backupPanel.installDisabledTitle")
                       : platform === "windows"
-                        ? "Register a Task Scheduler job that runs the backup on the schedule below"
+                        ? t("backupPanel.installWindowsTitle")
                         : platform === "linux"
-                          ? "Add a cron entry that runs the backup on the schedule below"
-                          : "Install a launchd job that runs the backup on the schedule below"
+                          ? t("backupPanel.installLinuxTitle")
+                          : t("backupPanel.installMacTitle")
                   }
                 >
-                  {scheduleBusy === "install" ? "Installing…" : "Install daily backup"}
+                  {scheduleBusy === "install" ? t("backupPanel.installing") : t("backupPanel.installDaily")}
                 </button>
               )}
             </div>
           </div>
           <div className="projects-summary-text" style={{ fontSize: 11, paddingLeft: 6 }}>
             {platform === "windows"
-              ? "Task"
+              ? t("backupPanel.serviceKindTask")
               : platform === "linux"
-              ? "Cron job"
-              : "Service"}:{" "}
+                ? t("backupPanel.serviceKindCron")
+                : t("backupPanel.serviceKindService")}:{" "}
             <code>{platform === "windows" ? WIN_TASK_NAME : SERVICE_LABEL}</code> ·{" "}
-            {scheduleSummary(backupSchedule)}
+            {scheduleSummary(backupSchedule, t)}
           </div>
 
           {/* Schedule editor — change the time / weekdays. Pressing Apply
@@ -1239,15 +1254,15 @@ export function BackupPanel({ onToast }: Props) {
               plist so launchd picks up the new times. */}
           <div className="settings-section-title-row" style={{ marginTop: 10 }}>
             <div className="settings-section-title" style={{ fontSize: 12 }}>
-              Schedule
+              {t("backupPanel.scheduleHeader")}
             </div>
             {scheduleDirty && (
               <button
                 className="link-btn"
                 onClick={() => setDraftSchedule(backupSchedule)}
-                title="Discard pending changes"
+                title={t("backupPanel.resetTitle")}
               >
-                Reset
+                {t("backupPanel.reset")}
               </button>
             )}
           </div>
@@ -1256,7 +1271,7 @@ export function BackupPanel({ onToast }: Props) {
             style={{ alignItems: "center", flexWrap: "wrap", gap: 8 }}
           >
             <label className="settings-row-label" style={{ minWidth: 60 }}>
-              Time
+              {t("backupPanel.timeLabel")}
             </label>
             <input
               type="number"
@@ -1266,7 +1281,7 @@ export function BackupPanel({ onToast }: Props) {
               onChange={(e) => setDraftHour(parseInt(e.target.value, 10))}
               className="settings-select"
               style={{ width: 64 }}
-              aria-label="Hour"
+              aria-label={t("backupPanel.hourAria")}
             />
             <span style={{ color: "var(--muted)" }}>:</span>
             <input
@@ -1277,25 +1292,26 @@ export function BackupPanel({ onToast }: Props) {
               onChange={(e) => setDraftMinute(parseInt(e.target.value, 10))}
               className="settings-select"
               style={{ width: 64 }}
-              aria-label="Minute"
+              aria-label={t("backupPanel.minuteAria")}
             />
             <span style={{ color: "var(--muted)", fontSize: 11 }}>
-              24-hour, local time
+              {t("backupPanel.timeHint")}
             </span>
           </div>
           <div className="settings-row" style={{ alignItems: "center", flexWrap: "wrap" }}>
             <label className="settings-row-label" style={{ minWidth: 60 }}>
-              Days
+              {t("backupPanel.daysLabel")}
             </label>
             <div className="pill-row" style={{ flexWrap: "wrap" }}>
-              {WEEKDAY_LABELS.map((label, i) => {
+              {WEEKDAY_KEYS.map((key, i) => {
+                const label = t(`backupPanel.weekdays.${key}`);
                 const active =
                   (draftSchedule.weekdays ?? []).length === 0
                     ? false
                     : (draftSchedule.weekdays ?? []).includes(i);
                 return (
                   <div
-                    key={label}
+                    key={key}
                     className={`pill ${active ? "active" : ""}`}
                     role="checkbox"
                     aria-checked={active}
@@ -1308,8 +1324,8 @@ export function BackupPanel({ onToast }: Props) {
               })}
               <span style={{ fontSize: 11, color: "var(--muted)", alignSelf: "center", marginLeft: 6 }}>
                 {(draftSchedule.weekdays ?? []).length === 0
-                  ? "every day"
-                  : `${(draftSchedule.weekdays ?? []).length} day${(draftSchedule.weekdays ?? []).length === 1 ? "" : "s"} selected`}
+                  ? t("backupPanel.everyDay")
+                  : t("backupPanel.daysSelected", { count: (draftSchedule.weekdays ?? []).length })}
               </span>
             </div>
           </div>
@@ -1320,7 +1336,7 @@ export function BackupPanel({ onToast }: Props) {
                 onClick={handleApplySchedule}
                 disabled={!!scheduleBusy}
               >
-                {scheduleBusy === "install" ? "Applying…" : "Apply schedule"}
+                {scheduleBusy === "install" ? t("backupPanel.applying") : t("backupPanel.applySchedule")}
               </button>
             </div>
           )}
@@ -1328,7 +1344,7 @@ export function BackupPanel({ onToast }: Props) {
           {/* Log tail — last lines from ~/Library/Logs/skillsafe-backup.log */}
           <div className="settings-section-title-row" style={{ marginTop: 10 }}>
             <div className="settings-section-title" style={{ fontSize: 12 }}>
-              Log
+              {t("backupPanel.logHeader")}
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <button
@@ -1336,10 +1352,10 @@ export function BackupPanel({ onToast }: Props) {
                 onClick={() => setShowLog((s) => !s)}
                 disabled={!logTail}
               >
-                {showLog ? "Hide" : "Show"}
+                {showLog ? t("backupPanel.hide") : t("backupPanel.show")}
               </button>
               <button className="link-btn" onClick={refreshLog}>
-                Reload
+                {t("backupPanel.reloadLog")}
               </button>
               {logTail && (
                 <button
@@ -1349,22 +1365,23 @@ export function BackupPanel({ onToast }: Props) {
                       const { logPath } = await resolvePlatformPaths();
                       shellOpen(logPath).catch(() => {});
                     } catch (e) {
-                      onToast("error", `Open failed: ${describeErr(e)}`);
+                      onToast("error", t("backupPanel.errors.openFailed", { message: describeErr(e) }));
                     }
                   }}
                 >
-                  Open externally
+                  {t("backupPanel.openExternally")}
                 </button>
               )}
             </div>
           </div>
           {!logTail ? (
             <div className="projects-empty" style={{ fontSize: 11 }}>
-              No log yet. Once the schedule has run at least once,{" "}
-              {platform === "windows"
-                ? "%LOCALAPPDATA%\\skillsafe-app\\Logs\\skillsafe-backup.log"
-                : "~/Library/Logs/skillsafe-backup.log"}{" "}
-              will show its output here.
+              {t("backupPanel.noLogYet", {
+                path:
+                  platform === "windows"
+                    ? t("backupPanel.logPathWindows")
+                    : t("backupPanel.logPathUnix"),
+              })}
             </div>
           ) : showLog ? (
             <pre
@@ -1382,24 +1399,24 @@ export function BackupPanel({ onToast }: Props) {
                 overflow: "auto",
               }}
             >
-              {logTail.text || "(empty)"}
+              {logTail.text || t("backupPanel.logEmpty")}
             </pre>
           ) : (
             <div className="projects-summary-text" style={{ fontSize: 11, paddingLeft: 6 }}>
-              {logTail.truncated ? "Last 80 lines available" : "Log available"} · {formatBytes(logTail.bytes)}
+              {logTail.truncated ? t("backupPanel.logLast80") : t("backupPanel.logAvailable")} · {formatBytes(logTail.bytes, t)}
             </div>
           )}
 
           {diag && (
             <details style={{ marginTop: 10 }} open>
               <summary style={{ cursor: "pointer", fontSize: 12 }}>
-                Diagnostics
+                {t("backupPanel.diagnostics")}
                 <button
                   className="link-btn"
                   onClick={(e) => { e.preventDefault(); setDiag(null); }}
                   style={{ marginLeft: 8, fontSize: 11, padding: "2px 6px" }}
                 >
-                  Hide
+                  {t("backupPanel.hide")}
                 </button>
               </summary>
               <pre
@@ -1445,11 +1462,11 @@ export function BackupPanel({ onToast }: Props) {
         <div className="dialog-backdrop">
           <div className="dialog" style={{ maxWidth: 420 }}>
             <header className="settings-header">
-              <h3>Restoring…</h3>
+              <h3>{t("backupPanel.restoringTitle")}</h3>
             </header>
             <div className="settings-body">
               <div style={{ fontSize: 12, color: "var(--muted)" }}>
-                {restoreState.done} / {restoreState.total} files
+                {t("backupPanel.filesProgress", { done: restoreState.done, total: restoreState.total })}
               </div>
               <div className="dl-progress" role="status" aria-live="polite" style={{ marginTop: 8 }}>
                 <div className="dl-progress-bar">
@@ -1474,21 +1491,17 @@ export function BackupPanel({ onToast }: Props) {
 
       {confirmClearDest && (
         <ConfirmDialog
-          title="Forget backup folder?"
+          title={t("backupPanel.forgetTitle")}
           message={
             <>
-              <div>
-                The path will be removed from settings, but your existing
-                backup files are not deleted:
-              </div>
+              <div>{t("backupPanel.forgetMessageIntro")}</div>
               <div className="confirm-target-path">{backupDestination}</div>
               <div className="confirm-warning" style={{ marginTop: 8 }}>
-                Manual and scheduled backups will stop until you set a new
-                folder.
+                {t("backupPanel.forgetMessageWarn")}
               </div>
             </>
           }
-          confirmLabel="Forget folder"
+          confirmLabel={t("backupPanel.forgetConfirm")}
           danger
           onConfirm={() => {
             setBackupDestination(null);
@@ -1500,27 +1513,24 @@ export function BackupPanel({ onToast }: Props) {
 
       {confirmUninstall && (
         <ConfirmDialog
-          title="Uninstall daily backup?"
+          title={t("backupPanel.uninstallTitle")}
           message={
             <>
               <div>
-                The{" "}
                 {platform === "windows"
-                  ? "Task Scheduler task"
+                  ? t("backupPanel.uninstallMessageWindows")
                   : platform === "linux"
-                  ? "cron entry"
-                  : "launchd job"}{" "}
-                <code>{platform === "windows" ? WIN_TASK_NAME : SERVICE_LABEL}</code>{" "}
-                will be stopped and removed. Your backup folder and existing
-                files are not deleted.
+                    ? t("backupPanel.uninstallMessageLinux")
+                    : t("backupPanel.uninstallMessageMac")}{" "}
+                <code>{platform === "windows" ? WIN_TASK_NAME : SERVICE_LABEL}</code>
+                {t("backupPanel.uninstallMessageTail")}
               </div>
               <div className="confirm-warning" style={{ marginTop: 8 }}>
-                Backups will no longer run automatically until you reinstall
-                the schedule.
+                {t("backupPanel.uninstallMessageWarn")}
               </div>
             </>
           }
-          confirmLabel="Uninstall"
+          confirmLabel={t("backupPanel.uninstallConfirm")}
           danger
           busy={scheduleBusy === "uninstall"}
           onConfirm={() => {
@@ -1537,22 +1547,24 @@ export function BackupPanel({ onToast }: Props) {
   );
 }
 
-function scheduleStatusLabel(s: ScheduleStatus, platform: BackupPlatform): string {
-  if (s.kind === "not_installed") return "Not installed";
+function scheduleStatusLabel(s: ScheduleStatus, platform: BackupPlatform, t: TFunction): string {
+  if (s.kind === "not_installed") return t("backupPanel.status.notInstalled");
   if (s.kind === "unsupported") {
-    if (platform === "windows") return "Task Scheduler not available on this system";
-    if (platform === "linux") return "cron not available on this system";
-    return "launchd not available on this system";
+    if (platform === "windows") return t("backupPanel.status.unsupportedWindows");
+    if (platform === "linux") return t("backupPanel.status.unsupportedLinux");
+    return t("backupPanel.status.unsupportedMac");
   }
-  if (s.kind === "installed_not_loaded") return "Installed · launchd hasn't picked it up yet";
+  if (s.kind === "installed_not_loaded") return t("backupPanel.status.installedNotLoaded");
   // loaded — pid is a Windows running-flag sentinel (1) or the real macOS PID
   if (s.pid !== null && s.pid > 0) {
-    return platform === "windows" ? "Running" : `Running (PID ${s.pid})`;
+    return platform === "windows"
+      ? t("backupPanel.status.runningWindows")
+      : t("backupPanel.status.runningMac", { pid: s.pid });
   }
   if (s.lastExitCode !== null && s.lastExitCode !== 0) {
-    return `Loaded · last run exited ${s.lastExitCode}`;
+    return t("backupPanel.status.loadedExited", { code: s.lastExitCode });
   }
-  return "Loaded · idle";
+  return t("backupPanel.status.loadedIdle");
 }
 
 function clamp(n: number, lo: number, hi: number): number {
@@ -1570,16 +1582,17 @@ function weekdaysEqual(a: number[] | null, b: number[] | null): boolean {
   for (let i = 0; i < aa.length; i++) if (aa[i] !== bb[i]) return false;
   return true;
 }
-const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 
-function scheduleSummary(s: ScheduleSpec): string {
+function scheduleSummary(s: ScheduleSpec, t: TFunction): string {
   const hh = String(s.hour).padStart(2, "0");
   const mm = String(s.minute).padStart(2, "0");
   const days = s.weekdays ?? [];
-  if (days.length === 0) return `Runs daily at ${hh}:${mm}.`;
-  if (days.length === 7) return `Runs daily at ${hh}:${mm}.`;
-  const labels = days.map((d) => WEEKDAY_LABELS[d]).join(", ");
-  return `Runs at ${hh}:${mm} on ${labels}.`;
+  if (days.length === 0 || days.length === 7) {
+    return t("backupPanel.scheduleSummaryDaily", { hour: hh, minute: mm });
+  }
+  const labels = days.map((d) => t(`backupPanel.weekdays.${WEEKDAY_KEYS[d]}`)).join(", ");
+  return t("backupPanel.scheduleSummaryDays", { hour: hh, minute: mm, days: labels });
 }
 
 function formatDiagnostics(
@@ -1665,19 +1678,11 @@ function formatLinuxDiagnostics(d: LinuxDiagnosticResult): string {
 }
 
 // Translate Tauri capability rejections into language a user can act on.
-// The raw form ("forbidden path: …, maybe it is not allowed on the scope
-// for `allow-exists` permission in your capability file") leaks framework
-// internals and offers no remediation.
-function friendlyBackupError(raw: string): string {
+function friendlyBackupError(raw: string, t: TFunction): string {
   const m = /forbidden path:\s*([^,]+)/i.exec(raw);
   if (m) {
     const path = m[1].trim();
-    return (
-      `The backup folder ${path} is outside the locations the app is ` +
-      `allowed to write to. Move it to a folder under your home directory ` +
-      `or a synced cloud folder (OneDrive, Dropbox, iCloud Drive) and ` +
-      `pick it again via Change…`
-    );
+    return t("backupPanel.errors.forbiddenPath", { path });
   }
   return raw;
 }
@@ -1705,22 +1710,22 @@ function detectPlatform(): BackupPlatform {
   return "macos";
 }
 
-function formatRelative(ts: number): string {
+function formatRelative(ts: number, t: TFunction): string {
   const ms = Date.now() - ts;
   const minutes = Math.floor(ms / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 1) return t("backupPanel.relative.justNow");
+  if (minutes < 60) return t("backupPanel.relative.minutes", { count: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} hr ago`;
+  if (hours < 24) return t("backupPanel.relative.hours", { count: hours });
   const days = Math.floor(hours / 24);
-  return `${days} day${days === 1 ? "" : "s"} ago`;
+  return t("backupPanel.relative.days", { count: days });
 }
 
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
-  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+function formatBytes(n: number, t: TFunction): string {
+  if (n < 1024) return t("backupPanel.bytes.b", { n });
+  if (n < 1024 * 1024) return t("backupPanel.bytes.kb", { n: (n / 1024).toFixed(1) });
+  if (n < 1024 * 1024 * 1024) return t("backupPanel.bytes.mb", { n: (n / 1024 / 1024).toFixed(1) });
+  return t("backupPanel.bytes.gb", { n: (n / 1024 / 1024 / 1024).toFixed(2) });
 }
 
 interface RestorePreviewDialogProps {
@@ -1749,6 +1754,7 @@ function RestorePreviewDialog({
   onCancel,
   onConfirm,
 }: RestorePreviewDialogProps) {
+  const { t } = useTranslation();
   const grouped = useMemo(() => {
     const map = new Map<string, ConflictItem[]>();
     for (const c of conflicts) {
@@ -1768,31 +1774,33 @@ function RestorePreviewDialog({
         onClick={(e) => e.stopPropagation()}
       >
         <header className="settings-header">
-          <h3>Review restore — {total} conflict{total === 1 ? "" : "s"}</h3>
+          <h3>{t("backupPanel.restoreDialog.header", { count: total })}</h3>
           <button
             className="settings-close icon-btn"
-            aria-label="Cancel restore"
+            aria-label={t("backupPanel.restoreDialog.closeAria")}
             onClick={onCancel}
           >
             ×
           </button>
         </header>
         <div className="settings-body">
-          <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
-            From <code>{backupDestination}</code>. Uncheck any file you want to
-            keep as-is — only checked files will be overwritten in your live
-            tree.
-            {mirror && " Mirror mode: 'extra' files in your live tree (missing from the backup) will be deleted if checked."}
-          </div>
+          <div
+            style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}
+            dangerouslySetInnerHTML={{
+              __html:
+                t("backupPanel.restoreDialog.intro", { destination: backupDestination }) +
+                (mirror ? t("backupPanel.restoreDialog.mirrorNote") : ""),
+            }}
+          />
           <div className="restore-toolbar">
             <span className="restore-count">
-              {selCount} of {total} selected
+              {t("backupPanel.restoreDialog.countSelected", { selected: selCount, total })}
             </span>
             <button className="link-btn" onClick={() => onToggleAll(true)} disabled={allOn}>
-              Select all
+              {t("backupPanel.restoreDialog.selectAll")}
             </button>
             <button className="link-btn" onClick={() => onToggleAll(false)} disabled={selCount === 0}>
-              Deselect all
+              {t("backupPanel.restoreDialog.deselectAll")}
             </button>
           </div>
           <ul className="restore-section-list">
@@ -1827,20 +1835,20 @@ function RestorePreviewDialog({
                           />
                           <span className={`restore-kind kind-${c.kind}`}>
                             {c.kind === "new"
-                              ? "new"
+                              ? t("backupPanel.restoreDialog.kindNew")
                               : c.kind === "modified"
-                                ? "modify"
-                                : "delete"}
+                                ? t("backupPanel.restoreDialog.kindModify")
+                                : t("backupPanel.restoreDialog.kindDelete")}
                           </span>
                           <span className="restore-rel" title={c.dstPath}>
                             {c.rel}
                           </span>
                           <span className="restore-size">
                             {c.kind === "extra"
-                              ? formatBytes(c.dstSize ?? 0)
+                              ? formatBytes(c.dstSize ?? 0, t)
                               : c.kind === "modified" && c.dstSize !== null
-                                ? `${formatBytes(c.dstSize)} → ${formatBytes(c.srcSize ?? 0)}`
-                                : formatBytes(c.srcSize ?? 0)}
+                                ? `${formatBytes(c.dstSize, t)} → ${formatBytes(c.srcSize ?? 0, t)}`
+                                : formatBytes(c.srcSize ?? 0, t)}
                           </span>
                         </label>
                       </li>
@@ -1852,9 +1860,9 @@ function RestorePreviewDialog({
           </ul>
         </div>
         <footer className="restore-footer">
-          <button onClick={onCancel}>Cancel</button>
+          <button onClick={onCancel}>{t("backupPanel.restoreDialog.cancel")}</button>
           <button className="primary danger" onClick={onConfirm} disabled={selCount === 0}>
-            Restore {selCount} file{selCount === 1 ? "" : "s"}
+            {t("backupPanel.restoreDialog.restoreCount", { count: selCount })}
           </button>
         </footer>
       </div>
@@ -1881,6 +1889,7 @@ function BackupToolsPicker({
   onToggleTool,
   onToggleDataType,
 }: BackupToolsPickerProps) {
+  const { t } = useTranslation();
   const [filter, setFilter] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<Tool>>(new Set());
@@ -1893,68 +1902,68 @@ function BackupToolsPicker({
     });
   const lc = filter.trim().toLowerCase();
   const visible = lc
-    ? tools.filter((t) => t.id.toLowerCase().includes(lc) || t.label.toLowerCase().includes(lc))
+    ? tools.filter((x) => x.id.toLowerCase().includes(lc) || x.label.toLowerCase().includes(lc))
     : showAll
       ? tools
-      : tools.filter((t) => selected.includes(t.id));
+      : tools.filter((x) => selected.includes(x.id));
   const enabledCount = selected.length;
   return (
     <div className="backup-tools-picker">
       <div className="settings-section-title-row">
         <div className="settings-section-title" style={{ fontSize: 12 }}>
-          Tools &amp; data types ({enabledCount} selected)
+          {t("backupPanel.picker.header", { count: enabledCount })}
         </div>
         <input
           type="search"
           className="backup-tools-filter"
-          placeholder="Filter…"
+          placeholder={t("backupPanel.picker.filterPlaceholder")}
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          aria-label="Filter tools"
+          aria-label={t("backupPanel.picker.filterAria")}
         />
       </div>
       {visible.length === 0 ? (
         <div className="projects-empty" style={{ fontSize: 11 }}>
-          {lc ? "No tools match the filter." : "No tools selected yet."}
+          {lc ? t("backupPanel.picker.noneMatch") : t("backupPanel.picker.noneSelected")}
         </div>
       ) : (
         <ul className="backup-tools-list">
-          {visible.map((t) => {
-            const enabled = selected.includes(t.id);
-            const types = dataTypesFor(t.id);
+          {visible.map((tool) => {
+            const enabled = selected.includes(tool.id);
+            const types = dataTypesFor(tool.id);
             const flat = types.length === 1 && types[0].id === "all";
-            const ids = dataTypeSelection[t.id] ?? [];
-            const expanded = enabled && !flat && !collapsed.has(t.id);
+            const ids = dataTypeSelection[tool.id] ?? [];
+            const expanded = enabled && !flat && !collapsed.has(tool.id);
             return (
               <li
-                key={t.id}
+                key={tool.id}
                 className={`backup-tool-card ${enabled ? "active" : ""}`}
-                title={t.tooltip}
+                title={tool.tooltip}
               >
                 <div className="backup-tool-card-head">
                   <input
                     type="checkbox"
                     checked={enabled}
-                    onChange={() => onToggleTool(t.id)}
-                    aria-label={`Select ${t.label}`}
+                    onChange={() => onToggleTool(tool.id)}
+                    aria-label={t("backupPanel.picker.selectAria", { label: tool.label })}
                   />
                   <button
                     type="button"
                     className="backup-tool-card-nametoggle"
                     onClick={() => {
-                      if (!flat && enabled) toggleCollapsed(t.id);
-                      else onToggleTool(t.id);
+                      if (!flat && enabled) toggleCollapsed(tool.id);
+                      else onToggleTool(tool.id);
                     }}
                     aria-expanded={!flat ? expanded : undefined}
-                    title={t.tooltip}
+                    title={tool.tooltip}
                   >
-                    <span className="backup-tool-card-name">{t.label}</span>
+                    <span className="backup-tool-card-name">{tool.label}</span>
                     <span className="backup-tool-card-meta">
                       {flat
-                        ? "all config files"
+                        ? t("backupPanel.picker.allConfigFiles")
                         : enabled
-                          ? `${ids.length}/${types.length} data types`
-                          : `${types.length} data types`}
+                          ? t("backupPanel.picker.selectedDataTypes", { selected: ids.length, total: types.length })
+                          : t("backupPanel.picker.dataTypeCount", { count: types.length })}
                     </span>
                   </button>
                 </div>
@@ -1968,7 +1977,7 @@ function BackupToolsPicker({
                             <input
                               type="checkbox"
                               checked={on}
-                              onChange={(e) => onToggleDataType(t.id, dt.id, e.target.checked)}
+                              onChange={(e) => onToggleDataType(tool.id, dt.id, e.target.checked)}
                             />
                             <span className="backup-data-type-name">{dt.label}</span>
                           </label>
@@ -1991,7 +2000,9 @@ function BackupToolsPicker({
           className="link-btn backup-tools-toggle"
           onClick={() => setShowAll((s) => !s)}
         >
-          {showAll ? "Hide unselected tools" : `Show all ${tools.length} tools…`}
+          {showAll
+            ? t("backupPanel.picker.hideUnselected")
+            : t("backupPanel.picker.showAll", { count: tools.length })}
         </button>
       )}
     </div>

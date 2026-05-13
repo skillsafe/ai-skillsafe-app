@@ -8,11 +8,6 @@ export interface InstallScopeChoice {
   scope: "global" | "project";
   projectRoot?: string;
   tool: Tool;
-  // Claude project installs only. Default true — bundle goes to
-  // `.agents/skills/<n>` with a symlink at `.claude/skills/<n>` so the
-  // bundle can be shared across tools. False writes the bundle directly to
-  // `.claude/skills/<n>` as a real folder. Ignored for other tools.
-  useSymlink?: boolean;
 }
 
 interface Props {
@@ -53,10 +48,6 @@ export function InstallScopeDialog({
     return projects[0] ?? "";
   });
   const [tool, setTool] = useState<Tool>(initialTool);
-  // Default on: bundle lives in `.agents/skills/` with a symlink in
-  // `.claude/skills/`. Saves disk when the same bundle is used by multiple
-  // tools and is the canonical layout for shared skills.
-  const [useSymlink, setUseSymlink] = useState(true);
 
   // Resolve the actual global skill dir for the selected tool, so the hint
   // shows e.g. "~/.cursor/skills/<name>" for Cursor or "~/.codex/skills/<name>"
@@ -83,19 +74,6 @@ export function InstallScopeDialog({
     };
   }, [cfg]);
 
-  // For Claude project installs the primary path depends on the symlink
-  // toggle: with symlinks, the bundle lands in `.agents/skills/<n>` and a
-  // link in `.claude/skills/<n>` makes Claude Code see it; without, the
-  // bundle is written straight into `.claude/skills/<n>`. Other tools always
-  // install under their own skillsDir (e.g. `.cursor/skills/`).
-  const isClaudeProject = tool === "claude" && scope === "project";
-  const projectDirHint =
-    tool === "claude"
-      ? useSymlink
-        ? ".agents/skills"
-        : ".claude/skills"
-      : projectSkillsDir;
-
   const canConfirm =
     !busy && (scope === "global" || (scope === "project" && projectRoot.length > 0));
 
@@ -104,12 +82,7 @@ export function InstallScopeDialog({
     if (scope === "global") {
       onConfirm({ scope: "global", tool });
     } else {
-      onConfirm({
-        scope: "project",
-        projectRoot,
-        tool,
-        useSymlink: tool === "claude" ? useSymlink : undefined,
-      });
+      onConfirm({ scope: "project", projectRoot, tool });
     }
   }
 
@@ -172,16 +145,9 @@ export function InstallScopeDialog({
                     {t("installScope.noRecentProjects")}
                   </span>
                 ) : (
-                  <>
-                    <span className="install-scope-hint">
-                      &lt;projectRoot&gt;/{projectDirHint}/{artifactName}
-                    </span>
-                    {isClaudeProject && useSymlink && (
-                      <span className="install-scope-hint">
-                        {t("installScope.projectPlusSymlink", { name: artifactName })}
-                      </span>
-                    )}
-                  </>
+                  <span className="install-scope-hint">
+                    &lt;projectRoot&gt;/{projectSkillsDir}/{artifactName}
+                  </span>
                 )}
               </span>
             </label>
@@ -200,25 +166,6 @@ export function InstallScopeDialog({
                 <option key={p} value={p}>{p}</option>
               ))}
             </select>
-          </div>
-        )}
-
-        {isClaudeProject && projects.length > 0 && (
-          <div className="fm-field">
-            <label className="install-scope-checkbox">
-              <input
-                type="checkbox"
-                checked={useSymlink}
-                onChange={(e) => setUseSymlink(e.target.checked)}
-                disabled={busy}
-              />
-              <span>
-                {t("installScope.useSymlinkLabel")}
-                <span className="install-scope-hint">
-                  {useSymlink ? t("installScope.useSymlinkHintWith") : t("installScope.useSymlinkHintWithout")}
-                </span>
-              </span>
-            </label>
           </div>
         )}
 

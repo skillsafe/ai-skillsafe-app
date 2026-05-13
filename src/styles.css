@@ -370,15 +370,6 @@ select:focus-visible { outline-offset: 0; }
 .backup-data-type-name { line-height: 1.2; }
 .backup-data-type-desc { padding-left: 22px; font-size: 11px; color: var(--muted); line-height: 1.35; }
 .backup-tools-toggle { align-self: flex-start; font-size: 11px; }
-.backup-symlink-note {
-  font-size: 11px;
-  color: var(--muted);
-  line-height: 1.4;
-  padding: 6px 10px;
-  border-left: 2px solid var(--accent);
-  background: var(--accent-soft);
-  border-radius: 4px;
-}
 /* Restore preview dialog — wider than the standard ConfirmDialog because it
    shows a scrollable list of conflicts that the user can pick from. */
 .restore-dialog { max-width: 720px; width: 90vw; }
@@ -474,15 +465,6 @@ select:focus-visible { outline-offset: 0; }
 }
 .restore-footer .primary.danger:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.backup-symlink-note code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10.5px;
-  color: var(--text);
-  background: var(--panel);
-  padding: 0 4px;
-  border-radius: 3px;
-  border: 1px solid var(--border);
-}
 .backup-editor-path {
   color: var(--muted); font-size: 12px;
   flex: 1; min-width: 0;
