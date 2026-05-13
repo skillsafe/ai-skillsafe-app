@@ -134,6 +134,28 @@ jobs:
             hdiutil convert "$RW" -format UDZO -imagekey zlib-level=9 -o "$DMG"
             rm "$RW"
           done < <(find src-tauri/target -path '*/bundle/dmg/*.dmg' -type f)
+      - name: DEBUG — inspect dist
+        shell: bash
+        run: |
+          echo "--- dist tree ---"
+          ls -la dist dist/assets 2>&1 || true
+          echo "--- src/i18n/locales tree ---"
+          ls -la src/i18n/locales 2>&1 || true
+          wc -l src/i18n/locales/*.json 2>&1 || true
+          echo "--- bundle size ---"
+          wc -c dist/assets/index-*.js 2>&1 || true
+          echo "--- translated strings in bundle ---"
+          grep -c '"Local Backup"' dist/assets/index-*.js || true
+          grep -c '"Sauvegarde locale"' dist/assets/index-*.js || true
+          grep -c '"backupPanel\.title"' dist/assets/index-*.js || true
+          echo "--- first 200 chars of bundle ---"
+          head -c 200 dist/assets/index-*.js || true
+          echo
+      - name: DEBUG — upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-dist-${{ matrix.platform }}
+          path: dist/**
       - uses: actions/upload-artifact@v4
         with:
           name: skillsafe-${{ matrix.platform }}
