@@ -894,6 +894,16 @@
     "logEmpty": "(empty)",
     "logLast80": "Last 80 lines available",
     "logAvailable": "Log available",
+    "logIssue": {
+      "tccTitle": "{count, plural, one {# folder} other {# folders}} blocked by macOS permissions",
+      "tccBody": "rsync got “Operation not permitted” when opening these destinations under CloudStorage. macOS gates access per-process; folders created by an older instance of this app are unreachable to the current one until you either recreate them or grant Full Disk Access.",
+      "reveal": "Reveal in Finder",
+      "showFix": "Show fix steps",
+      "hideFix": "Hide fix steps",
+      "recheck": "Re-check log",
+      "fixQuick": "Quick fix: from Terminal, delete each listed folder, then click “Back up now”. The running process will recreate them with the access it needs. Source files are unaffected.",
+      "fixDurable": "Durable fix: System Settings → Privacy & Security → Full Disk Access → add this app (and /usr/bin/rsync if you use a scheduled backup), then quit and relaunch."
+    },
     "diagnostics": "Diagnostics",
     "restoringTitle": "Restoring…",
     "filesProgress": "{done} / {total} files",

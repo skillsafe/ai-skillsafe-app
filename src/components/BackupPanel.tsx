@@ -15,6 +15,7 @@ import { dataTypesFor, EXTRA_SOURCES } from "../lib/backup/dataTypes";
 import { scanForConflicts, type ConflictItem } from "../lib/backup/restoreScan";
 import { applyRestore } from "../lib/backup/restoreApply";
 import { buildAndWriteManifest } from "../lib/backup/summary";
+import { detectLogIssues, type BackupLogIssue } from "../lib/backup/logIssues";
 import {
   SERVICE_LABEL,
   diagnose as diagnoseSchedule,
@@ -110,6 +111,11 @@ export function BackupPanel({ onToast }: Props) {
   const [draftSchedule, setDraftSchedule] = useState<ScheduleSpec>(backupSchedule);
   const [logTail, setLogTail] = useState<LogTail | null>(null);
   const [showLog, setShowLog] = useState(false);
+  const [showFixSteps, setShowFixSteps] = useState(false);
+  const logIssues: BackupLogIssue[] = useMemo(
+    () => (logTail?.text ? detectLogIssues(logTail.text) : []),
+    [logTail?.text],
+  );
   const [diag, setDiag] = useState<
     DiagnosticResult | WinDiagnosticResult | LinuxDiagnosticResult | null
   >(null);
@@ -1359,6 +1365,72 @@ export function BackupPanel({ onToast }: Props) {
               </button>
             </div>
           )}
+
+          {/* TCC/permission diagnostics inferred from the latest log lines.
+              Surfaces a guided fix when rsync hit "Operation not permitted"
+              on a CloudStorage destination, so the user doesn't have to
+              read raw rsync output to know what's wrong. */}
+          {logIssues.map((issue) => (
+            <div
+              key={issue.kind}
+              role="alert"
+              style={{
+                marginTop: 10,
+                padding: 10,
+                background: "rgba(212, 70, 70, 0.08)",
+                border: "1px solid rgba(212, 70, 70, 0.35)",
+                borderRadius: 6,
+                fontSize: 12,
+              }}
+            >
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                {t("backupPanel.logIssue.tccTitle", { count: issue.paths.length })}
+              </div>
+              <div style={{ opacity: 0.85, marginBottom: 8 }}>
+                {t("backupPanel.logIssue.tccBody")}
+              </div>
+              <ul style={{ margin: "0 0 8px 16px", padding: 0, lineHeight: 1.5 }}>
+                {issue.paths.map((p) => (
+                  <li key={p} style={{ wordBreak: "break-all" }}>
+                    <code style={{ fontSize: 11 }}>{p}</code>{" "}
+                    <button
+                      className="link-btn"
+                      style={{ fontSize: 11 }}
+                      onClick={() => shellOpen(p).catch(() => {})}
+                    >
+                      {t("backupPanel.logIssue.reveal")}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                <button
+                  className="link-btn"
+                  onClick={() => setShowFixSteps((s) => !s)}
+                >
+                  {showFixSteps
+                    ? t("backupPanel.logIssue.hideFix")
+                    : t("backupPanel.logIssue.showFix")}
+                </button>
+                <button className="link-btn" onClick={refreshLog}>
+                  {t("backupPanel.logIssue.recheck")}
+                </button>
+              </div>
+              {showFixSteps && (
+                <ol
+                  style={{
+                    margin: "8px 0 0 16px",
+                    padding: 0,
+                    lineHeight: 1.6,
+                    opacity: 0.9,
+                  }}
+                >
+                  <li>{t("backupPanel.logIssue.fixQuick")}</li>
+                  <li>{t("backupPanel.logIssue.fixDurable")}</li>
+                </ol>
+              )}
+            </div>
+          ))}
 
           {/* Log tail — last lines from ~/Library/Logs/skillsafe-backup.log */}
           <div className="settings-section-title-row" style={{ marginTop: 10 }}>
