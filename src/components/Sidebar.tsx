@@ -1,11 +1,12 @@
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import type { ArtifactType, Scope, Tool } from "../lib/artifacts/types";
 import { ALL_AGENTS, displayNameOf } from "../lib/agents/registry";
 import { dataTypesFor } from "../lib/backup/dataTypes";
 import { useApp } from "../lib/store";
 import { ArchiveIcon, GearIcon, GlobeIcon, ShieldIcon } from "./icons";
+import { MASTER_TOOL_SENTINEL } from "./InventoryList";
 
 // Data-type ids already represented by the main TYPES row (skill/agent/
 // command via the artifact pipeline) — surfacing them as a second pill
@@ -38,6 +39,16 @@ const SCOPES: Scope[] = ["all", "global", "project"];
 
 const TYPES: ArtifactType[] = ["all", "skill", "agent", "command"];
 
+// Master files are grouped by StateCategory, not by artifact type. When
+// Master is the active scope, the TYPE row swaps to these pills so the
+// user can narrow the master view to a single group (memory, MCP, …) or
+// see everything ("all"). Kept in sync with StateCategory in
+// inventory/types.ts, minus the skills/agents/commands variants which the
+// artifact pipeline owns.
+const MASTER_CATEGORIES: ReadonlyArray<"all" | "memory" | "mcp" | "hooks" | "permissions" | "keybindings" | "transcripts"> = [
+  "all", "memory", "mcp", "hooks", "permissions", "keybindings", "transcripts",
+];
+
 // Configs only apply to global / project — there's no "all" file and no
 // lockfile to drift against, so we slice the artifact-scopes down here.
 const CONFIG_SCOPES: Scope[] = ["global", "project"];
@@ -53,9 +64,9 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
   const {
     tool, scope, type, category, backupTools, backupDataTypes,
     recentTools, recentProjects, projectFilter, bottomPanel,
-    view,
+    view, workbenchCategory,
     setTool, setScope, setType, setCategory, setProjectRoot, setProjectFilter,
-    setView,
+    setView, setWorkbenchCategory,
     setSettingsScrollTarget,
   } = useApp();
   // Eligible categories for the current tool: enabled in backup settings AND
@@ -72,10 +83,55 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
   }, [tool, toolBackupOn, backupDataTypes]);
   const isConfigs = view === "configs";
   const isWorkbench = view === "workbench";
-  // Configs/Workbench don't have an "all" scope; coerce silently when
-  // switching in so the sub-views render against a real file.
+  const workbenchInventory = useApp((s) => s.workbenchInventory);
+  const masterItems = useApp((s) => s.masterItems);
+
+  // Categories with at least one item under the current tool/scope/project
+  // filters. Mirrors InventoryList's filter pipeline minus the
+  // workbenchCategory step (so the user's current category pick doesn't
+  // collapse the row down to itself). The TYPE row in Master view only
+  // renders pills for categories in this set, plus the "all" pill.
+  const masterCategoriesWithItems = useMemo<ReadonlySet<string>>(() => {
+    if (!isWorkbench) return new Set();
+    const live = workbenchInventory?.items ?? [];
+    const liveIds = new Set(live.map((it) => it.id));
+    const masterOnly = masterItems.filter((it) => !liveIds.has(it.id));
+    const merged = [...live, ...masterOnly];
+    const out = new Set<string>();
+    for (const it of merged) {
+      if (it.tool !== MASTER_TOOL_SENTINEL && it.tool !== tool) continue;
+      if (scope === "global" && it.scope !== "global") continue;
+      if (scope === "project") {
+        if (it.scope !== "project") continue;
+        if (projectFilter && it.projectPath !== projectFilter) continue;
+      }
+      if (scope !== "global" && scope !== "project" && projectFilter) {
+        if (it.scope === "project" && it.projectPath !== projectFilter) continue;
+      }
+      out.add(it.category);
+    }
+    return out;
+  }, [isWorkbench, workbenchInventory, masterItems, tool, scope, projectFilter]);
+
+  // If the active master category just went empty (e.g. the user switched
+  // to a project that has no Hooks), drop the filter so the inventory pane
+  // doesn't render as blank with no obvious reset path.
+  useEffect(() => {
+    if (
+      isWorkbench &&
+      workbenchCategory &&
+      !masterCategoriesWithItems.has(workbenchCategory)
+    ) {
+      setWorkbenchCategory(null);
+    }
+  }, [isWorkbench, workbenchCategory, masterCategoriesWithItems, setWorkbenchCategory]);
+  // Configs doesn't have an "all" scope; coerce silently when switching in
+  // so the sub-views render against a real file. Workbench (Master) treats
+  // scope as a higher-level selector — it's the master view itself, so it
+  // accepts every underlying scope including "all" plus an optional project
+  // filter for narrowing master items down to a single project.
   const effectiveScope: Scope =
-    (isConfigs || isWorkbench) && scope === "all" ? "global" : scope;
+    isConfigs && scope === "all" ? "global" : scope;
 
   function manageProjects() {
     setSettingsScrollTarget("settings-projects");
@@ -201,12 +257,12 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
         </button>
       </div>
 
-      {effectiveScope === "project" && recentProjects.length === 0 && (
+      {(effectiveScope === "project" || isWorkbench) && recentProjects.length === 0 && (
         <div className="projects-summary">
           <button className="link-btn" onClick={pickProject}>{t("sidebar.addProjectFirst")}</button>
         </div>
       )}
-      {effectiveScope === "project" && recentProjects.length > 0 && (
+      {(effectiveScope === "project" || isWorkbench) && recentProjects.length > 0 && (
         <>
           <div className="section-label">{t("sidebar.filterByProject")}</div>
           <select
@@ -256,7 +312,7 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
           </button>
         </>
       )}
-      {scope === "all" && recentProjects.length > 0 && (
+      {scope === "all" && !isWorkbench && recentProjects.length > 0 && (
         <div className="projects-summary">
           <div className="section-label">{t("sidebar.projects")}</div>
           <div className="projects-summary-text">
@@ -268,24 +324,50 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
 
       <div className="section-label" id="sidebar-type-label">{t("sidebar.type")}</div>
       <div className="pill-row" role="tablist" aria-labelledby="sidebar-type-label">
-        {TYPES.map((tt) => {
-          const active = !isConfigs && !isWorkbench && category === null && type === tt;
-          return (
-            <button
-              key={tt}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              className={`pill ${active ? "active" : ""}`}
-              onClick={() => {
-                setView("artifacts");
-                setType(tt);
-              }}
-            >
-              {t(`types.${tt}`)}
-            </button>
-          );
-        })}
+        {isWorkbench
+          ? MASTER_CATEGORIES
+              // "all" always renders; other pills only render when there's
+              // at least one matching master file. Keeps the row from
+              // listing groups the user has nothing in.
+              .filter((mc) => mc === "all" || masterCategoriesWithItems.has(mc))
+              .map((mc) => {
+                // "all" pill = no filter (workbenchCategory === null).
+                const active =
+                  mc === "all" ? workbenchCategory === null : workbenchCategory === mc;
+                return (
+                  <button
+                    key={mc}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    className={`pill ${active ? "active" : ""}`}
+                    onClick={() => {
+                      // Stay in Master view; just narrow the inventory list.
+                      setWorkbenchCategory(mc === "all" ? null : mc);
+                    }}
+                  >
+                    {t(`masterCategories.${mc}`)}
+                  </button>
+                );
+              })
+          : TYPES.map((tt) => {
+              const active = !isConfigs && category === null && type === tt;
+              return (
+                <button
+                  key={tt}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  className={`pill ${active ? "active" : ""}`}
+                  onClick={() => {
+                    setView("artifacts");
+                    setType(tt);
+                  }}
+                >
+                  {t(`types.${tt}`)}
+                </button>
+              );
+            })}
         {!isConfigs && !isWorkbench && eligibleCategories.map((dt) => {
           const active = category === dt.id;
           const label = t(`categories.${categoryI18nKey(dt.id)}`, {

@@ -992,7 +992,12 @@
       "hideUnselected": "Hide unselected tools",
       "showAll": "Show all {count} tools…",
       "selectAria": "Select {label}"
-    }
+    },
+    "phase": {
+      "starting": "Starting backup…",
+      "writingManifest": "Writing manifest…"
+    },
+    "progressPhase": "{phase}"
   },
   "backupBrowser": {
     "title": "Local Backup",
@@ -1056,11 +1061,22 @@
       "masterMissing": "Master entry is missing — try refreshing the panel.",
       "openFailed": "Open failed: {message}",
       "restoreFailed": "Restore failed: {message}",
-      "readFileFailed": "Could not read file:\n{message}"
+      "readFileFailed": "Could not read file:\n{message}",
+      "masterLoadFailed": "Couldn't read master folder: {{message}}"
     },
     "ok": {
       "restoredMaster": "Restored master → {path}",
       "restoredFiles": "Restored {copied, plural, one {# file} other {# files}} → {dir}"
-    }
+    },
+    "tooLargeHint": "This file is {{mb}} MB — too large to preview inline. Click Open externally to view it."
+  },
+  "masterCategories": {
+    "all": "All",
+    "memory": "Memory",
+    "mcp": "MCP",
+    "hooks": "Hooks",
+    "permissions": "Permissions",
+    "keybindings": "Keybindings",
+    "transcripts": "Transcripts"
   }
 }

@@ -21,6 +21,7 @@ export function InventoryList() {
   const scope = useApp((s) => s.scope);
   const projectFilter = useApp((s) => s.projectFilter);
   const workbenchSelectedId = useApp((s) => s.workbenchSelectedId);
+  const workbenchCategory = useApp((s) => s.workbenchCategory);
   const inventory = useApp((s) => s.workbenchInventory);
   const loading = useApp((s) => s.workbenchLoading);
   const error = useApp((s) => s.workbenchError);
@@ -36,6 +37,13 @@ export function InventoryList() {
   // Settings filter behaves like Skills/Agents/Commands. Master-only
   // orphans (tool === MASTER_TOOL_SENTINEL) are tool-agnostic and
   // always pass the tool filter.
+  //
+  // Scope semantics for Master (Workbench) view:
+  //   - "all":      every scope passes; projectFilter narrows project-
+  //                 scoped items to the picked project but keeps globals
+  //                 (which apply across every project).
+  //   - "global":   only global items.
+  //   - "project":  only project-scoped items, optionally narrowed to one.
   const filtered = useMemo(() => {
     const live = inventory?.items ?? [];
     const liveIds = new Set(live.map((it) => it.id));
@@ -44,10 +52,20 @@ export function InventoryList() {
     const q = query.toLowerCase().trim();
     return merged.filter((it) => {
       if (it.tool !== MASTER_TOOL_SENTINEL && it.tool !== tool) return false;
+      // Master category filter (TYPE row in Master view): when set, the
+      // user has clicked Memory / MCP / Hooks / etc. and only that group
+      // of master files should show.
+      if (workbenchCategory && it.category !== workbenchCategory) return false;
       if (scope === "global" && it.scope !== "global") return false;
       if (scope === "project") {
         if (it.scope !== "project") return false;
         if (projectFilter && it.projectPath !== projectFilter) return false;
+      }
+      // Project refinement when scope isn't already constrained: lets the
+      // Master view's project picker narrow project-scoped items without
+      // hiding the globals the user almost always wants alongside.
+      if (scope !== "global" && scope !== "project" && projectFilter) {
+        if (it.scope === "project" && it.projectPath !== projectFilter) return false;
       }
       if (q) {
         // Match across name, on-disk path, tool key, and category so a
@@ -58,7 +76,7 @@ export function InventoryList() {
       }
       return true;
     });
-  }, [inventory, masterItems, tool, scope, projectFilter, query]);
+  }, [inventory, masterItems, tool, scope, projectFilter, query, workbenchCategory]);
 
   return (
     <section className="list-pane">

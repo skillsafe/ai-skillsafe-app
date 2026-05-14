@@ -277,6 +277,11 @@ interface TreeViewProps {
   /** Set of dir paths currently being loaded. Folders in this set render
    *  a "Loading…" placeholder while their `children` is still empty. */
   loadingFolders?: ReadonlySet<string>;
+  /** Whether to render the "📁 N files" header row above the tree. Default
+   *  true matches skill-bundle previews; lazy/collapsed category views
+   *  pass false because the count is a stale "0 files" until the user
+   *  drills in. */
+  showHeader?: boolean;
   onOpen: (node: Attachment) => void;
 }
 
@@ -297,16 +302,19 @@ export function TreeView({
   defaultExpanded = true,
   onExpandFolder,
   loadingFolders,
+  showHeader = true,
   onOpen,
 }: TreeViewProps) {
   const { t } = useTranslation();
   const total = countFiles(attachments) + (topItem ? 1 : 0);
   return (
     <div className="files-tree-wrap">
-      <div className="file-tree-header">
-        <FolderIcon />
-        <span>{t("treeView.fileCount", { count: total })}</span>
-      </div>
+      {showHeader && (
+        <div className="file-tree-header">
+          <FolderIcon />
+          <span>{t("treeView.fileCount", { count: total })}</span>
+        </div>
+      )}
       <div className="file-tree">
         {topItem && (
           <div

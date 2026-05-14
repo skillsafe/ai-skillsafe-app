@@ -992,7 +992,12 @@
       "hideUnselected": "Nicht ausgewählte Tools verbergen",
       "showAll": "Alle {count} Tools anzeigen…",
       "selectAria": "{label} auswählen"
-    }
+    },
+    "phase": {
+      "starting": "Backup wird gestartet…",
+      "writingManifest": "Manifest wird geschrieben…"
+    },
+    "progressPhase": "{phase}"
   },
   "backupBrowser": {
     "title": "Lokale Sicherung",
@@ -1056,11 +1061,22 @@
       "masterMissing": "Master-Eintrag fehlt — bitte das Panel aktualisieren.",
       "openFailed": "Öffnen fehlgeschlagen: {message}",
       "restoreFailed": "Wiederherstellung fehlgeschlagen: {message}",
-      "readFileFailed": "Datei konnte nicht gelesen werden:\n{message}"
+      "readFileFailed": "Datei konnte nicht gelesen werden:\n{message}",
+      "masterLoadFailed": "Master-Ordner konnte nicht gelesen werden: {{message}}"
     },
     "ok": {
       "restoredMaster": "Master wiederhergestellt → {path}",
       "restoredFiles": "{copied, plural, one {# Datei} other {# Dateien}} wiederhergestellt → {dir}"
-    }
+    },
+    "tooLargeHint": "Diese Datei ist {{mb}} MB groß – zu groß für die Inline-Vorschau. Klicken Sie auf „Extern öffnen“, um sie anzuzeigen."
+  },
+  "masterCategories": {
+    "all": "Alle",
+    "memory": "Speicher",
+    "mcp": "MCP",
+    "hooks": "Hooks",
+    "permissions": "Berechtigungen",
+    "keybindings": "Tastenkürzel",
+    "transcripts": "Transkripte"
   }
 }

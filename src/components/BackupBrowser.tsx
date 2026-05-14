@@ -31,10 +31,11 @@ import { renderMarkdown } from "../lib/markdown";
 import {
   fileBasename,
   inferLanguage,
-  isLikelyBinary,
   isMarkdown,
   prettyForPreview,
 } from "../lib/preview/fileClassify";
+import { loadForPreview } from "../lib/preview/loader";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { parseFrontmatter } from "../lib/frontmatter";
 import { ArchiveIcon } from "./icons";
 import { TreeView } from "./TreeView";
@@ -117,6 +118,10 @@ interface BrowserItem {
   files: BrowserFile[];
   // Path of the SKILL.md / single .md file used to source the description.
   primaryMdAbs?: string;
+  // Data-type slot this bucket belongs to (skills / memory / settings / …).
+  // Drives folder-grouped rendering (lazy collapsed tree for memory) so the
+  // render path doesn't have to re-derive it from `files[0]`.
+  slot?: string;
 }
 
 interface FileTreeNode {
@@ -181,7 +186,14 @@ export function BackupBrowser({ onToast }: Props) {
   const [selectedFile, setSelectedFile] = useState<BackupEntry | null>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [fileLoading, setFileLoading] = useState(false);
-  const [fileBinary, setFileBinary] = useState(false);
+  // Preview decision for the currently selected file. Drives the right-pane
+  // render branch (image | too-large | binary | text). Replaces the old
+  // boolean `fileBinary` which couldn't distinguish "too large to preview"
+  // from "known binary" and had no image branch at all.
+  const [previewKind, setPreviewKind] = useState<
+    "text" | "image" | "binary" | "too-large"
+  >("text");
+  const [previewSize, setPreviewSize] = useState(0);
 
   // Load manifest on destination / last-run change.
   useEffect(() => {
@@ -220,10 +232,20 @@ export function BackupBrowser({ onToast }: Props) {
         // returning so the user can browse/preview master files alongside
         // regular tool snapshots. The master folder itself isn't a backup
         // source — the entries are read live from <backup>/master/.
-        const masterEntries = await loadMasterAsBackupEntries(
+        const masterResult = await loadMasterAsBackupEntries(
           backupDestination,
           null,
         );
+        const masterEntries = masterResult.entries;
+        if (masterResult.error) {
+          // Don't block the rest of the manifest; just toast the failure so
+          // the user knows their master folder is misconfigured rather than
+          // silently empty.
+          onToast(
+            "error",
+            t("backupBrowser.errors.masterLoadFailed", { message: masterResult.error }),
+          );
+        }
         if (cancelled) return;
 
         let baseManifest: BackupManifest | null = null;
@@ -371,6 +393,36 @@ export function BackupBrowser({ onToast }: Props) {
     );
   }, [manifest, group, selectedTool, scopeFilter, filter, t]);
 
+  // History & Memory dedicated view: one big collapsible tree mirroring the
+  // in-app CategoryBrowser instead of a flat list of per-file rows. Built
+  // from the manifest entries themselves so no disk walk is needed; the
+  // tree opens with all folders collapsed so a project with hundreds of
+  // transcripts doesn't blow out the pane.
+  const memoryView = useMemo(() => {
+    if (group !== "memory") return null;
+    if (!manifest) return { attachments: [], fileMap: new Map<string, BackupEntry>(), description: "" };
+    const q = filter.toLowerCase().trim();
+    const matching: BackupEntry[] = [];
+    for (const e of manifest.entries) {
+      if (e.kind !== "artifact") continue;
+      if (selectedTool !== "all" && e.tool !== selectedTool) continue;
+      if (scopeFilter !== "all" && e.scope !== scopeFilter) continue;
+      if (slotOf(e) !== "memory") continue;
+      matching.push(e);
+    }
+    const { tree, fileMap } = buildMemoryTree(matching);
+    const attachments = memoryTreeToAttachments(tree, fileMap);
+    const filtered = q ? filterAttachmentTree(attachments, q) : attachments;
+    // Description: prefer the active tool's; fall back to claude's "memory"
+    // entry; finally a generic note. The in-app CategoryBrowser uses the
+    // DataType's own description verbatim.
+    const dataType =
+      (selectedTool !== "all" ? dataTypesFor(selectedTool).find((dt) => dt.id === "memory") : null) ??
+      dataTypesFor("claude").find((dt) => dt.id === "memory") ??
+      null;
+    return { attachments: filtered, fileMap, description: dataType?.description ?? "" };
+  }, [group, manifest, selectedTool, scopeFilter, filter]);
+
   // Auto-jump only when the user lands on an empty selection. With "All"
   // available we never need to override their explicit choice — the
   // fallbacks only fire when a specific tool/group has zero items.
@@ -453,29 +505,33 @@ export function BackupBrowser({ onToast }: Props) {
     };
   }, [items]);
 
-  // Load selected file's content for preview.
+  // Load selected file's content for preview. Goes through the shared
+  // loadForPreview helper so the BackupBrowser, AttachmentTree and remote
+  // trees all agree on which files render inline, which fall back to
+  // "Open externally", and which are too large to attempt at all.
   useEffect(() => {
     let cancelled = false;
     async function loadFile() {
       if (!selectedFile) {
         setFileContent(null);
-        setFileBinary(false);
+        setPreviewKind("text");
+        setPreviewSize(0);
         return;
       }
       setFileLoading(true);
-      setFileBinary(false);
       try {
-        if (isLikelyBinary(selectedFile.relPath)) {
-          if (cancelled) return;
-          setFileContent(null);
-          setFileBinary(true);
-          return;
-        }
-        const text = await tauriFs.readTextFile(selectedFile.destPath);
+        const result = await loadForPreview(
+          tauriFs,
+          selectedFile.destPath,
+          fileBasename(selectedFile.relPath),
+        );
         if (cancelled) return;
-        setFileContent(text);
+        setPreviewKind(result.kind);
+        setPreviewSize(result.kind === "text" || result.kind === "binary" || result.kind === "too-large" ? result.size : 0);
+        setFileContent(result.kind === "text" ? result.content : null);
       } catch (e) {
         if (cancelled) return;
+        setPreviewKind("text");
         setFileContent(
           t("backupBrowser.errors.readFileFailed", {
             message: e instanceof Error ? e.message : String(e),
@@ -489,7 +545,7 @@ export function BackupBrowser({ onToast }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [selectedFile]);
+  }, [selectedFile, t]);
 
   async function openExternally(destPath: string) {
     try {
@@ -849,7 +905,41 @@ export function BackupBrowser({ onToast }: Props) {
             ↻
           </button>
         </div>
-        {items.length === 0 ? (
+        {memoryView ? (
+          <>
+            {/* CategoryBrowser-style header above the unified tree so the
+                Local Backup view matches the in-app History & Memory layout
+                pixel-for-pixel: label, optional description, then a single
+                collapsible tree of project / global folders. */}
+            <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--border)" }}>
+              <div style={{ fontWeight: 600 }}>{slotLabelFor("memory")}</div>
+              {memoryView.description && (
+                <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
+                  {memoryView.description}
+                </div>
+              )}
+            </div>
+            {memoryView.attachments.length === 0 ? (
+              <div className="empty">
+                {filter ? t("backupBrowser.noMatches") : t("backupBrowser.noHistory")}
+              </div>
+            ) : (
+              <div style={{ padding: "8px 4px" }}>
+                <TreeView
+                  attachments={memoryView.attachments}
+                  activePath={selectedFile?.destPath ?? null}
+                  defaultExpanded={false}
+                  showHeader={false}
+                  onOpen={(node) => {
+                    if (node.isDir) return;
+                    const entry = memoryView.fileMap.get(node.path);
+                    if (entry) setSelectedFile(entry);
+                  }}
+                />
+              </div>
+            )}
+          </>
+        ) : items.length === 0 ? (
           <div className="empty">
             {filter
               ? t("backupBrowser.noMatches")
@@ -863,7 +953,18 @@ export function BackupBrowser({ onToast }: Props) {
           items.map((item) => {
             const isActive = selectedItemId === item.id;
             const description = descriptions[item.id];
-            const tree = isActive ? buildFileTree(item.files) : [];
+            const isFolderGrouped = item.slot
+              ? FOLDER_GROUPED_SLOTS.has(item.slot)
+              : false;
+            // Memory aggregate rows rebuild a CategoryBrowser-shaped tree
+            // (projects/ flattened, global hoisted) so the card matches the
+            // dedicated memory view. Everything else uses the literal
+            // relInItem layout.
+            const tree = isActive
+              ? isFolderGrouped
+                ? buildMemoryTree(item.files.map((f) => f.entry)).tree
+                : buildFileTree(item.files)
+              : [];
             return (
               <div key={item.id}>
                 <div
@@ -909,7 +1010,11 @@ export function BackupBrowser({ onToast }: Props) {
                 </div>
                 {/* Skip the inline tree for single-file items — the only
                     file is auto-selected on click and shown in the preview
-                    pane, so a one-row tree is dead weight. */}
+                    pane, so a one-row tree is dead weight. Folder-grouped
+                    slots (memory) render with collapsed folders by default
+                    so a project with hundreds of transcripts doesn't blow
+                    out the card; the user expands what they want, matching
+                    the in-app CategoryBrowser behavior. */}
                 {isActive && item.files.length > 1 && tree.length > 0 && (() => {
                   const fileMap = new Map<string, BrowserFile>();
                   const attachments = toAttachments(tree, fileMap);
@@ -918,6 +1023,8 @@ export function BackupBrowser({ onToast }: Props) {
                       <TreeView
                         attachments={attachments}
                         activePath={selectedFile?.destPath ?? null}
+                        defaultExpanded={!isFolderGrouped}
+                        showHeader={!isFolderGrouped}
                         onOpen={(node) => {
                           if (node.isDir) return;
                           const file = fileMap.get(node.path);
@@ -978,7 +1085,20 @@ export function BackupBrowser({ onToast }: Props) {
             <div className="md-preview"><p>{t("backupBrowser.selectToPreview")}</p></div>
           ) : fileLoading ? (
             <div className="md-preview"><p>{t("backupBrowser.loading")}</p></div>
-          ) : fileBinary ? (
+          ) : previewKind === "image" ? (
+            <div className="md-preview" style={{ display: "flex", justifyContent: "center", alignItems: "center", padding: 12 }}>
+              <img
+                src={convertFileSrc(selectedFile.destPath)}
+                alt={fileBasename(selectedFile.relPath)}
+                style={{ maxWidth: "100%", maxHeight: "100%" }}
+              />
+            </div>
+          ) : previewKind === "too-large" ? (
+            <div className="md-preview">
+              <p>{t("backupBrowser.tooLargeHint", { mb: (previewSize / (1024 * 1024)).toFixed(1) })}</p>
+              <p style={{ color: "var(--muted)", fontSize: 12 }}>{selectedFile.destPath}</p>
+            </div>
+          ) : previewKind === "binary" ? (
             <div className="md-preview">
               <p dangerouslySetInnerHTML={{ __html: t("backupBrowser.binaryHint") }} />
               <p style={{ color: "var(--muted)", fontSize: 12 }}>{selectedFile.destPath}</p>
@@ -1025,14 +1145,14 @@ function BackupEmpty({ children }: { children?: React.ReactNode }) {
 async function loadMasterAsBackupEntries(
   backupDestination: string,
   masterRootOverride: string | null,
-): Promise<BackupEntry[]> {
+): Promise<{ entries: BackupEntry[]; error: string | null }> {
   try {
     const masterRoot = await resolveMasterRoot(
       tauriPaths,
       masterRootOverride,
       backupDestination,
     );
-    if (!(await tauriFs.exists(masterRoot))) return [];
+    if (!(await tauriFs.exists(masterRoot))) return { entries: [], error: null };
     const [rawFiles, manifest] = await Promise.all([
       listMasterFiles(tauriFs, tauriJoiner, masterRoot),
       loadMasterManifest(tauriFs, tauriJoiner, masterRoot),
@@ -1045,45 +1165,53 @@ async function loadMasterAsBackupEntries(
       const base = rel.split("/").pop() ?? rel;
       return base.toLowerCase() !== "manifest.json";
     });
-    if (files.length === 0) return [];
+    if (files.length === 0) return { entries: [], error: null };
     const byPath = new Map<string, MasterEntry>();
     for (const e of manifest.entries) byPath.set(e.masterPath, e);
-    const out: BackupEntry[] = [];
-    for (const rel of files) {
-      const abs = await tauriJoiner.join(masterRoot, ...rel.split("/"));
-      let bytes = 0;
-      try {
-        bytes = (await tauriFs.stat(abs)).size;
-      } catch {
-        /* ignore */
-      }
-      const entry = byPath.get(rel);
-      const decoded = decodeMasterPath(rel);
-      // Prefix the relPath with "master/" so slotForPath can decide a
-      // sensible slot; unknown segments fall through to "settings". We
-      // also expose the underlying source's tool/scope when known so the
-      // file tree headers read naturally.
-      out.push({
-        kind: "artifact",
-        tool: MASTER_BROWSER_KEY,
-        scope:
-          entry?.sources[0]?.scope ?? decoded.scope ?? "global",
-        // "agent" is the closest existing artifact type for memory-style
-        // single-file content. Restore is intercepted before this is
-        // used to resolve a target dir.
-        type: "agent",
-        projectRoot: entry?.sources[0]?.projectPath ?? undefined,
-        relPath: `master/${rel}`,
-        destPath: abs,
-        sha256: entry?.canonicalHash ?? "",
-        bytes,
-        status: "unchanged",
-      });
-    }
-    return out;
-  } catch {
-    // Master folder is optional; missing/inaccessible just means no rows.
-    return [];
+    // Parallelize stat() so a master folder with hundreds of files doesn't
+    // spend O(n × roundtrip) sequentially just to read sizes.
+    const out: BackupEntry[] = await Promise.all(
+      files.map(async (rel) => {
+        const abs = await tauriJoiner.join(masterRoot, ...rel.split("/"));
+        let bytes = 0;
+        try {
+          bytes = (await tauriFs.stat(abs)).size;
+        } catch {
+          /* ignore */
+        }
+        const entry = byPath.get(rel);
+        const decoded = decodeMasterPath(rel);
+        // Prefix the relPath with "master/" so slotForPath can decide a
+        // sensible slot; unknown segments fall through to "settings". We
+        // also expose the underlying source's tool/scope when known so the
+        // file tree headers read naturally.
+        return {
+          kind: "artifact",
+          tool: MASTER_BROWSER_KEY,
+          scope:
+            entry?.sources[0]?.scope ?? decoded.scope ?? "global",
+          // "agent" is the closest existing artifact type for memory-style
+          // single-file content. Restore is intercepted before this is
+          // used to resolve a target dir.
+          type: "agent",
+          projectRoot: entry?.sources[0]?.projectPath ?? undefined,
+          relPath: `master/${rel}`,
+          destPath: abs,
+          sha256: entry?.canonicalHash ?? "",
+          bytes,
+          status: "unchanged",
+        };
+      }),
+    );
+    return { entries: out, error: null };
+  } catch (e) {
+    // Surface the failure to the caller so a misconfigured master folder
+    // doesn't silently look like an empty one. Master is still optional —
+    // the caller decides whether to toast or just render zero rows.
+    return {
+      entries: [],
+      error: e instanceof Error ? e.message : String(e),
+    };
   }
 }
 
@@ -1156,6 +1284,13 @@ function countArtifactsByTool(m: BackupManifest | null): Partial<Record<Tool, nu
 // browsable without click-into-bundle navigation.
 const BUNDLE_SLOTS = new Set(["skills"]);
 
+// Slots that should be presented as collapsible per-folder buckets instead
+// of one row per file. History & Memory mirrors the in-app CategoryBrowser
+// here: one row per project (or global / conversations / …), each
+// expanding into a lazy tree of its files. Listing every transcript as a
+// separate row drowns the middle pane on real backups.
+const FOLDER_GROUPED_SLOTS = new Set(["memory"]);
+
 function itemsForTool(
   m: BackupManifest,
   tool: Tool,
@@ -1182,11 +1317,22 @@ function itemsForTool(
     let key: string;
     let label: string;
     let relInItem: string;
+    // Folder-grouped slots (memory) collapse into a single aggregate row
+    // per tool so the All view shows "History & Memory" once instead of
+    // hundreds of per-transcript rows. The card body unpacks the aggregate
+    // back into a CategoryBrowser-style tree (see card-tree rendering).
+    const isAggregateSlot = FOLDER_GROUPED_SLOTS.has(slot);
     if (BUNDLE_SLOTS.has(slot)) {
       const bundle = rest[0] ?? t("backupBrowser.unnamed");
       key = `${slot}::${tool}::${e.scope ?? ""}::${e.projectRoot ?? ""}::${bundle}`;
       label = bundle;
       relInItem = rest.slice(1).join("/") || rest[0] || "";
+    } else if (isAggregateSlot) {
+      key = `${slot}::${tool}::__aggregate__`;
+      label = slotLabelFor(slot);
+      // Preserve the full sub-slot path so buildMemoryTree can rebuild the
+      // project / global folder structure inside the card-tree.
+      relInItem = rest.join("/") || slot;
     } else {
       const fileName = rest.join("/") || t("backupBrowser.unnamed");
       key = `${slot}::${tool}::${e.scope ?? ""}::${e.projectRoot ?? ""}::${fileName}`;
@@ -1197,11 +1343,17 @@ function itemsForTool(
     let item = buckets.get(key);
     if (!item) {
       const slotBadge = slotLabelFor(slot).toLowerCase();
-      const badges = [slotBadge, e.scope ?? ""].filter(Boolean) as string[];
-      const meta = e.scope === "project" && e.projectRoot
-        ? shortProjectName(e.projectRoot)
-        : undefined;
-      item = { id: key, label, badges, meta, files: [] };
+      // Aggregate rows may span scopes (global + per-project memory in
+      // one card), so skip the scope badge/meta — they'd be misleading.
+      const badges = isAggregateSlot
+        ? [slotBadge]
+        : ([slotBadge, e.scope ?? ""].filter(Boolean) as string[]);
+      const meta = isAggregateSlot
+        ? undefined
+        : e.scope === "project" && e.projectRoot
+          ? shortProjectName(e.projectRoot)
+          : undefined;
+      item = { id: key, label, badges, meta, files: [], slot };
       buckets.set(key, item);
     }
     item.files.push({ entry: e, relInItem });
@@ -1308,6 +1460,106 @@ function bundleFolder(files: BrowserFile[]): string | null {
 function truncate(s: string, n: number): string {
   if (s.length <= n) return s;
   return s.slice(0, n - 1) + "…";
+}
+
+/**
+ * Build a single unified tree from every memory-slot backup entry. Mirrors
+ * CategoryBrowser's "flatten projects/" behavior so per-project history
+ * dirs surface as top-level nodes instead of hiding under a "projects"
+ * wrapper. `fileMap` keys by the file's destPath so the tree's onOpen can
+ * resolve back to the originating BackupEntry.
+ */
+function buildMemoryTree(entries: ReadonlyArray<BackupEntry>): {
+  tree: FileTreeNode[];
+  fileMap: Map<string, BackupEntry>;
+} {
+  const root: FileTreeNode = { name: "", path: "", isDir: true, children: [] };
+  const fileMap = new Map<string, BackupEntry>();
+  for (const e of entries) {
+    if (e.kind !== "artifact") continue;
+    const parts = e.relPath.split("/").filter(Boolean);
+    // parts[0]=<tool>, parts[1]="memory" (slot). When the slot prefix is
+    // missing for some reason, fall back to skipping just the tool.
+    const restAll = parts[1] === "memory" ? parts.slice(2) : parts.slice(1);
+    if (restAll.length === 0) continue;
+    // CategoryBrowser flattens the projects/ wrapper one level so each
+    // project root shows up as its own top-level row. Do the same here.
+    const rest = restAll[0] === "projects" && restAll.length >= 2
+      ? restAll.slice(1)
+      : restAll;
+    let cursor = root;
+    let pathSoFar = "";
+    for (let i = 0; i < rest.length; i++) {
+      const seg = rest[i];
+      pathSoFar = pathSoFar ? `${pathSoFar}/${seg}` : seg;
+      const isLast = i === rest.length - 1;
+      let next = cursor.children.find((c) => c.name === seg);
+      if (!next) {
+        next = {
+          name: seg,
+          path: pathSoFar,
+          isDir: !isLast,
+          children: [],
+          file: isLast ? { entry: e, relInItem: rest.join("/") } : undefined,
+        };
+        cursor.children.push(next);
+      } else if (isLast) {
+        next.file = { entry: e, relInItem: rest.join("/") };
+        next.isDir = false;
+      }
+      cursor = next;
+    }
+    fileMap.set(e.destPath, e);
+  }
+  sortTree(root);
+  return { tree: root.children, fileMap };
+}
+
+/**
+ * Convert the internal FileTreeNode shape into TreeView's Attachment shape.
+ * Files use the BackupEntry's destPath as the Attachment.path so activePath
+ * comparison and fileMap lookup line up; folders use a `dir:` prefix to
+ * avoid collisions with file paths.
+ */
+function memoryTreeToAttachments(
+  nodes: FileTreeNode[],
+  _fileMap: Map<string, BackupEntry>,
+): Attachment[] {
+  return nodes.map((n) => {
+    if (n.isDir) {
+      return {
+        name: n.name,
+        path: `dir:${n.path}`,
+        size: 0,
+        isDir: true,
+        children: memoryTreeToAttachments(n.children, _fileMap),
+      };
+    }
+    const file = n.file!;
+    return {
+      name: n.name,
+      path: file.entry.destPath,
+      size: file.entry.bytes,
+      isDir: false,
+    };
+  });
+}
+
+/** Recursive name-substring filter that keeps a folder when any descendant
+ *  matches. Used for the memory view's search box. */
+function filterAttachmentTree(nodes: Attachment[], q: string): Attachment[] {
+  const out: Attachment[] = [];
+  for (const n of nodes) {
+    if (n.isDir) {
+      const kids = filterAttachmentTree(n.children ?? [], q);
+      if (kids.length > 0 || n.name.toLowerCase().includes(q)) {
+        out.push({ ...n, children: kids });
+      }
+    } else if (n.name.toLowerCase().includes(q)) {
+      out.push(n);
+    }
+  }
+  return out;
 }
 
 // Map BackupBrowser's tree shape into TreeView's Attachment shape. For files,

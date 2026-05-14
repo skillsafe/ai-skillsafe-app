@@ -992,7 +992,12 @@
       "hideUnselected": "未選択のツールを非表示",
       "showAll": "{count} 個のツールをすべて表示…",
       "selectAria": "{label} を選択"
-    }
+    },
+    "phase": {
+      "starting": "バックアップを開始しています…",
+      "writingManifest": "マニフェストを書き込み中…"
+    },
+    "progressPhase": "{phase}"
   },
   "backupBrowser": {
     "title": "ローカルバックアップ",
@@ -1056,11 +1061,22 @@
       "masterMissing": "master エントリがありません — パネルの更新をお試しください。",
       "openFailed": "開けませんでした：{message}",
       "restoreFailed": "復元に失敗しました：{message}",
-      "readFileFailed": "ファイルを読み取れませんでした：\n{message}"
+      "readFileFailed": "ファイルを読み取れませんでした：\n{message}",
+      "masterLoadFailed": "マスターフォルダを読み込めませんでした: {{message}}"
     },
     "ok": {
       "restoredMaster": "master を復元しました → {path}",
       "restoredFiles": "{copied} ファイルを復元 → {dir}"
-    }
+    },
+    "tooLargeHint": "このファイルは {{mb}} MB あり、インラインプレビューには大きすぎます。「外部で開く」をクリックして表示してください。"
+  },
+  "masterCategories": {
+    "all": "すべて",
+    "memory": "メモリ",
+    "mcp": "MCP",
+    "hooks": "フック",
+    "permissions": "権限",
+    "keybindings": "キーバインド",
+    "transcripts": "トランスクリプト"
   }
 }

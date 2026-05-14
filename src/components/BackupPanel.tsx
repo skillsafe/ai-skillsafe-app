@@ -652,7 +652,7 @@ export function BackupPanel({ onToast }: Props) {
     }
     setBackupBusy(true);
     setBackupProgress({
-      phase: "running script",
+      phase: t("backupPanel.phase.starting"),
       filesProcessed: 0,
       filesCopied: 0,
       bytesProcessed: 0,
@@ -663,22 +663,35 @@ export function BackupPanel({ onToast }: Props) {
       // and schedule. Then exec the same script the OS scheduler would have
       // run, so manual + scheduled paths share one implementation.
       const { scriptPath } = await ensureLocalGenerated();
-      const out =
-        platform === "windows"
-          ? await Command.create("powershell", [
-              "-WindowStyle",
-              "Hidden",
-              "-ExecutionPolicy",
-              "Bypass",
-              "-File",
-              scriptPath,
-            ]).execute()
-          : await Command.create("bash", [scriptPath]).execute();
+      // Spawn instead of execute so we can stream stdout into the live
+      // progress label. The script's log() / Write-Log helpers emit
+      // "[N/M] Sync <tool> · <category> ..." lines per section, so we can
+      // surface meaningful per-step status instead of leaving the user
+      // staring at "scanned 0 · copied 0" for the whole run.
+      const out = await runScriptStreaming(scriptPath, (phase) => {
+        setBackupProgress({
+          phase,
+          filesProcessed: 0,
+          filesCopied: 0,
+          bytesProcessed: 0,
+          bytesCopied: 0,
+        });
+      });
       // Script exit codes: 0 = clean, 2 = ran with non-fatal failures (logged),
       // anything else = fatal (e.g. destination missing).
       if (out.code !== 0 && out.code !== 2) {
         throw new Error(out.stderr || out.stdout || `exit code ${out.code}`);
       }
+      // Manifest walk can take several seconds on large backups; show its
+      // own phase so the bar isn't visually "stuck" on the last script
+      // line after the script exits.
+      setBackupProgress({
+        phase: t("backupPanel.phase.writingManifest"),
+        filesProcessed: 0,
+        filesCopied: 0,
+        bytesProcessed: 0,
+        bytesCopied: 0,
+      });
       const generatedAt = Date.now();
       // Walk the destination, diff against the previous manifest, and write
       // an updated LAST_BACKUP.json. This is what powers the "Last backup:
@@ -980,13 +993,19 @@ export function BackupPanel({ onToast }: Props) {
             <div className="dl-progress-fill backup-progress-indeterminate" />
           </div>
           <div className="dl-progress-label">
-            {t("backupPanel.progressLabel", {
-              phase: backupProgress.phase,
-              filesProcessed: backupProgress.filesProcessed,
-              bytesProcessed: formatBytes(backupProgress.bytesProcessed, t),
-              filesCopied: backupProgress.filesCopied,
-              bytesCopied: formatBytes(backupProgress.bytesCopied, t),
-            })}
+            {/* During the script phase we have no file counts (rsync /
+                robocopy don't stream them), so showing "scanned 0 · copied
+                0" is just noise. Use the short phase-only label until the
+                manifest walk produces real numbers. */}
+            {backupProgress.filesProcessed === 0 && backupProgress.filesCopied === 0
+              ? t("backupPanel.progressPhase", { phase: backupProgress.phase })
+              : t("backupPanel.progressLabel", {
+                  phase: backupProgress.phase,
+                  filesProcessed: backupProgress.filesProcessed,
+                  bytesProcessed: formatBytes(backupProgress.bytesProcessed, t),
+                  filesCopied: backupProgress.filesCopied,
+                  bytesCopied: formatBytes(backupProgress.bytesCopied, t),
+                })}
           </div>
         </div>
       )}
@@ -1678,6 +1697,75 @@ function formatLinuxDiagnostics(d: LinuxDiagnosticResult): string {
 }
 
 // Translate Tauri capability rejections into language a user can act on.
+/**
+ * Spawn the platform-appropriate backup script and stream its stdout into
+ * `onPhase` callbacks so the UI shows live "[N/M] Sync …" progress instead
+ * of a stuck "scanned 0 · copied 0" label. Returns the same shape
+ * `Command.execute()` would have returned so the caller stays simple.
+ *
+ * The script's log() helper prints lines like
+ *   [2026-05-13 22:00:01] [3/12] Sync Claude Code · Skills ...
+ * and a matching "[3/12] OK ..." when the section finishes. We surface
+ * just the Sync line — that's the actionable one. Anything we can't parse
+ * (banners, warnings, OK lines) is logged via console.debug for support.
+ */
+async function runScriptStreaming(
+  scriptPath: string,
+  onPhase: (phase: string) => void,
+): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  const isWindows = (await osType()) === "windows";
+  const cmd = isWindows
+    ? Command.create("powershell", [
+        "-WindowStyle",
+        "Hidden",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        scriptPath,
+      ])
+    : Command.create("bash", [scriptPath]);
+
+  // Capture full stdout/stderr so the error toast can still show useful
+  // context if the script exits non-zero — the live progress is just a
+  // UI nicety on top of that.
+  const stdoutChunks: string[] = [];
+  const stderrChunks: string[] = [];
+
+  // Match "[N/M] Sync <tool> · <data type> ..." after the optional
+  // log-helper timestamp prefix. Group 1 = step, 2 = total, 3 = label.
+  const SYNC_RE = /\[(\d+)\/(\d+)\]\s+Sync\s+(.+?)(?:\s*\.\.\.\s*)?$/;
+
+  cmd.stdout.on("data", (raw: string) => {
+    stdoutChunks.push(raw);
+    // Tauri emits a "data" event per line by default; split defensively
+    // in case the runtime buffers multiple lines together.
+    for (const line of raw.split(/\r?\n/)) {
+      if (!line) continue;
+      const m = SYNC_RE.exec(line);
+      if (m) {
+        onPhase(`${m[1]}/${m[2]} · ${m[3].trim()}`);
+      }
+    }
+  });
+  cmd.stderr.on("data", (raw: string) => {
+    stderrChunks.push(raw);
+  });
+
+  return await new Promise((resolve, reject) => {
+    cmd.on("close", (ev: { code: number | null }) => {
+      resolve({
+        code: ev.code,
+        stdout: stdoutChunks.join(""),
+        stderr: stderrChunks.join(""),
+      });
+    });
+    cmd.on("error", (err: unknown) => {
+      reject(err instanceof Error ? err : new Error(String(err)));
+    });
+    cmd.spawn().catch(reject);
+  });
+}
+
 function friendlyBackupError(raw: string, t: TFunction): string {
   const m = /forbidden path:\s*([^,]+)/i.exec(raw);
   if (m) {

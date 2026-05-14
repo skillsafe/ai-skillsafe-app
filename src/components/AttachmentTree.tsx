@@ -26,6 +26,9 @@ interface Props {
   /** Set of dir paths currently being walked. Folders in this set show a
    *  "Loading…" hint while their children are still empty. */
   loadingFolders?: ReadonlySet<string>;
+  /** Forwarded to TreeView. Default true keeps skill-bundle previews
+   *  showing "📁 N files"; category browsers pass false. */
+  showHeader?: boolean;
 }
 
 export function AttachmentTree({
@@ -36,6 +39,7 @@ export function AttachmentTree({
   defaultExpanded,
   onExpandFolder,
   loadingFolders,
+  showHeader,
 }: Props) {
   const viewedFile = useApp((s) => s.viewedFile);
   const setViewedFile = useApp((s) => s.setViewedFile);
@@ -121,6 +125,7 @@ export function AttachmentTree({
       defaultExpanded={defaultExpanded}
       onExpandFolder={onExpandFolder}
       loadingFolders={loadingFolders}
+      showHeader={showHeader}
       onOpen={handleOpen}
     />
   );

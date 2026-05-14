@@ -992,7 +992,12 @@
       "hideUnselected": "隐藏未选工具",
       "showAll": "显示全部 {count} 个工具…",
       "selectAria": "选择 {label}"
-    }
+    },
+    "phase": {
+      "starting": "正在启动备份…",
+      "writingManifest": "正在写入清单…"
+    },
+    "progressPhase": "{phase}"
   },
   "backupBrowser": {
     "title": "本地备份",
@@ -1056,11 +1061,22 @@
       "masterMissing": "master 条目缺失 — 请尝试刷新面板。",
       "openFailed": "打开失败：{message}",
       "restoreFailed": "恢复失败：{message}",
-      "readFileFailed": "无法读取文件：\n{message}"
+      "readFileFailed": "无法读取文件：\n{message}",
+      "masterLoadFailed": "无法读取主文件夹:{{message}}"
     },
     "ok": {
       "restoredMaster": "已恢复 master → {path}",
       "restoredFiles": "已恢复 {copied} 个文件 → {dir}"
-    }
+    },
+    "tooLargeHint": "此文件大小为 {{mb}} MB,过大无法内嵌预览。请点击“外部打开”查看。"
+  },
+  "masterCategories": {
+    "all": "全部",
+    "memory": "记忆",
+    "mcp": "MCP",
+    "hooks": "钩子",
+    "permissions": "权限",
+    "keybindings": "快捷键",
+    "transcripts": "会话记录"
   }
 }

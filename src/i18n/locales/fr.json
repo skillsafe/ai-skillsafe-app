@@ -992,7 +992,12 @@
       "hideUnselected": "Masquer les outils non sélectionnés",
       "showAll": "Afficher les {count} outils…",
       "selectAria": "Sélectionner {label}"
-    }
+    },
+    "phase": {
+      "starting": "Démarrage de la sauvegarde…",
+      "writingManifest": "Écriture du manifeste…"
+    },
+    "progressPhase": "{phase}"
   },
   "backupBrowser": {
     "title": "Sauvegarde locale",
@@ -1056,11 +1061,22 @@
       "masterMissing": "L'entrée master manque — essayez de rafraîchir le panneau.",
       "openFailed": "Échec de l'ouverture : {message}",
       "restoreFailed": "Échec de la restauration : {message}",
-      "readFileFailed": "Impossible de lire le fichier :\n{message}"
+      "readFileFailed": "Impossible de lire le fichier :\n{message}",
+      "masterLoadFailed": "Impossible de lire le dossier maître : {{message}}"
     },
     "ok": {
       "restoredMaster": "Master restauré → {path}",
       "restoredFiles": "Restaurés {copied, plural, one {# fichier} other {# fichiers}} → {dir}"
-    }
+    },
+    "tooLargeHint": "Ce fichier fait {{mb}} Mo — trop volumineux pour l'aperçu intégré. Cliquez sur « Ouvrir en externe » pour l'afficher."
+  },
+  "masterCategories": {
+    "all": "Tout",
+    "memory": "Mémoire",
+    "mcp": "MCP",
+    "hooks": "Hooks",
+    "permissions": "Permissions",
+    "keybindings": "Raccourcis",
+    "transcripts": "Transcriptions"
   }
 }

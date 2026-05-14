@@ -992,7 +992,12 @@
       "hideUnselected": "Ocultar herramientas no seleccionadas",
       "showAll": "Mostrar las {count} herramientas…",
       "selectAria": "Seleccionar {label}"
-    }
+    },
+    "phase": {
+      "starting": "Iniciando copia de seguridad…",
+      "writingManifest": "Escribiendo manifiesto…"
+    },
+    "progressPhase": "{phase}"
   },
   "backupBrowser": {
     "title": "Copia de seguridad local",
@@ -1056,11 +1061,22 @@
       "masterMissing": "Falta la entrada master — intenta recargar el panel.",
       "openFailed": "Error al abrir: {message}",
       "restoreFailed": "Error en la restauración: {message}",
-      "readFileFailed": "No se pudo leer el archivo:\n{message}"
+      "readFileFailed": "No se pudo leer el archivo:\n{message}",
+      "masterLoadFailed": "No se pudo leer la carpeta maestra: {{message}}"
     },
     "ok": {
       "restoredMaster": "Master restaurado → {path}",
       "restoredFiles": "Restaurados {copied, plural, one {# archivo} other {# archivos}} → {dir}"
-    }
+    },
+    "tooLargeHint": "Este archivo pesa {{mb}} MB; es demasiado grande para la vista previa en línea. Haga clic en «Abrir externamente» para verlo."
+  },
+  "masterCategories": {
+    "all": "Todo",
+    "memory": "Memoria",
+    "mcp": "MCP",
+    "hooks": "Hooks",
+    "permissions": "Permisos",
+    "keybindings": "Atajos",
+    "transcripts": "Transcripciones"
   }
 }

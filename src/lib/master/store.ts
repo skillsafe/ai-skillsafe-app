@@ -190,6 +190,13 @@ function emptyManifest(masterRoot: string): Manifest {
 function normalizeManifest(parsed: unknown, masterRoot: string): Manifest {
   if (!parsed || typeof parsed !== "object") return emptyManifest(masterRoot);
   const obj = parsed as Record<string, unknown>;
+  // Version guard: refuse to interpret a manifest from a newer schema
+  // we don't understand. Treating it as empty is safer than partial
+  // reads that could lose entries when the file is rewritten.
+  const rawVersion = obj.version;
+  if (typeof rawVersion === "number" && rawVersion > MANIFEST_VERSION) {
+    return emptyManifest(masterRoot);
+  }
   const entries = Array.isArray(obj.entries) ? obj.entries : [];
   const safe: MasterEntry[] = [];
   for (const e of entries) {
@@ -209,6 +216,7 @@ function normalizeManifest(parsed: unknown, masterRoot: string): Manifest {
       category: r.category as StateCategory,
       masterPath: r.masterPath,
       canonicalHash: r.canonicalHash,
+      canonicalTool: typeof r.canonicalTool === "string" ? r.canonicalTool : undefined,
       sources: r.sources
         .map((s) => normalizeSource(s))
         .filter((s): s is MasterSource => s !== null),
@@ -274,10 +282,23 @@ function parentDir(p: string): string | null {
 /**
  * Render the canonical payload for a category. Memory items write the raw
  * markdown body; MCP items write pretty-printed JSON of the server config.
+ * Throws if a memory item has no body — silently writing an empty file
+ * masks upstream bugs (e.g. a payload that was never populated) and
+ * leaves the user with a master entry that restores nothing.
  */
 function renderPayload(item: InventoryItem): string {
   if (item.category === "memory") {
-    const body = isObjectWithKey(item.payload, "body") ? String(item.payload.body) : "";
+    if (!isObjectWithKey(item.payload, "body")) {
+      throw new Error(
+        `Memory item ${item.id} has no payload.body — refusing to write an empty master payload.`,
+      );
+    }
+    const body = String(item.payload.body);
+    if (!body) {
+      throw new Error(
+        `Memory item ${item.id} payload.body is empty — refusing to write an empty master payload.`,
+      );
+    }
     return body;
   }
   // mcp + future categories: JSON of the payload.
@@ -352,6 +373,21 @@ export async function addToMaster(
   let entry: MasterEntry;
   if (existingIdx >= 0) {
     const existing = manifest.entries[existingIdx];
+    // When the resolved masterPath changes (e.g. a memory file was renamed
+    // before the entry's id-by-hash also moved, or a manual edit shifted
+    // the layout), wipe the old payload so it doesn't linger as an orphan
+    // file under the master root. Failure is logged but non-fatal — the
+    // manifest update below is the source of truth.
+    if (existing.masterPath !== masterPath) {
+      try {
+        await deleteMasterPayload(fs, pj, masterRoot, existing.masterPath);
+      } catch (e) {
+        console.warn(
+          `addToMaster: failed to remove stale payload ${existing.masterPath}:`,
+          e,
+        );
+      }
+    }
     // Preserve other sources; update the matching one or append it.
     const sources = [...existing.sources];
     const matchIdx = sources.findIndex(
@@ -363,6 +399,10 @@ export async function addToMaster(
       ...existing,
       masterPath,
       canonicalHash,
+      // Keep the original canonicalTool if set; otherwise inherit from
+      // whichever source the existing entry was first authored by. Don't
+      // overwrite on subsequent adds — the canonical shape is sticky.
+      canonicalTool: existing.canonicalTool ?? existing.sources[0]?.tool ?? source.tool,
       sources,
       updatedAt: now,
     };
@@ -373,6 +413,7 @@ export async function addToMaster(
       category: item.category,
       masterPath,
       canonicalHash,
+      canonicalTool: source.tool,
       sources: [source],
       updatedAt: now,
     };
@@ -443,10 +484,9 @@ export async function restoreSourceFromMaster(
     }
     const next = doc.servers.filter((s) => s.name !== itemName);
     next.push({ name: itemName, server: payload as McpServer });
-    const reloaded = doc.exists
-      ? doc
-      : { path: source.absPath, exists: false, servers: [], rest: {}, mtimeMs: null };
-    await saveMcp(fs, reloaded, next);
+    // loadMcp already returns the empty/non-existent shape with
+    // servers/rest defaults — no need to rebuild it here.
+    await saveMcp(fs, doc, next);
     return;
   }
   if (entry.category === "hooks" || entry.category === "permissions") {
@@ -628,42 +668,44 @@ export async function listMasterItems(
   if (manifest) {
     for (const e of manifest.entries) byPath.set(e.masterPath, e);
   }
-  const out: InventoryItem[] = [];
-  for (const rel of files) {
-    const entry = byPath.get(rel);
-    const decoded = decodeMasterPath(rel);
-    const firstSource = entry?.sources[0];
-    const tool = firstSource?.tool ?? decoded.tool ?? "__master__";
-    const category: StateCategory =
-      entry?.category ?? decoded.category ?? "memory";
-    const scope: WorkbenchScope =
-      firstSource?.scope ?? decoded.scope ?? "global";
-    const projectPath = firstSource?.projectPath ?? null;
-    const id = entry?.id ?? `master:${rel}`;
-    const absPath = await joinAll(pj, masterRoot, rel);
-    let lastSeen = entry?.updatedAt ?? 0;
-    if (!lastSeen) {
-      try {
-        lastSeen = (await fs.stat(absPath)).mtimeMs;
-      } catch {
-        /* ignore */
+  // Build each item in parallel — stat()'ing 500 orphan files sequentially
+  // can dominate the master folder's load time on a cold disk.
+  return Promise.all(
+    files.map(async (rel) => {
+      const entry = byPath.get(rel);
+      const decoded = decodeMasterPath(rel);
+      const firstSource = entry?.sources[0];
+      const tool = firstSource?.tool ?? decoded.tool ?? "__master__";
+      const category: StateCategory =
+        entry?.category ?? decoded.category ?? "memory";
+      const scope: WorkbenchScope =
+        firstSource?.scope ?? decoded.scope ?? "global";
+      const projectPath = firstSource?.projectPath ?? null;
+      const id = entry?.id ?? `master:${rel}`;
+      const absPath = await joinAll(pj, masterRoot, rel);
+      let lastSeen = entry?.updatedAt ?? 0;
+      if (!lastSeen) {
+        try {
+          lastSeen = (await fs.stat(absPath)).mtimeMs;
+        } catch {
+          /* ignore */
+        }
       }
-    }
-    out.push({
-      id,
-      tool,
-      category,
-      scope,
-      projectPath,
-      name: decoded.name,
-      absPath,
-      payload: { masterPath: rel },
-      contentHash: entry?.canonicalHash ?? "",
-      lastSeen,
-      masterOnly: true,
-    });
-  }
-  return out;
+      return {
+        id,
+        tool,
+        category,
+        scope,
+        projectPath,
+        name: decoded.name,
+        absPath,
+        payload: { masterPath: rel },
+        contentHash: entry?.canonicalHash ?? "",
+        lastSeen,
+        masterOnly: true,
+      };
+    }),
+  );
 }
 
 async function walk(
@@ -770,11 +812,14 @@ export async function unbindSource(
 
 /**
  * The tool whose body shape master is currently storing. Used to decide
- * whether a memory restore needs cross-tool translation. Falls back to
- * the first source's tool when the entry has no notes-based override.
+ * whether a memory restore needs cross-tool translation. Prefer the
+ * explicit `canonicalTool` set on the entry (sticky across bind/unbind);
+ * fall back to the first source's tool for manifests written before that
+ * field existed.
  */
 function canonicalMemoryTool(entry: MasterEntry): string | null {
   if (entry.category !== "memory") return null;
+  if (entry.canonicalTool) return entry.canonicalTool;
   const first = entry.sources[0];
   return first?.tool ?? null;
 }

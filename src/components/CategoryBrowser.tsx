@@ -257,6 +257,7 @@ export function CategoryBrowser() {
             defaultExpanded={false}
             onExpandFolder={handleExpandFolder}
             loadingFolders={loadingFolders}
+            showHeader={false}
           />
         </div>
       )}
