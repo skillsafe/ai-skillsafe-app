@@ -119,7 +119,16 @@ export function parseManifest(text: string): BackupManifest | null {
     if (!parsed || typeof parsed !== "object") return null;
     if (typeof parsed.version !== "number") return null;
     if (!Array.isArray(parsed.entries)) return null;
-    return parsed as BackupManifest;
+    const m = parsed as BackupManifest;
+    // Older manifests (written before summary.ts filtered .DS_Store at
+    // every depth) may contain Finder droppings as full entries. Strip
+    // them on read so the BackupBrowser doesn't show them until the next
+    // backup run rewrites the manifest.
+    m.entries = m.entries.filter((e) => {
+      const base = e.relPath?.split("/").pop() ?? "";
+      return base !== ".DS_Store";
+    });
+    return m;
   } catch {
     return null;
   }

@@ -50,11 +50,16 @@ interface BuildOptions {
 }
 
 /** Files we wrote ourselves and which therefore should not appear as backup
- *  entries in their own manifest. */
+ *  entries in their own manifest. Only matched at the root of the backup
+ *  destination — see `ROOT_ONLY_SKIP` vs `ANY_DEPTH_SKIP` below. */
 const SKIP_FILES = new Set([
   MANIFEST_FILENAME,
-  ".DS_Store",
 ]);
+
+/** Finder drops a `.DS_Store` into every folder a user opens, including
+ *  arbitrarily deep ones inside the backup tree. Filter at every depth so
+ *  these don't pollute the file listing. */
+const ANY_DEPTH_SKIP = new Set([".DS_Store"]);
 
 const TIME_TOLERANCE_MS = 2000;
 
@@ -149,6 +154,7 @@ async function walk(
   const entries = await safeReadDir(fs, dir);
   for (const e of entries) {
     if (e.name === "." || e.name === "..") continue;
+    if (ANY_DEPTH_SKIP.has(e.name)) continue;
     if (rel === "" && SKIP_FILES.has(e.name)) continue;
     // The master/ folder is browsed live by loadMasterAsBackupEntries —
     // it is not part of any tool's backup snapshot. Skip the whole tree

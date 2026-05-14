@@ -189,6 +189,7 @@ async function walk(
   const entries = await safeReadDir(fs, dir);
   for (const e of entries) {
     if (e.name === "." || e.name === "..") continue;
+    if (e.name === ".DS_Store") continue;
     const childRel = rel ? `${rel}/${e.name}` : e.name;
     const childAbs = `${dir}/${e.name}`;
     if (e.isDirectory) {
