@@ -5,7 +5,7 @@ import type { CloudAccount } from "./skillsafe/types";
 import type { ScanReport } from "./skillsafe/client";
 import type { BackupStats } from "./backup/manifest";
 import type { BackupProgress } from "./backup/runBackup";
-import type { ScheduleSpec } from "./backup/generateScripts";
+import { DEFAULT_SCHEDULE, type ScheduleSpec } from "./backup/generateScripts";
 import {
   dataTypesFor,
   defaultDataTypeIdsFor,
@@ -208,7 +208,7 @@ function initialBackupSchedule(): ScheduleSpec {
       }
     } catch { /* ignore */ }
   }
-  return { hour: 12, minute: 15, weekdays: null };
+  return { ...DEFAULT_SCHEDULE };
 }
 
 // Resizable-divider defaults. Sidebar / list-pane widths are pixels; the

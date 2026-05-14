@@ -32,7 +32,7 @@ export interface ScheduleSpec {
   weekdays?: number[] | null;
 }
 
-export const DEFAULT_SCHEDULE: ScheduleSpec = { hour: 12, minute: 15, weekdays: null };
+export const DEFAULT_SCHEDULE: ScheduleSpec = { hour: 22, minute: 0, weekdays: null };
 
 export interface GenerateScriptsOptions {
   fs: FsAdapter;

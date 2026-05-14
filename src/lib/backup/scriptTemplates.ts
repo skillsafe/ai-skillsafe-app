@@ -250,7 +250,7 @@ already filled in.
 
 ## What it does
 
-Every day at 12:15, a launchd job runs claude_backup.sh. The script mirrors
+Every day at 22:00, a launchd job runs claude_backup.sh. The script mirrors
 the selected tools' config directories — currently:
 
 {{TOOL_LIST_MD}}
@@ -332,7 +332,7 @@ export const WINDOWS_REGISTER_PS1 = `# Register the daily backup task with Windo
 # Run this PowerShell window as Administrator.
 
 \$action    = New-ScheduledTaskAction -Execute "powershell.exe" -Argument '-WindowStyle Hidden -ExecutionPolicy Bypass -File "{{SCRIPT_PATH}}"'
-\$trigger   = New-ScheduledTaskTrigger -Daily -At "12:15"
+\$trigger   = New-ScheduledTaskTrigger -Daily -At "22:00"
 \$settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
 \$principal = New-ScheduledTaskPrincipal -UserId "\$env:USERNAME" -LogonType S4U -RunLevel Limited
 
@@ -499,7 +499,7 @@ it manually:
 
     chmod +x "{{SCRIPT_PATH}}"
     ( crontab -l 2>/dev/null | grep -v '{{LABEL}}' ; \\
-      echo '15 12 * * * "{{SCRIPT_PATH}}" # {{LABEL}}' ) | crontab -
+      echo '0 22 * * * "{{SCRIPT_PATH}}" # {{LABEL}}' ) | crontab -
 
 ## Verify
 
@@ -519,7 +519,7 @@ already filled in.
 
 ## What it does
 
-Every day at 12:15, a Task Scheduler job runs claude_backup.ps1, which uses
+Every day at 22:00, a Task Scheduler job runs claude_backup.ps1, which uses
 Robocopy to mirror the selected tools' config directories — currently:
 
 {{TOOL_LIST_MD}}
