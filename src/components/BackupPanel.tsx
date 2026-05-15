@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -15,6 +15,12 @@ import { dataTypesFor, EXTRA_SOURCES } from "../lib/backup/dataTypes";
 import { scanForConflicts, type ConflictItem } from "../lib/backup/restoreScan";
 import { applyRestore } from "../lib/backup/restoreApply";
 import { buildAndWriteManifest } from "../lib/backup/summary";
+import {
+  manifestPath as manifestPathOf,
+  sentinelPath as sentinelPathOf,
+  parseSentinel,
+  detectPlatform,
+} from "../lib/backup/appPaths";
 import { detectLogIssues, type BackupLogIssue } from "../lib/backup/logIssues";
 import {
   SERVICE_LABEL,
@@ -65,6 +71,13 @@ const ALL_TOOLS: ReadonlyArray<{ id: Tool; label: string; tooltip?: string }> = 
   })),
 ].sort((a, b) => a.label.localeCompare(b.label));
 
+// camelCase a data-type id for `categories.*` i18n key lookup. Mirrors the
+// helpers in Sidebar.tsx / CategoryBrowser.tsx so the same translation key
+// resolves for the same dt.id regardless of which surface renders it.
+function dataTypeI18nKey(id: string): string {
+  return id.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+}
+
 interface Props {
   onToast: (kind: "ok" | "error", text: string) => void;
 }
@@ -111,6 +124,11 @@ export function BackupPanel({ onToast }: Props) {
   const [draftSchedule, setDraftSchedule] = useState<ScheduleSpec>(backupSchedule);
   const [logTail, setLogTail] = useState<LogTail | null>(null);
   const [showLog, setShowLog] = useState(false);
+  // When the log auto-grows during a backup, keep the latest line in view
+  // without forcing the user to scroll. We snap to the bottom on every log
+  // refresh while `backupBusy` is true; once the run ends the user can
+  // scroll freely without us yanking it back.
+  const logPreRef = useRef<HTMLPreElement>(null);
   const [showFixSteps, setShowFixSteps] = useState(false);
   const logIssues: BackupLogIssue[] = useMemo(
     () => (logTail?.text ? detectLogIssues(logTail.text) : []),
@@ -260,13 +278,108 @@ export function BackupPanel({ onToast }: Props) {
     } catch {
       setLogTail(null);
     }
+    // Sentinel-driven refresh: every successful backup run (manual via this
+    // panel, "Run now", or the scheduled fire at 3 am) drops a sentinel with
+    // started_at / finished_at / exit_code into the app state dir. If it's
+    // newer than the manifest currently summarised in `backupStats`, walk
+    // the destination again so the "Recent changes" list reflects the run
+    // we just observed. Skipped when no destination is set or when a manual
+    // backup is already in progress (the in-flight handler will refresh).
+    if (!backupDestination || backupBusy) return;
+    try {
+      const home = await tauriPaths.homeDir();
+      const sPath = await sentinelPathOf(platform, home, tauriJoiner);
+      if (!(await tauriFs.exists(sPath))) return;
+      const sentinelText = await tauriFs.readTextFile(sPath);
+      const sentinel = parseSentinel(sentinelText);
+      if (!sentinel) return;
+      // sentinel.finishedAt is unix seconds; backupLastRun is unix
+      // milliseconds (Date.now()). Normalize before comparing.
+      const sentinelMs = sentinel.finishedAt * 1000;
+      const knownDestinationOk =
+        !!backupStats && backupStats.backupRoot === backupDestination;
+      if (knownDestinationOk && backupLastRun && sentinelMs <= backupLastRun) return;
+      const mPath = await manifestPathOf(platform, home, tauriJoiner);
+      const { stats } = await buildAndWriteManifest({
+        fs: tauriFs,
+        joiner: tauriJoiner,
+        destination: backupDestination,
+        manifestPath: mPath,
+        generatedAt: sentinelMs || Date.now(),
+      });
+      setBackupResult(stats.generatedAt, stats);
+    } catch {
+      // Sentinel refresh is observability only — never propagate a failure
+      // here; the user still has the manual "Back up now" path.
+    }
   }
 
-  // Load log tail once on mount (and on platform change).
+  // Load log tail on mount, on platform change, and whenever the user
+  // switches backup destinations — the sentinel-driven refresh inside
+  // refreshLog needs to compare the manifest's recorded destination against
+  // the current one, so a stale closure would miss the dest-change case.
   useEffect(() => {
     refreshLog();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [platform]);
+  }, [platform, backupDestination]);
+
+  // Auto-expand the log section the moment a run kicks off — manual or
+  // schedule-triggered. Users don't need to find the "Show" button to see
+  // what's happening; it's already open by the time the first line arrives.
+  // The toggle is sticky after the run finishes so the user can read the
+  // result; collapsing it manually still works.
+  useEffect(() => {
+    if (backupBusy || scheduleBusy === "run") {
+      setShowLog(true);
+    }
+  }, [backupBusy, scheduleBusy]);
+
+  // Poll the log every 1.2 s while a backup is running so the in-panel log
+  // tail tracks the script's live output. Without this the user would see a
+  // stale snapshot until the script exits and `handleBackup`'s post-run
+  // refreshLog() fires. 1.2 s matches the indeterminate progress-bar
+  // cadence so the two feel visually linked.
+  useEffect(() => {
+    if (!backupBusy && scheduleBusy !== "run") return;
+    const id = setInterval(() => {
+      refreshLog();
+    }, 1200);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backupBusy, scheduleBusy]);
+
+  // Keep the log pinned to the latest line while a run is active so the
+  // user always sees the freshest output (matches the "tail -f" mental
+  // model). After the run we leave the scroll position alone so the user
+  // can scroll back to review.
+  useEffect(() => {
+    if (!backupBusy && scheduleBusy !== "run") return;
+    const el = logPreRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [logTail, backupBusy, scheduleBusy]);
+
+  // Most-recent script line, used as the live progress label so the user
+  // sees the actual rsync/robocopy section the script is currently working
+  // through (e.g. "Sync claude · skills (8/14)") instead of just the static
+  // "Starting backup…" phase that BackupPanel sets pre-spawn. Returns an
+  // empty string when nothing useful is available so callers can fall back
+  // to backupProgress.phase.
+  function latestLogLine(): string {
+    const text = logTail?.text;
+    if (!text) return "";
+    const lines = text.split(/\r?\n/);
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      // Drop the leading "[YYYY-MM-DD HH:MM:SS] " timestamp — the panel
+      // already shows a relative "Running…" indicator so the wall-clock
+      // stamp is just noise on a single-line preview.
+      const stripped = line.replace(/^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*/, "");
+      return stripped;
+    }
+    return "";
+  }
 
   // Resolve every path the backup plumbing needs for the current platform in
   // one place, so handleBackup, ensureLocalGenerated, schedule install/
@@ -700,15 +813,20 @@ export function BackupPanel({ onToast }: Props) {
       });
       const generatedAt = Date.now();
       // Walk the destination, diff against the previous manifest, and write
-      // an updated LAST_BACKUP.json. This is what powers the "Last backup:
-      // …+N ~M -K · X MB" line and the BackupBrowser file tree. The walker
-      // in summary.ts skips the master/ tree, so master files only ever
+      // an updated LAST_BACKUP.json. This now lands in the per-machine
+      // app-state dir (see appPaths.manifestPath) rather than alongside the
+      // backed-up files, so each machine maintains its own view and the
+      // shared cloud-synced backup folder stays uncluttered. The walker in
+      // summary.ts skips the master/ tree, so master files only ever
       // surface via loadMasterAsBackupEntries (live walk).
       try {
+        const home = await tauriPaths.homeDir();
+        const mPath = await manifestPathOf(platform, home, tauriJoiner);
         const { stats } = await buildAndWriteManifest({
           fs: tauriFs,
           joiner: tauriJoiner,
           destination: backupDestination,
+          manifestPath: mPath,
           generatedAt,
         });
         setBackupResult(generatedAt, stats);
@@ -999,37 +1117,69 @@ export function BackupPanel({ onToast }: Props) {
             <div className="dl-progress-fill backup-progress-indeterminate" />
           </div>
           <div className="dl-progress-label">
-            {/* During the script phase we have no file counts (rsync /
-                robocopy don't stream them), so showing "scanned 0 · copied
-                0" is just noise. Use the short phase-only label until the
-                manifest walk produces real numbers. */}
-            {backupProgress.filesProcessed === 0 && backupProgress.filesCopied === 0
-              ? t("backupPanel.progressPhase", { phase: backupProgress.phase })
-              : t("backupPanel.progressLabel", {
-                  phase: backupProgress.phase,
-                  filesProcessed: backupProgress.filesProcessed,
-                  bytesProcessed: formatBytes(backupProgress.bytesProcessed, t),
-                  filesCopied: backupProgress.filesCopied,
-                  bytesCopied: formatBytes(backupProgress.bytesCopied, t),
-                })}
+            {/*
+              Live status line. Prefer the latest line the running script
+              has emitted (e.g. "Sync claude · skills (8/14)") so the user
+              sees real activity, not the pre-spawn "Starting backup…"
+              placeholder. Fall back to backupProgress.phase + counts
+              during the manifest-walk phase, when the script is done and
+              the JS-side walker is producing the file counts.
+            */}
+            {(() => {
+              const live = latestLogLine();
+              if (live) return t("backupPanel.runningPrefix", { line: live });
+              if (backupProgress.filesProcessed === 0 && backupProgress.filesCopied === 0) {
+                return t("backupPanel.progressPhase", { phase: backupProgress.phase });
+              }
+              return t("backupPanel.progressLabel", {
+                phase: backupProgress.phase,
+                filesProcessed: backupProgress.filesProcessed,
+                bytesProcessed: formatBytes(backupProgress.bytesProcessed, t),
+                filesCopied: backupProgress.filesCopied,
+                bytesCopied: formatBytes(backupProgress.bytesCopied, t),
+              });
+            })()}
           </div>
         </div>
       )}
 
       {backupLastRun && backupStats && (
         <div className="projects-summary-text" style={{ paddingLeft: 6 }}>
-          <div>
-            {t("backupPanel.lastBackupLine", {
-              relative: formatRelative(backupLastRun, t),
-              added: backupStats.counts.added,
-              changed: backupStats.counts.changed,
-              removed: backupStats.counts.removed,
-              bytes: formatBytes(backupStats.totalBytes, t),
-            })}
-            {backupStats.errorCount > 0 && (
-              <span className="badge drift" style={{ marginLeft: 8 }}>
-                {t("backupPanel.errorBadge", { count: backupStats.errorCount })}
-              </span>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+              flexWrap: "wrap",
+            }}
+          >
+            <span>
+              {t("backupPanel.lastBackupLine", {
+                relative: formatRelative(backupLastRun, t),
+                added: backupStats.counts.added,
+                changed: backupStats.counts.changed,
+                removed: backupStats.counts.removed,
+                bytes: formatBytes(backupStats.totalBytes, t),
+              })}
+              {backupStats.errorCount > 0 && (
+                <span className="badge drift" style={{ marginLeft: 8 }}>
+                  {t("backupPanel.errorBadge", { count: backupStats.errorCount })}
+                </span>
+              )}
+            </span>
+            {logTail && (
+              // Direct affordance to the log without scrolling — toggles
+              // the same showLog state the LOG section header drives so
+              // either control reflects the other.
+              <button
+                type="button"
+                className="link-btn"
+                onClick={() => setShowLog((s) => !s)}
+                title={t("backupPanel.toggleLogTitle")}
+              >
+                {showLog ? t("backupPanel.hideLogLink") : t("backupPanel.viewLogLink")}
+              </button>
             )}
           </div>
           {backupStats.errorSamples && backupStats.errorSamples.length > 0 && (
@@ -1132,6 +1282,98 @@ export function BackupPanel({ onToast }: Props) {
             </details>
           )}
         </div>
+      )}
+
+      {/* Log tail — last lines from the platform-specific
+          skillsafe-backup.log. Positioned right under Recent changes so
+          the user sees what just happened (script-level details) without
+          having to scroll through the scheduler section to find it. */}
+      <div className="settings-section-title-row" style={{ marginTop: 12 }}>
+        <div className="settings-section-title" style={{ fontSize: 12 }}>
+          {t("backupPanel.logHeader")}
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            className="link-btn"
+            onClick={() => setShowLog((s) => !s)}
+            disabled={!logTail}
+          >
+            {showLog ? t("backupPanel.hide") : t("backupPanel.show")}
+          </button>
+          <button className="link-btn" onClick={refreshLog}>
+            {t("backupPanel.reloadLog")}
+          </button>
+          {logTail && (
+            <button
+              className="link-btn"
+              onClick={async () => {
+                try {
+                  const { logPath } = await resolvePlatformPaths();
+                  shellOpen(logPath).catch(() => {});
+                } catch (e) {
+                  onToast("error", t("backupPanel.errors.openFailed", { message: describeErr(e) }));
+                }
+              }}
+            >
+              {t("backupPanel.openExternally")}
+            </button>
+          )}
+        </div>
+      </div>
+      {!logTail ? (
+        <div className="projects-empty" style={{ fontSize: 11 }}>
+          {t("backupPanel.noLogYet", {
+            path:
+              platform === "windows"
+                ? t("backupPanel.logPathWindows")
+                : t("backupPanel.logPathUnix"),
+          })}
+        </div>
+      ) : showLog ? (
+        <pre
+          ref={logPreRef}
+          style={{
+            margin: 0,
+            padding: 8,
+            background: "var(--panel-2)",
+            border: "1px solid var(--border)",
+            borderRadius: 6,
+            fontSize: 11,
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+            userSelect: "text",
+            maxHeight: 240,
+            overflow: "auto",
+          }}
+        >
+          {logTail.text || t("backupPanel.logEmpty")}
+        </pre>
+      ) : (
+        // Collapsed view: show the freshest log line as a one-line preview
+        // so the user can tell at a glance what the last run produced
+        // ("[date] skillsafe backup started" / "[date] Sync claude · skills")
+        // instead of the abstract "Last 80 lines available · 158.5 KB".
+        // Falls back to the size summary if the file is empty.
+        <button
+          type="button"
+          className="link-btn"
+          onClick={() => setShowLog(true)}
+          title={t("backupPanel.toggleLogTitle")}
+          style={{
+            fontSize: 11,
+            paddingLeft: 6,
+            textAlign: "left",
+            color: "var(--muted)",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            maxWidth: "100%",
+            display: "block",
+          }}
+        >
+          {latestLogLine()
+            || `${logTail.truncated ? t("backupPanel.logLast80") : t("backupPanel.logAvailable")} · ${formatBytes(logTail.bytes, t)}`}
+        </button>
       )}
 
       {/* Daily schedule (macOS launchd) */}
@@ -1431,72 +1673,6 @@ export function BackupPanel({ onToast }: Props) {
               )}
             </div>
           ))}
-
-          {/* Log tail — last lines from ~/Library/Logs/skillsafe-backup.log */}
-          <div className="settings-section-title-row" style={{ marginTop: 10 }}>
-            <div className="settings-section-title" style={{ fontSize: 12 }}>
-              {t("backupPanel.logHeader")}
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button
-                className="link-btn"
-                onClick={() => setShowLog((s) => !s)}
-                disabled={!logTail}
-              >
-                {showLog ? t("backupPanel.hide") : t("backupPanel.show")}
-              </button>
-              <button className="link-btn" onClick={refreshLog}>
-                {t("backupPanel.reloadLog")}
-              </button>
-              {logTail && (
-                <button
-                  className="link-btn"
-                  onClick={async () => {
-                    try {
-                      const { logPath } = await resolvePlatformPaths();
-                      shellOpen(logPath).catch(() => {});
-                    } catch (e) {
-                      onToast("error", t("backupPanel.errors.openFailed", { message: describeErr(e) }));
-                    }
-                  }}
-                >
-                  {t("backupPanel.openExternally")}
-                </button>
-              )}
-            </div>
-          </div>
-          {!logTail ? (
-            <div className="projects-empty" style={{ fontSize: 11 }}>
-              {t("backupPanel.noLogYet", {
-                path:
-                  platform === "windows"
-                    ? t("backupPanel.logPathWindows")
-                    : t("backupPanel.logPathUnix"),
-              })}
-            </div>
-          ) : showLog ? (
-            <pre
-              style={{
-                margin: 0,
-                padding: 8,
-                background: "var(--panel-2)",
-                border: "1px solid var(--border)",
-                borderRadius: 6,
-                fontSize: 11,
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-                userSelect: "text",
-                maxHeight: 240,
-                overflow: "auto",
-              }}
-            >
-              {logTail.text || t("backupPanel.logEmpty")}
-            </pre>
-          ) : (
-            <div className="projects-summary-text" style={{ fontSize: 11, paddingLeft: 6 }}>
-              {logTail.truncated ? t("backupPanel.logLast80") : t("backupPanel.logAvailable")} · {formatBytes(logTail.bytes, t)}
-            </div>
-          )}
 
           {diag && (
             <details style={{ marginTop: 10 }} open>
@@ -1847,28 +2023,8 @@ function friendlyBackupError(raw: string, t: TFunction): string {
   return raw;
 }
 
-function detectPlatform(): BackupPlatform {
-  // Trust @tauri-apps/plugin-os when it answers, but never silently fall
-  // through to "macos" — on Linux the Tauri webview occasionally reports
-  // an unexpected value or the invoke throws before the plugin is wired
-  // up, and the macOS default would route the install handler into
-  // launchctl, which spawns to ENOENT ("No such file or directory (os
-  // error 2)") on Linux. Cross-check with navigator.userAgent/platform
-  // so we land on the correct branch even when osType() is unhappy.
-  try {
-    const t = osType();
-    if (t === "windows" || t === "linux" || t === "macos") return t;
-  } catch {
-    /* fall through to UA-based detection */
-  }
-  const ua = (typeof navigator !== "undefined"
-    ? `${navigator.userAgent || ""} ${navigator.platform || ""}`
-    : ""
-  ).toLowerCase();
-  if (/windows|win32|win64/.test(ua)) return "windows";
-  if (/linux|x11|cros/.test(ua)) return "linux";
-  return "macos";
-}
+// detectPlatform moved to lib/backup/appPaths.ts so the BackupBrowser can
+// share it without re-implementing the UA-fallback logic.
 
 function formatRelative(ts: number, t: TFunction): string {
   const ms = Date.now() - ts;
@@ -2131,6 +2287,11 @@ function BackupToolsPicker({
                   <ul className="backup-data-type-list">
                     {types.map((dt) => {
                       const on = ids.includes(dt.id);
+                      const camel = dataTypeI18nKey(dt.id);
+                      const label = t(`categories.${camel}`, { defaultValue: dt.label });
+                      const desc = dt.description
+                        ? t(`categories.${camel}Desc`, { defaultValue: dt.description })
+                        : "";
                       return (
                         <li key={dt.id} className="backup-data-type-row">
                           <label className="backup-data-type-label">
@@ -2139,10 +2300,10 @@ function BackupToolsPicker({
                               checked={on}
                               onChange={(e) => onToggleDataType(tool.id, dt.id, e.target.checked)}
                             />
-                            <span className="backup-data-type-name">{dt.label}</span>
+                            <span className="backup-data-type-name">{label}</span>
                           </label>
-                          {dt.description && (
-                            <div className="backup-data-type-desc">{dt.description}</div>
+                          {desc && (
+                            <div className="backup-data-type-desc">{desc}</div>
                           )}
                         </li>
                       );

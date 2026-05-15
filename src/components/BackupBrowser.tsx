@@ -18,6 +18,7 @@ import {
 import type { ArtifactType, Scope, Tool } from "../lib/artifacts/types";
 import { ALL_AGENTS, displayNameOf } from "../lib/agents/registry";
 import { dataTypesFor, EXTRA_SOURCES, slotForPath } from "../lib/backup/dataTypes";
+import { detectPlatform, manifestPath as manifestPathOf } from "../lib/backup/appPaths";
 import {
   listMasterFiles,
   loadManifest as loadMasterManifest,
@@ -71,25 +72,35 @@ const ALL_TOOLS: ReadonlyArray<{ id: Tool; label: string; tooltip?: string }> = 
 type Group = string;
 type ScopeFilter = "all" | "global" | "project";
 
-// Cache of slot id → display label, populated from every tool's data-type
-// registry on first lookup. Falls back to a title-cased version of the slot.
-const _SLOT_LABEL_CACHE = new Map<string, string>();
-function slotLabelFor(slot: string): string {
-  const cached = _SLOT_LABEL_CACHE.get(slot);
-  if (cached !== undefined) return cached;
+// camelCase a slot id for `categories.*` i18n key lookup. Mirrors the
+// helpers in Sidebar.tsx / CategoryBrowser.tsx / BackupPanel.tsx so the
+// same translation key resolves for the same slot regardless of surface.
+function slotI18nKey(slot: string): string {
+  return slot.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+}
+
+// Translates a slot id to its display label. Looks up the data-type
+// registry for an English fallback (so unfamiliar slots still render
+// readably) but routes through i18next so the visible label tracks the
+// active locale. Mirrors the pattern used in Sidebar / CategoryBrowser /
+// BackupPanel — keeping "History & Memory", "Skills", etc. consistent
+// everywhere they're shown.
+function slotLabelFor(slot: string, t: TFunction): string {
+  let englishFallback: string | undefined;
   for (const tool of ALL_TOOLS) {
     const types = dataTypesFor(tool.id);
     const match = types.find((d) => d.id === slot);
     if (match) {
-      _SLOT_LABEL_CACHE.set(slot, match.label);
-      return match.label;
+      englishFallback = match.label;
+      break;
     }
   }
-  const fallback = slot
-    .replace(/-/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-  _SLOT_LABEL_CACHE.set(slot, fallback);
-  return fallback;
+  if (englishFallback === undefined) {
+    englishFallback = slot
+      .replace(/-/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+  return t(`categories.${slotI18nKey(slot)}`, { defaultValue: englishFallback });
 }
 
 /** Resolves the slot id for a manifest entry. Delegates to the shared
@@ -206,10 +217,36 @@ export function BackupBrowser({ onToast }: Props) {
       setLoading(true);
       setLoadError(null);
       try {
+        // App-folder manifest (written by summary.ts after every bash/PowerShell
+        // run) is the primary source — it's tied to this machine's view and
+        // doesn't depend on a cloud-synced file landing back from another
+        // device. We treat it as authoritative when its `destination` matches
+        // the current backup folder; mismatch ⇒ the user changed destinations
+        // and the manifest is stale, so fall through to legacy locations.
+        let appFolderManifest: BackupManifest | null = null;
+        try {
+          const home = await tauriPaths.homeDir();
+          const appManifestPath = await manifestPathOf(
+            detectPlatform(),
+            home,
+            tauriJoiner,
+          );
+          if (await tauriFs.exists(appManifestPath)) {
+            const text = await tauriFs.readTextFile(appManifestPath);
+            const m = parseManifest(text);
+            if (m && m.destination === backupDestination) {
+              appFolderManifest = m;
+            }
+          }
+        } catch {
+          // App-folder read is best-effort; fall back to legacy locations.
+        }
+        if (cancelled) return;
+
         // Per-tool layout: read each <dest>/<tool>_backup/LAST_BACKUP.json
-        // (used by the JS-side runBackup.ts) and merge them. Fall back to
-        // the root-level <dest>/LAST_BACKUP.json that the bash/PowerShell
-        // backup script's post-walk (summary.ts) writes.
+        // (used by the JS-side runBackup.ts) and merge them. Falls through
+        // to the legacy top-level <dest>/LAST_BACKUP.json (pre-app-folder
+        // builds) when neither is present.
         const partials: BackupManifest[] = [];
         for (const tool of ALL_TOOLS) {
           const path = await tauriJoiner.join(
@@ -248,13 +285,18 @@ export function BackupBrowser({ onToast }: Props) {
         }
         if (cancelled) return;
 
-        let baseManifest: BackupManifest | null = null;
-        if (partials.length > 0) {
+        let baseManifest: BackupManifest | null = appFolderManifest;
+        if (!baseManifest && partials.length > 0) {
           baseManifest = mergeToolManifests(partials, backupDestination);
-        } else {
-          // Fallback: pre-per-tool layout had a single manifest at
-          // <dest>/LAST_BACKUP.json (still written today by the bash-flow
-          // post-walk in summary.ts) or <dest>/skillsafe-backup/LAST_BACKUP.json.
+        }
+        if (!baseManifest) {
+          // Fallback: pre-app-folder builds wrote the single manifest into
+          // <dest>/LAST_BACKUP.json (and an even older layout into
+          // <dest>/skillsafe-backup/LAST_BACKUP.json). Keep reading from
+          // these so existing installs aren't blank on first launch of the
+          // new build; the next "Back up now" run rewrites to the app
+          // folder and the legacy file becomes inert (the walker still
+          // skips it via summary.ts SKIP_FILES).
           let legacyPath = await tauriJoiner.join(backupDestination, MANIFEST_FILENAME);
           if (!(await tauriFs.exists(legacyPath))) {
             legacyPath = await tauriJoiner.join(
@@ -353,10 +395,10 @@ export function BackupBrowser({ onToast }: Props) {
     slots.sort((a, b) => {
       if (a === "skills") return -1;
       if (b === "skills") return 1;
-      return slotLabelFor(a).localeCompare(slotLabelFor(b));
+      return slotLabelFor(a, t).localeCompare(slotLabelFor(b, t));
     });
     return slots;
-  }, [groupCounts]);
+  }, [groupCounts, t]);
 
   const totalGroupItems = useMemo(() => {
     let n = 0;
@@ -836,7 +878,7 @@ export function BackupBrowser({ onToast }: Props) {
                 role="tab"
                 aria-selected={group === g}
               >
-                {slotLabelFor(g)}
+                {slotLabelFor(g, t)}
                 <span className="backup-tool-count">{count}</span>
               </div>
             );
@@ -886,7 +928,7 @@ export function BackupBrowser({ onToast }: Props) {
                 ? t("backupBrowser.filterPlaceholder")
                 : group === "history"
                   ? t("backupBrowser.filterHistoryPlaceholder")
-                  : t("backupBrowser.filterSlotPlaceholder", { slot: slotLabelFor(group).toLowerCase() })
+                  : t("backupBrowser.filterSlotPlaceholder", { slot: slotLabelFor(group, t).toLowerCase() })
             }
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
@@ -912,10 +954,10 @@ export function BackupBrowser({ onToast }: Props) {
                 pixel-for-pixel: label, optional description, then a single
                 collapsible tree of project / global folders. */}
             <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--border)" }}>
-              <div style={{ fontWeight: 600 }}>{slotLabelFor("memory")}</div>
+              <div style={{ fontWeight: 600 }}>{slotLabelFor("memory", t)}</div>
               {memoryView.description && (
                 <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
-                  {memoryView.description}
+                  {t("categories.memoryDesc", { defaultValue: memoryView.description })}
                 </div>
               )}
             </div>
@@ -947,7 +989,7 @@ export function BackupBrowser({ onToast }: Props) {
                 ? t("backupBrowser.nothingInBackup")
                 : group === "history"
                   ? t("backupBrowser.noHistory")
-                  : t("backupBrowser.noSlotForTool", { slot: slotLabelFor(group).toLowerCase() })}
+                  : t("backupBrowser.noSlotForTool", { slot: slotLabelFor(group, t).toLowerCase() })}
           </div>
         ) : (
           items.map((item) => {
@@ -1329,7 +1371,7 @@ function itemsForTool(
       relInItem = rest.slice(1).join("/") || rest[0] || "";
     } else if (isAggregateSlot) {
       key = `${slot}::${tool}::__aggregate__`;
-      label = slotLabelFor(slot);
+      label = slotLabelFor(slot, t);
       // Preserve the full sub-slot path so buildMemoryTree can rebuild the
       // project / global folder structure inside the card-tree.
       relInItem = rest.join("/") || slot;
@@ -1342,7 +1384,7 @@ function itemsForTool(
 
     let item = buckets.get(key);
     if (!item) {
-      const slotBadge = slotLabelFor(slot).toLowerCase();
+      const slotBadge = slotLabelFor(slot, t).toLowerCase();
       // Aggregate rows may span scopes (global + per-project memory in
       // one card), so skip the scope badge/meta — they'd be misleading.
       const badges = isAggregateSlot

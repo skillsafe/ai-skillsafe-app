@@ -233,7 +233,9 @@ export function CategoryBrowser() {
         </div>
         {dataType?.description && (
           <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
-            {dataType.description}
+            {t(`categories.${categoryI18nKey(dataType.id)}Desc`, {
+              defaultValue: dataType.description,
+            })}
           </div>
         )}
       </div>

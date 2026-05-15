@@ -1,10 +1,13 @@
 // Walks a backup destination after the bash/PowerShell script finishes,
 // computes a per-file manifest, diffs it against the previous run, and
-// writes the new manifest back to <dest>/LAST_BACKUP.json. The result feeds
-// both the in-app status panel ("Last backup: …+N ~M -K · X MB") and the
-// BackupBrowser (which already falls back to the top-level manifest).
+// writes the new manifest to the caller-supplied path. Previously this
+// landed at <dest>/LAST_BACKUP.json (alongside the backup files); the
+// app-level flow now writes it to the per-machine state dir
+// (`appPaths.manifestPath`) so each machine maintains its own view, the
+// shared cloud-synced backup folder stays uncluttered, and the manifest is
+// reachable without round-tripping through possibly-offline cloud storage.
 
-import { safeReadDir, type FsAdapter } from "../fs";
+import { ensureDir, safeReadDir, type FsAdapter } from "../fs";
 import {
   MANIFEST_FILENAME,
   MANIFEST_VERSION,
@@ -47,6 +50,10 @@ interface BuildOptions {
   joiner: { join: (...parts: string[]) => Promise<string> };
   destination: string;
   generatedAt: number;
+  // Absolute path the manifest should be written to. Callers pass the
+  // per-machine app-state path (see appPaths.manifestPath); legacy callers
+  // and tests can still target `<destination>/LAST_BACKUP.json` directly.
+  manifestPath: string;
 }
 
 /** Files we wrote ourselves and which therefore should not appear as backup
@@ -66,7 +73,8 @@ const TIME_TOLERANCE_MS = 2000;
 export async function buildAndWriteManifest(
   opts: BuildOptions,
 ): Promise<{ manifest: BackupManifest; stats: BackupStats }> {
-  const manifestPath = await opts.joiner.join(opts.destination, MANIFEST_FILENAME);
+  const manifestPath = opts.manifestPath;
+  await ensureParentDir(opts.fs, opts.joiner, manifestPath);
   const prev = await readPrevious(opts.fs, manifestPath);
   const prevByPath = new Map<string, BackupEntry>(
     (prev?.entries ?? []).map((e) => [e.relPath, e]),
@@ -115,12 +123,10 @@ export async function buildAndWriteManifest(
     await opts.fs.writeTextFile(manifestPath, serializeManifest(manifest));
   } catch (e) {
     // Manifest write isn't load-bearing for the data copy — files already
-    // mirrored — but losing the manifest means BackupBrowser can't find the
-    // backup ("No backup found at this folder yet"). Surface the error in
-    // manifest.errors so the BackupPanel "N errors" pill explains why,
-    // instead of swallowing silently. Common Windows cause: destination is
-    // outside the Tauri fs:scope allowlist (capabilities/default.json), so
-    // plugin-fs returns "forbidden path".
+    // mirrored — but losing the manifest means the BackupPanel's Recent
+    // changes / "Last backup …" line can't update until the next run.
+    // Surface the error in manifest.errors so the panel's "N errors" pill
+    // explains why instead of silently appearing frozen.
     const msg = e instanceof Error ? e.message : String(e);
     manifest.errors.push(`manifest write failed: ${manifestPath}: ${msg}`);
     // eslint-disable-next-line no-console
@@ -190,6 +196,29 @@ async function walk(
       status: "added",
     });
   }
+}
+
+// The manifest now lives in the app state dir, which the app may not have
+// created yet on first launch (or on a machine where the user has only just
+// installed). Ensure the parent dir exists before atomicWrite tries to land
+// the file.
+async function ensureParentDir(
+  fs: FsAdapter,
+  joiner: { join: (...parts: string[]) => Promise<string> },
+  fullPath: string,
+): Promise<void> {
+  const parts = fullPath.split(/[\\/]/);
+  if (parts.length <= 1) return;
+  const parent = parts.slice(0, -1).join(fullPath.includes("\\") ? "\\" : "/");
+  if (!parent) return;
+  try {
+    await ensureDir(fs, parent);
+  } catch {
+    /* best-effort; writeTextFile will surface a useful error */
+  }
+  // `joiner` is unused for the parent computation but kept on the signature
+  // so the helper can grow into a more platform-aware version later.
+  void joiner;
 }
 
 // Visible to tests so they can compare bytes-only diff without going through

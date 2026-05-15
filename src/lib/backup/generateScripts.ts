@@ -21,6 +21,7 @@ import {
   normalizeDataTypeIds,
   type DataType,
 } from "./dataTypes";
+import { sentinelPath } from "./appPaths";
 
 export type BackupPlatform = "macos" | "windows" | "linux";
 
@@ -98,6 +99,7 @@ async function generateLinux(opts: PreparedOptions): Promise<GenerateScriptsResu
 
   const logPath = `${opts.home}/.local/state/skillsafe-app/skillsafe-backup.log`;
   const logPathRestore = `${opts.home}/.local/state/skillsafe-app/skillsafe-restore.log`;
+  const sentinel = await sentinelPath("linux", opts.home, opts.joiner);
 
   const replacements = {
     HOME: opts.home,
@@ -106,6 +108,7 @@ async function generateLinux(opts: PreparedOptions): Promise<GenerateScriptsResu
     SCRIPT_PATH: scriptPath,
     LOG_PATH: logPath,
     LOG_PATH_RESTORE: logPathRestore,
+    SENTINEL_PATH: sentinel,
     N: String(sections.length),
     TOOL_SECTIONS: renderBashSections(sections),
     TOOL_LIST_MD: renderToolListMd(sections, opts.home),
@@ -156,12 +159,14 @@ async function generateMac(opts: PreparedOptions): Promise<GenerateScriptsResult
   const tools = normalizeTools(opts.tools);
   const sections = await resolveSections(opts, tools, opts.dataTypes);
 
+  const sentinel = await sentinelPath("macos", opts.home, opts.joiner);
   const replacements = {
     HOME: opts.home,
     DEST: opts.destination,
     LABEL: opts.label,
     SCRIPT_PATH: scriptPath,
     PLIST_PATH: plistPath,
+    SENTINEL_PATH: sentinel,
     CALENDAR_INTERVAL: renderCalendarInterval(schedule),
     N: String(sections.length),
     TOOL_SECTIONS: renderBashSections(sections),
@@ -191,12 +196,14 @@ async function generateWindows(opts: PreparedOptions): Promise<GenerateScriptsRe
   const tools = normalizeTools(opts.tools);
   const sections = await resolveSections(opts, tools, opts.dataTypes);
 
+  const sentinel = await sentinelPath("windows", opts.home, opts.joiner);
   const replacements = {
     HOME: opts.home,
     DEST: opts.destination,
     LABEL: opts.label,
     SCRIPT_PATH: scriptPath,
     REGISTER_SCRIPT_PATH: registerPath,
+    SENTINEL_PATH: sentinel,
     N: String(sections.length),
     TOOL_SECTIONS: renderPwshSections(sections),
     TOOL_LIST_MD: renderToolListMd(sections, opts.home),

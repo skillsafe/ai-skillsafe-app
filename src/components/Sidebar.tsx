@@ -370,9 +370,11 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
             })}
         {!isConfigs && !isWorkbench && eligibleCategories.map((dt) => {
           const active = category === dt.id;
-          const label = t(`categories.${categoryI18nKey(dt.id)}`, {
-            defaultValue: dt.label,
-          });
+          const camel = categoryI18nKey(dt.id);
+          const label = t(`categories.${camel}`, { defaultValue: dt.label });
+          const tooltip = dt.description
+            ? t(`categories.${camel}Desc`, { defaultValue: dt.description })
+            : label;
           return (
             <button
               key={`cat-${dt.id}`}
@@ -380,7 +382,7 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
               role="tab"
               aria-selected={active}
               className={`pill ${active ? "active" : ""}`}
-              title={dt.description ?? label}
+              title={tooltip}
               onClick={() => {
                 setView("artifacts");
                 setCategory(dt.id);

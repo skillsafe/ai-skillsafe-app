@@ -30,6 +30,7 @@ describe("backup summary", () => {
       fs: nodeFs,
       joiner: nodeJoiner,
       destination: tmp,
+      manifestPath: path.join(tmp, MANIFEST_FILENAME),
       generatedAt: 1234,
     });
 
@@ -55,6 +56,7 @@ describe("backup summary", () => {
       fs: nodeFs,
       joiner: nodeJoiner,
       destination: tmp,
+      manifestPath: path.join(tmp, MANIFEST_FILENAME),
       generatedAt: 1,
     });
 
@@ -67,6 +69,7 @@ describe("backup summary", () => {
       fs: nodeFs,
       joiner: nodeJoiner,
       destination: tmp,
+      manifestPath: path.join(tmp, MANIFEST_FILENAME),
       generatedAt: 2,
     });
 
@@ -83,7 +86,8 @@ describe("backup summary", () => {
     await write(path.join(tmp, "shared-agents/.skill-lock.json"), "{}");
     await write(path.join(tmp, "shared-agents/skills/foo/SKILL.md"), "skill");
     const { manifest } = await buildAndWriteManifest({
-      fs: nodeFs, joiner: nodeJoiner, destination: tmp, generatedAt: 1,
+      fs: nodeFs, joiner: nodeJoiner, destination: tmp,
+      manifestPath: path.join(tmp, MANIFEST_FILENAME), generatedAt: 1,
     });
     const lock = manifest.entries.find((e) => e.relPath === "shared-agents/.skill-lock.json");
     const skill = manifest.entries.find((e) => e.relPath === "shared-agents/skills/foo/SKILL.md");
@@ -105,6 +109,7 @@ describe("backup summary", () => {
       fs: nodeFs,
       joiner: nodeJoiner,
       destination: tmp,
+      manifestPath: path.join(tmp, MANIFEST_FILENAME),
       generatedAt: 1,
     });
 
@@ -127,6 +132,7 @@ describe("backup summary", () => {
       fs: nodeFs,
       joiner: nodeJoiner,
       destination: tmp,
+      manifestPath: path.join(tmp, MANIFEST_FILENAME),
       generatedAt: 1,
     });
     // Run again — LAST_BACKUP.json now exists, but should not show up as an
@@ -135,6 +141,7 @@ describe("backup summary", () => {
       fs: nodeFs,
       joiner: nodeJoiner,
       destination: tmp,
+      manifestPath: path.join(tmp, MANIFEST_FILENAME),
       generatedAt: 2,
     });
     expect(manifest.entries.map((e) => e.relPath)).not.toContain(MANIFEST_FILENAME);
@@ -153,6 +160,7 @@ describe("backup summary", () => {
       fs: nodeFs,
       joiner: nodeJoiner,
       destination: tmp,
+      manifestPath: path.join(tmp, MANIFEST_FILENAME),
       generatedAt: 1,
     });
 
