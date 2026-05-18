@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ScanReport } from "../lib/skillsafe/client";
+import type { LocalScanReport } from "../lib/scan/types";
 
 interface Finding {
   rule_id?: string;
@@ -18,8 +19,13 @@ interface BomSummary {
   risk_surface?: string; // "none" | "low" | "medium" | "high"
 }
 
+// The panel accepts either the cloud envelope or the offline scanner output.
+// Both share the same JSON-stringified `findings_summary` / `bom_summary`
+// shape so a single renderer covers both sources.
+type AnyReport = ScanReport | LocalScanReport;
+
 interface Props {
-  report: ScanReport | null | undefined;
+  report: AnyReport | null | undefined;
 }
 
 // Mirror of skillsafe.ai's security/BOM summary in compact form.

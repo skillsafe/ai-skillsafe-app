@@ -7,9 +7,10 @@ interface Props {
   onToast: (kind: "ok" | "error", text: string) => void;
   onReload: () => void;
   onOpenActions: () => void;
+  onOpenGitInstall: () => void;
 }
 
-export function CloudInfoPane({ onToast, onReload, onOpenActions }: Props) {
+export function CloudInfoPane({ onToast, onReload, onOpenActions, onOpenGitInstall }: Props) {
   const { t } = useTranslation();
   const {
     cloudApiKey,
@@ -127,6 +128,11 @@ export function CloudInfoPane({ onToast, onReload, onOpenActions }: Props) {
         {cloudApiKey && (
           <button onClick={onOpenActions}>{t("cloudInfo.saveShare")}</button>
         )}
+      </div>
+
+      <div className="section-label">{t("gitInstall.sectionLabel")}</div>
+      <div className="cloud-info-actions">
+        <button onClick={onOpenGitInstall}>{t("gitInstall.openButton")}</button>
       </div>
     </aside>
   );

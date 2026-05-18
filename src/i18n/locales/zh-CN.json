@@ -94,7 +94,9 @@
     "projects": "项目",
     "projectsLoaded": "已加载 {count} 个项目",
     "master": "Master",
-    "masterTooltip": "可保存到 master 文件夹的文件 — CLAUDE.md / AGENTS.md 记忆、.mcp.json 服务器、hooks、权限、键盘快捷键。将实时源添加到 master、从 master 恢复源，或比较两者。"
+    "masterTooltip": "可保存到 master 文件夹的文件 — CLAUDE.md / AGENTS.md 记忆、.mcp.json 服务器、hooks、权限、键盘快捷键。将实时源添加到 master、从 master 恢复源，或比较两者。",
+    "triggerDebuggerAria": "打开触发调试器",
+    "triggerDebuggerTitle": "调试技能触发并查找冲突"
   },
   "settings": {
     "title": "设置",
@@ -566,7 +568,10 @@
     "capabilities": "能力",
     "findings": "发现",
     "defaultFindingMsg": "发现",
-    "cleanHint": "扫描器在此版本中未发现问题。授予 skill 工具权限前，请始终自行审阅其内容。"
+    "cleanHint": "扫描器在此版本中未发现问题。授予 skill 工具权限前，请始终自行审阅其内容。",
+    "scanning": "扫描中…",
+    "scanFailed": "扫描失败",
+    "rescan": "重新扫描"
   },
   "installScope": {
     "title": "安装 {name}",
@@ -733,7 +738,11 @@
     "uploadTitleNotSignedIn": "请到设置中登录后再上传",
     "uploadTitleReady": "上传到 skillsafe.ai",
     "deleteAria": "删除 {name}",
-    "deleteTitle": "从磁盘删除"
+    "deleteTitle": "从磁盘删除",
+    "scanAllAria": "扫描所有已安装的技能",
+    "scanAllTitle": "对每个产物运行离线安全扫描器",
+    "focusBar": "已从触发调试器聚焦 {count} 个路径",
+    "clearFocus": "清除聚焦"
   },
   "inventoryList": {
     "filterPlaceholder": "筛选…",
@@ -1090,5 +1099,46 @@
     "permissions": "权限",
     "keybindings": "快捷键",
     "transcripts": "会话记录"
+  },
+  "gitInstall": {
+    "sectionLabel": "Git 来源",
+    "openButton": "从 Git 安装…",
+    "title": "从 Git 安装",
+    "hint": "直接从公共 GitHub 仓库安装 SKILL.md 包。支持 owner/repo、owner/repo@ref、owner/repo@ref:subpath 或 GitHub URL。",
+    "specLabel": "来源",
+    "pinCommit": "固定到准确提交（更新时不跟随分支）",
+    "targetTool": "目标工具",
+    "targetScope": "目标范围",
+    "installedToast": "已从 {owner}/{repo} 安装 {count} 个技能"
+  },
+  "trigger": {
+    "title": "触发调试器",
+    "hint": "输入任务描述，查看代理会考虑哪些技能。被更高优先级技能遮蔽的会被标记。下方列出名称或描述近似重复的冲突。",
+    "queryPlaceholder": "例如：运行测试套件并修复失败",
+    "toolFilter": "工具",
+    "allTools": "所有工具",
+    "includeAllSources": "包含远程 + 主仓 + 工作台清单",
+    "matchesLabel": "匹配 ({count})",
+    "conflictsLabel": "可能的冲突 ({count})",
+    "enterQuery": "输入任务以查看会触发哪些技能。",
+    "noMatches": "没有匹配的技能。",
+    "noConflicts": "没有可能的冲突。",
+    "colSkill": "技能",
+    "colTool": "工具",
+    "colSource": "来源",
+    "colScore": "分数",
+    "colMatched": "匹配的词元",
+    "colStatus": "状态",
+    "colA": "技能 A",
+    "colB": "技能 B",
+    "colReason": "原因",
+    "colSimilarity": "相似度",
+    "shadowed": "被遮蔽",
+    "wouldWin": "会胜出",
+    "candidate": "候选",
+    "reasonName": "同名",
+    "reasonDesc": "描述相似",
+    "conflictRowTitle": "点击仅显示这两个技能",
+    "poolHint": "共 {count} 个候选"
   }
 }

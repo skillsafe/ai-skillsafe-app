@@ -13,6 +13,8 @@ import { CloudInfoPane } from "./components/CloudInfoPane";
 import { RemoteList } from "./components/RemoteList";
 import { RemoteEditor } from "./components/RemoteEditor";
 import { CloudActionsDialog } from "./components/CloudActionsDialog";
+import { GitInstallDialog } from "./components/GitInstallDialog";
+import { TriggerDebuggerDialog } from "./components/TriggerDebuggerDialog";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { BackupBrowser } from "./components/BackupBrowser";
 import { ConfigsPanel } from "./components/ConfigsPanel";
@@ -144,6 +146,8 @@ export default function App() {
   const [showNew, setShowNew] = useState(false);
   const [showConvert, setShowConvert] = useState(false);
   const [showCloudActions, setShowCloudActions] = useState(false);
+  const [showGitInstall, setShowGitInstall] = useState(false);
+  const [showTriggerDebugger, setShowTriggerDebugger] = useState(false);
   const [toast, setToast] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
 
   const orchestrator = useMemo(() => {
@@ -761,6 +765,7 @@ export default function App() {
                 handleBackupFromRow(a);
               }}
               onUpload={handleUploadFromRow}
+              onOpenTriggerDebugger={() => setShowTriggerDebugger(true)}
             />
           )}
           <Editor artifact={category ? null : selected} onReload={reload} />
@@ -787,6 +792,7 @@ export default function App() {
             onToast={emitToast}
             onReload={reloadRemote}
             onOpenActions={() => setShowCloudActions(true)}
+            onOpenGitInstall={() => setShowGitInstall(true)}
           />
           <RemoteList
             onToast={emitToast}
@@ -860,6 +866,16 @@ export default function App() {
           onAfterSave={reloadRemote}
         />
       )}
+      <GitInstallDialog
+        open={showGitInstall}
+        onClose={() => setShowGitInstall(false)}
+        onInstalled={reload}
+        onToast={emitToast}
+      />
+      <TriggerDebuggerDialog
+        open={showTriggerDebugger}
+        onClose={() => setShowTriggerDebugger(false)}
+      />
       {pendingDelete && (
         <ConfirmDialog
           title={t("app.deleteTitle", { name: pendingDelete.name })}

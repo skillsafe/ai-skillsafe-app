@@ -94,7 +94,9 @@
     "projects": "Proyectos",
     "projectsLoaded": "{count} {count, plural, one {proyecto cargado} other {proyectos cargados}}",
     "master": "Master",
-    "masterTooltip": "Archivos que se pueden guardar en tu carpeta master — memoria CLAUDE.md / AGENTS.md, servidores .mcp.json, hooks, permisos, atajos de teclado. Añade la fuente activa a master, restaura la fuente desde master o compara las dos."
+    "masterTooltip": "Archivos que se pueden guardar en tu carpeta master — memoria CLAUDE.md / AGENTS.md, servidores .mcp.json, hooks, permisos, atajos de teclado. Añade la fuente activa a master, restaura la fuente desde master o compara las dos.",
+    "triggerDebuggerAria": "Abrir depurador de disparadores",
+    "triggerDebuggerTitle": "Depurar disparadores de skills y encontrar conflictos"
   },
   "settings": {
     "title": "Ajustes",
@@ -566,7 +568,10 @@
     "capabilities": "Capacidades",
     "findings": "Hallazgos",
     "defaultFindingMsg": "Hallazgo",
-    "cleanHint": "El analizador no encontró problemas en esta versión. Revisa siempre el contenido del skill antes de concederle herramientas."
+    "cleanHint": "El analizador no encontró problemas en esta versión. Revisa siempre el contenido del skill antes de concederle herramientas.",
+    "scanning": "Analizando…",
+    "scanFailed": "Análisis fallido",
+    "rescan": "Reanalizar"
   },
   "installScope": {
     "title": "Instalar {name}",
@@ -733,7 +738,11 @@
     "uploadTitleNotSignedIn": "Inicia sesión en Ajustes para subir",
     "uploadTitleReady": "Subir a skillsafe.ai",
     "deleteAria": "Eliminar {name}",
-    "deleteTitle": "Eliminar del disco"
+    "deleteTitle": "Eliminar del disco",
+    "scanAllAria": "Analizar todos los skills instalados",
+    "scanAllTitle": "Ejecuta el analizador de seguridad sin conexión en cada artefacto",
+    "focusBar": "Enfocando {count} {count, plural, one {ruta} other {rutas}} del depurador de disparadores",
+    "clearFocus": "Quitar enfoque"
   },
   "inventoryList": {
     "filterPlaceholder": "Filtrar…",
@@ -1090,5 +1099,46 @@
     "permissions": "Permisos",
     "keybindings": "Atajos",
     "transcripts": "Transcripciones"
+  },
+  "gitInstall": {
+    "sectionLabel": "Origen Git",
+    "openButton": "Instalar desde Git…",
+    "title": "Instalar desde Git",
+    "hint": "Instala un paquete SKILL.md directamente desde un repositorio público de GitHub. Acepta owner/repo, owner/repo@ref, owner/repo@ref:subpath o una URL de GitHub.",
+    "specLabel": "Origen",
+    "pinCommit": "Fijar al commit exacto (no seguir la rama al actualizar)",
+    "targetTool": "Herramienta destino",
+    "targetScope": "Ámbito destino",
+    "installedToast": "Se instalaron {count} {count, plural, one {skill} other {skills}} desde {owner}/{repo}"
+  },
+  "trigger": {
+    "title": "Depurador de disparadores",
+    "hint": "Escribe una descripción de tarea para ver qué skills consideraría el agente. Se marcan los skills eclipsados por otros de mayor precedencia. Abajo se muestran nombres o descripciones casi duplicados como conflictos.",
+    "queryPlaceholder": "ej. ejecutar la suite de pruebas y arreglar los fallos",
+    "toolFilter": "Herramienta",
+    "allTools": "Todas las herramientas",
+    "includeAllSources": "Incluir remoto + master + inventario",
+    "matchesLabel": "Coincidencias ({count})",
+    "conflictsLabel": "Conflictos probables ({count})",
+    "enterQuery": "Escribe una tarea para ver qué skills se dispararían.",
+    "noMatches": "Ningún skill coincide con esa consulta.",
+    "noConflicts": "Sin conflictos probables.",
+    "colSkill": "Skill",
+    "colTool": "Herramienta",
+    "colSource": "Origen",
+    "colScore": "Puntuación",
+    "colMatched": "Tokens coincidentes",
+    "colStatus": "Estado",
+    "colA": "Skill A",
+    "colB": "Skill B",
+    "colReason": "Motivo",
+    "colSimilarity": "Similitud",
+    "shadowed": "eclipsado",
+    "wouldWin": "ganaría",
+    "candidate": "candidato",
+    "reasonName": "mismo nombre",
+    "reasonDesc": "descripción similar",
+    "conflictRowTitle": "Haz clic para filtrar la lista a estos dos skills",
+    "poolHint": "de {count} candidatos"
   }
 }

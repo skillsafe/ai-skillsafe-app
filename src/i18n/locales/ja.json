@@ -94,7 +94,9 @@
     "projects": "プロジェクト",
     "projectsLoaded": "{count} 個のプロジェクトを読み込み済み",
     "master": "Master",
-    "masterTooltip": "master フォルダに保存できるファイル — CLAUDE.md / AGENTS.md メモリ、.mcp.json サーバー、hooks、権限、キーバインド。アクティブなソースを master に追加、master からソースを復元、または両者の差分を表示します。"
+    "masterTooltip": "master フォルダに保存できるファイル — CLAUDE.md / AGENTS.md メモリ、.mcp.json サーバー、hooks、権限、キーバインド。アクティブなソースを master に追加、master からソースを復元、または両者の差分を表示します。",
+    "triggerDebuggerAria": "トリガーデバッガを開く",
+    "triggerDebuggerTitle": "スキルのトリガーをデバッグし衝突を検出"
   },
   "settings": {
     "title": "設定",
@@ -566,7 +568,10 @@
     "capabilities": "機能",
     "findings": "指摘事項",
     "defaultFindingMsg": "指摘",
-    "cleanHint": "このバージョンでスキャナーは問題を検出しませんでした。skill にツールを許可する前に、内容を必ずご自身で確認してください。"
+    "cleanHint": "このバージョンでスキャナーは問題を検出しませんでした。skill にツールを許可する前に、内容を必ずご自身で確認してください。",
+    "scanning": "スキャン中…",
+    "scanFailed": "スキャンに失敗",
+    "rescan": "再スキャン"
   },
   "installScope": {
     "title": "{name} をインストール",
@@ -733,7 +738,11 @@
     "uploadTitleNotSignedIn": "アップロードするには設定でサインインしてください",
     "uploadTitleReady": "skillsafe.ai にアップロード",
     "deleteAria": "{name} を削除",
-    "deleteTitle": "ディスクから削除"
+    "deleteTitle": "ディスクから削除",
+    "scanAllAria": "インストール済みスキルを全てスキャン",
+    "scanAllTitle": "すべての成果物にオフラインスキャナを実行",
+    "focusBar": "トリガーデバッガから {count} 件のパスをフォーカス中",
+    "clearFocus": "フォーカスを解除"
   },
   "inventoryList": {
     "filterPlaceholder": "絞り込み…",
@@ -1090,5 +1099,46 @@
     "permissions": "権限",
     "keybindings": "キーバインド",
     "transcripts": "トランスクリプト"
+  },
+  "gitInstall": {
+    "sectionLabel": "Git ソース",
+    "openButton": "Git からインストール…",
+    "title": "Git からインストール",
+    "hint": "公開 GitHub リポジトリから SKILL.md バンドルを直接インストールします。owner/repo、owner/repo@ref、owner/repo@ref:subpath、GitHub URL を受け付けます。",
+    "specLabel": "ソース",
+    "pinCommit": "正確なコミットに固定（更新時にブランチを追跡しない）",
+    "targetTool": "対象ツール",
+    "targetScope": "対象スコープ",
+    "installedToast": "{owner}/{repo} から {count} 個のスキルをインストールしました"
+  },
+  "trigger": {
+    "title": "トリガーデバッガ",
+    "hint": "タスク説明を入力すると、エージェントが候補に挙げるスキルを表示します。優先度の高いスキルに隠されたものはマークされます。下部には名前や説明が酷似するスキルを衝突として列挙します。",
+    "queryPlaceholder": "例：テストを実行して失敗を修正",
+    "toolFilter": "ツール",
+    "allTools": "全てのツール",
+    "includeAllSources": "リモート + マスター + 在庫を含める",
+    "matchesLabel": "一致 ({count})",
+    "conflictsLabel": "衝突候補 ({count})",
+    "enterQuery": "タスクを入力するとトリガー対象が表示されます。",
+    "noMatches": "一致するスキルがありません。",
+    "noConflicts": "衝突候補なし。",
+    "colSkill": "スキル",
+    "colTool": "ツール",
+    "colSource": "ソース",
+    "colScore": "スコア",
+    "colMatched": "一致トークン",
+    "colStatus": "ステータス",
+    "colA": "スキル A",
+    "colB": "スキル B",
+    "colReason": "理由",
+    "colSimilarity": "類似度",
+    "shadowed": "隠れている",
+    "wouldWin": "勝つ",
+    "candidate": "候補",
+    "reasonName": "同名",
+    "reasonDesc": "説明が類似",
+    "conflictRowTitle": "クリックでこの2つのスキルだけに絞り込み",
+    "poolHint": "{count} 件中"
   }
 }

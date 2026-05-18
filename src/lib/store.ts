@@ -17,6 +17,7 @@ import type { UpdateProgress } from "./update/runner";
 import { clearApiKey, loadApiKey, storeApiKey } from "./skillsafe/auth";
 import type { ConfigKind, ProjectSettingsTier } from "./configs/types";
 import type { InventorySnapshot } from "./inventory/types";
+import type { LocalScanReport } from "./scan/types";
 import {
   type Locale as I18nLocale,
   isSupported as isSupportedLocale,
@@ -448,6 +449,20 @@ interface AppState {
   remoteViewedFile: ViewedFile | null;
   installedRemoteIds: string[];
 
+  /**
+   * Offline scan results for locally-installed artifacts, keyed by
+   * artifact.id. "scanning" while in flight; the report (or null on a
+   * scan error) once settled. Lazily populated.
+   */
+  localScans: Record<string, LocalScanReport | "scanning" | null>;
+
+  /**
+   * When non-null, ArtifactList narrows its rows to the artifacts whose
+   * bundleDir / path is in this set. Set by the Trigger debugger when the
+   * user clicks a conflict row, so they can compare just those skills.
+   */
+  focusedArtifactPaths: string[] | null;
+
   // Configs view (sibling to Artifacts) — settings.json/.mcp.json/keybindings.json
   view: View;
   configKind: ConfigKind;
@@ -569,6 +584,9 @@ interface AppState {
   setRemoteLoadingMore: (b: boolean) => void;
   setRemoteViewedFile: (v: ViewedFile | null) => void;
   markRemoteInstalled: (id: string) => void;
+  setLocalScan: (id: string, report: LocalScanReport | "scanning" | null) => void;
+  clearLocalScans: () => void;
+  setFocusedArtifactPaths: (paths: string[] | null) => void;
 
   setView: (v: View) => void;
   setConfigKind: (k: ConfigKind) => void;
@@ -662,6 +680,8 @@ export const useApp = create<AppState>((set) => ({
   remoteLoadingMore: false,
   remoteViewedFile: null,
   installedRemoteIds: [],
+  localScans: {},
+  focusedArtifactPaths: null,
 
   view: initialView(),
   configKind: initialConfigKind(),
@@ -895,6 +915,10 @@ export const useApp = create<AppState>((set) => ({
         ? state
         : { installedRemoteIds: [...state.installedRemoteIds, id] },
     ),
+  setLocalScan: (id, report) =>
+    set((state) => ({ localScans: { ...state.localScans, [id]: report } })),
+  clearLocalScans: () => set({ localScans: {} }),
+  setFocusedArtifactPaths: (focusedArtifactPaths) => set({ focusedArtifactPaths }),
 
   setView: (view) => {
     browser.localStorage?.setItem(VIEW_KEY, view);

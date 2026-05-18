@@ -1,15 +1,20 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useApp } from "../lib/store";
 import { AttachmentTree } from "./AttachmentTree";
-import { ArchiveIcon, TrashIcon, UploadCloudIcon } from "./icons";
+import { ScanReportPanel } from "./ScanReportPanel";
+import { ArchiveIcon, ShieldCheckIcon, TargetIcon, TrashIcon, UploadCloudIcon } from "./icons";
 import type { MarkdownArtifact } from "../lib/artifacts/types";
+import { scanArtifact } from "../lib/scan/artifact";
+import { tauriFs } from "../lib/tauriAdapters";
+import type { LocalScanReport } from "../lib/scan/types";
 
 interface Props {
   onReload: () => void;
   onDelete: (artifact: MarkdownArtifact) => void;
   onBackup: (artifact: MarkdownArtifact) => void;
   onUpload: (artifact: MarkdownArtifact) => void;
+  onOpenTriggerDebugger: () => void;
 }
 
 export function ArtifactList({
@@ -17,6 +22,7 @@ export function ArtifactList({
   onDelete,
   onBackup,
   onUpload,
+  onOpenTriggerDebugger,
 }: Props) {
   const { t } = useTranslation();
   const {
@@ -29,8 +35,51 @@ export function ArtifactList({
     scope,
     backupDestination,
     cloudApiKey,
+    localScans,
+    setLocalScan,
+    focusedArtifactPaths,
+    setFocusedArtifactPaths,
   } = useApp();
   const [query, setQuery] = useState("");
+  const [scanningAll, setScanningAll] = useState(false);
+
+  const runScan = useCallback(
+    async (artifact: MarkdownArtifact) => {
+      setLocalScan(artifact.id, "scanning");
+      try {
+        const report = await scanArtifact(tauriFs, artifact);
+        setLocalScan(artifact.id, report);
+      } catch (err) {
+        console.warn("[scan] failed for", artifact.id, err);
+        setLocalScan(artifact.id, null);
+      }
+    },
+    [setLocalScan],
+  );
+
+  // Lazy-scan whenever the user opens an artifact card. The scanner is pure
+  // TS and trivial for typical bundles (a few KB); we only memoize by id so
+  // editing the body re-triggers via the explicit "rescan" affordance.
+  useEffect(() => {
+    if (!selectedId) return;
+    const a = artifacts.find((x) => x.id === selectedId);
+    if (!a) return;
+    if (localScans[a.id] !== undefined) return;
+    void runScan(a);
+  }, [selectedId, artifacts, localScans, runScan]);
+
+  const scanAll = useCallback(async () => {
+    if (scanningAll) return;
+    setScanningAll(true);
+    try {
+      for (const a of artifacts) {
+        if (localScans[a.id] !== undefined && localScans[a.id] !== "scanning") continue;
+        await runScan(a);
+      }
+    } finally {
+      setScanningAll(false);
+    }
+  }, [scanningAll, artifacts, localScans, runScan]);
 
   // Map project root → display name (last folder segment) so artifact cards
   // can show which project they came from when aggregating multiple roots.
@@ -50,16 +99,21 @@ export function ArtifactList({
   };
 
   const filtered = useMemo(() => {
+    let pool = artifacts;
+    if (focusedArtifactPaths && focusedArtifactPaths.length > 0) {
+      const want = new Set(focusedArtifactPaths);
+      pool = artifacts.filter((a) => want.has(a.bundleDir ?? a.path));
+    }
     const q = query.toLowerCase().trim();
-    if (!q) return artifacts;
-    return artifacts.filter(
+    if (!q) return pool;
+    return pool.filter(
       (a) =>
         a.name.toLowerCase().includes(q) ||
         String(a.frontmatter.description ?? "")
           .toLowerCase()
           .includes(q),
     );
-  }, [artifacts, query]);
+  }, [artifacts, query, focusedArtifactPaths]);
 
   return (
     <section className="list-pane">
@@ -73,7 +127,32 @@ export function ArtifactList({
         <button onClick={onReload} aria-label={t("artifactList.reloadAria")} title={t("artifactList.reloadTitle")}>
           ↻
         </button>
+        <button
+          className="icon-btn"
+          onClick={scanAll}
+          disabled={scanningAll || artifacts.length === 0}
+          aria-label={t("artifactList.scanAllAria")}
+          title={t("artifactList.scanAllTitle")}
+        >
+          <ShieldCheckIcon size={14} />
+        </button>
+        <button
+          className="icon-btn"
+          onClick={onOpenTriggerDebugger}
+          aria-label={t("sidebar.triggerDebuggerAria")}
+          title={t("sidebar.triggerDebuggerTitle")}
+        >
+          <TargetIcon size={14} />
+        </button>
       </div>
+      {focusedArtifactPaths && focusedArtifactPaths.length > 0 && (
+        <div className="focus-bar">
+          <span>{t("artifactList.focusBar", { count: focusedArtifactPaths.length })}</span>
+          <button className="link-btn" onClick={() => setFocusedArtifactPaths(null)}>
+            {t("artifactList.clearFocus")}
+          </button>
+        </div>
+      )}
       {filtered.length === 0 ? (
         <div className="empty">
           {artifacts.length === 0 ? t("artifactList.noArtifacts") : t("artifactList.noMatches")}
@@ -85,6 +164,13 @@ export function ArtifactList({
           const desc = String(a.frontmatter.description ?? "").trim();
           const isActive = selectedId === a.id;
           const canUpload = a.isBundle && !!a.bundleDir;
+          const scanState = localScans[a.id];
+          const badge = makeBadge(scanState, {
+            scanning: String(t("scanReport.scanning")),
+            scanFailed: String(t("scanReport.scanFailed")),
+            noIssues: String(t("scanReport.noIssues")),
+            findings: String(t("scanReport.findingsCount", { count: (scanState && scanState !== "scanning") ? scanState.findings_count : 0 })),
+          });
           return (
             <div key={a.id}>
               <div
@@ -94,6 +180,14 @@ export function ArtifactList({
                 <div className="artifact-name">
                   {a.name}
                   {drift && <span className="badge drift">{t("artifactList.driftBadge")}</span>}
+                  {badge && (
+                    <span
+                      className={`badge scan-badge scan-badge-${badge.tone}`}
+                      title={badge.title}
+                    >
+                      {badge.label}
+                    </span>
+                  )}
                 </div>
                 {desc && <div className="artifact-desc">{truncate(desc, 160)}</div>}
                 <div className="artifact-meta">
@@ -115,6 +209,11 @@ export function ArtifactList({
                     </>
                   ) : null}
                 </div>
+                {(a.bundleDir ?? a.path) && (
+                  <div className="artifact-path" title={a.bundleDir ?? a.path}>
+                    {prettifyPath(a.bundleDir ?? a.path)}
+                  </div>
+                )}
                 <div className="card-actions">
                   <button
                     className="icon-btn"
@@ -162,6 +261,10 @@ export function ArtifactList({
                     skillName={a.name}
                     skillBody={a.body}
                   />
+                  <LocalScanCard
+                    report={scanState}
+                    onRescan={() => runScan(a)}
+                  />
                 </div>
               )}
             </div>
@@ -172,6 +275,87 @@ export function ArtifactList({
   );
 }
 
+function LocalScanCard({
+  report,
+  onRescan,
+}: {
+  report: LocalScanReport | "scanning" | null | undefined;
+  onRescan: () => void;
+}) {
+  const { t } = useTranslation();
+  if (report === undefined) return null;
+  if (report === "scanning") {
+    return (
+      <div className="scan-panel scan-panel-muted">
+        <div className="scan-panel-row">
+          <span className="scan-icon" aria-hidden="true">…</span>
+          <span className="scan-title">{t("scanReport.scanning")}</span>
+        </div>
+      </div>
+    );
+  }
+  if (report === null) {
+    return (
+      <div className="scan-panel scan-panel-muted">
+        <div className="scan-panel-row">
+          <span className="scan-icon" aria-hidden="true">!</span>
+          <span className="scan-title">{t("scanReport.scanFailed")}</span>
+          <button className="scan-rescan" onClick={onRescan}>
+            {t("scanReport.rescan")}
+          </button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="scan-panel-wrap">
+      <ScanReportPanel report={report} />
+      <button className="scan-rescan" onClick={onRescan}>
+        {t("scanReport.rescan")}
+      </button>
+    </div>
+  );
+}
+
+interface Badge {
+  label: string;
+  tone: "ok" | "warn" | "danger" | "muted";
+  title: string;
+}
+
+interface BadgeLabels {
+  scanning: string;
+  scanFailed: string;
+  noIssues: string;
+  findings: string;
+}
+
+function makeBadge(
+  state: LocalScanReport | "scanning" | null | undefined,
+  labels: BadgeLabels,
+): Badge | null {
+  if (state === undefined) return null;
+  if (state === "scanning") return { label: "…", tone: "muted", title: labels.scanning };
+  if (state === null) return { label: "!", tone: "warn", title: labels.scanFailed };
+  if (state.clean) return { label: "✓", tone: "ok", title: labels.noIssues };
+  const risk = state.bom.risk_surface;
+  const tone: Badge["tone"] = risk === "critical" || risk === "high" ? "danger" : "warn";
+  return { label: String(state.findings_count), tone, title: labels.findings };
+}
+
 function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1) + "…" : s;
+}
+
+// Collapse $HOME → "~" so the row stays narrow while still uniquely
+// identifying which bundle on disk this card represents. We match POSIX
+// home roots structurally (/Users/<u> on macOS, /home/<u> on Linux) and
+// Windows user dirs (C:\Users\<u>); seeing the same prefix on every path
+// would be a stronger signal but isn't worth the bookkeeping here.
+export function prettifyPath(p: string): string {
+  const posix = /^(\/Users\/[^/]+|\/home\/[^/]+|\/root)/.exec(p);
+  if (posix) return "~" + p.slice(posix[0].length);
+  const win = /^([A-Za-z]:\\Users\\[^\\]+)/.exec(p);
+  if (win) return "~" + p.slice(win[0].length);
+  return p;
 }

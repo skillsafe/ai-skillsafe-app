@@ -159,7 +159,9 @@
       "identifier": "http:default",
       "allow": [
         { "url": "https://api.skillsafe.ai/*" },
-        { "url": "https://app.skillsafe.ai/*" }
+        { "url": "https://app.skillsafe.ai/*" },
+        { "url": "https://api.github.com/*" },
+        { "url": "https://codeload.github.com/*" }
       ]
     },
     "updater:default",
