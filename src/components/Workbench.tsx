@@ -27,6 +27,7 @@ import {
 import type { MasterEntry, MasterSource } from "../lib/master/types";
 import type { InventoryItem, StateCategory } from "../lib/inventory/types";
 import { TransferDialog } from "./TransferDialog";
+import { MemoryLinterPanel } from "./MemoryLinterPanel";
 
 export function Workbench() {
   const { t } = useTranslation();
@@ -404,6 +405,9 @@ export function Workbench() {
             onUnbindSource={(s) => handleUnbindSource(masterState.entry, s)}
             t={t}
           />
+        )}
+        {selected.category === "memory" && selected.absPath && (
+          <MemoryLinterPanel absPath={selected.absPath} />
         )}
       </div>
       {transferOpen && (

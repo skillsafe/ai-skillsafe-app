@@ -3,6 +3,9 @@ import { useTranslation } from "react-i18next";
 import { useApp } from "../lib/store";
 import { tauriFs, tauriJoiner, tauriPaths } from "../lib/tauriAdapters";
 import { installSkill } from "../lib/skillsafe/install";
+import { InstallBlockedError, type ShieldVerdict } from "../lib/skillsafe/shield";
+import { getTauriFeedClient } from "../lib/feeds/tauri";
+import { QuarantineDialog } from "./QuarantineDialog";
 import {
   deleteSkill,
   setCurrentVersion,
@@ -79,6 +82,11 @@ export function RemoteList({
   const [pendingShareId, setPendingShareId] = useState<string | null>(null);
   const [pendingVersionActionId, setPendingVersionActionId] = useState<string | null>(null);
   const [pendingVersionActionKind, setPendingVersionActionKind] = useState<VersionAction>("set-current");
+  // Shield: opens when a remote install is rejected by the rule feed.
+  const [blockedInstall, setBlockedInstall] = useState<{
+    skillName: string;
+    verdict: Extract<ShieldVerdict, { kind: "block" }>;
+  } | null>(null);
 
   const sectionRef = useRef<HTMLElement | null>(null);
   const onLoadMoreRef = useRef(onLoadMore);
@@ -155,12 +163,32 @@ export function RemoteList({
         tool: choice.tool,
         scope: choice.scope,
         projectRoot: choice.scope === "project" ? choice.projectRoot : undefined,
+        shield: {
+          fs: tauriFs,
+          pj: tauriJoiner,
+          feed: getTauriFeedClient(),
+        },
       });
-      onToast("ok", t("remoteList.installedToast", { ns, name: a.name, path: result.targetDir }));
+      if (result.shieldVerdict?.kind === "quarantine") {
+        onToast(
+          "error",
+          t("remoteList.quarantinedToast", {
+            ns,
+            name: a.name,
+            reason: result.shieldVerdict.reason,
+          }),
+        );
+      } else {
+        onToast("ok", t("remoteList.installedToast", { ns, name: a.name, path: result.targetDir }));
+      }
       markRemoteInstalled(id);
       await onAfterInstall();
     } catch (e) {
-      onToast("error", t("remoteList.installFailedToast", { message: describeError(e) }));
+      if (e instanceof InstallBlockedError) {
+        setBlockedInstall({ skillName: a.name, verdict: e.verdict });
+      } else {
+        onToast("error", t("remoteList.installFailedToast", { message: describeError(e) }));
+      }
     } finally {
       setInstalling(null);
       setPendingInstallId(null);
@@ -443,6 +471,13 @@ export function RemoteList({
             if (installing === pendingArtifact.id) return;
             setPendingInstallId(null);
           }}
+        />
+      )}
+      {blockedInstall && (
+        <QuarantineDialog
+          skillName={blockedInstall.skillName}
+          verdict={blockedInstall.verdict}
+          onClose={() => setBlockedInstall(null)}
         />
       )}
       {pendingDeleteArtifact && (

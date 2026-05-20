@@ -10,6 +10,11 @@ import {
   type McpRow,
   type McpTransport,
 } from "../lib/configs/mcpRows";
+import { lintMcp, topSeverity, type LintContext, type McpFinding } from "../lib/configs/mcpLint";
+import { getTauriFeedClient } from "../lib/feeds/tauri";
+import { type as osType } from "@tauri-apps/plugin-os";
+import type { McpBlocklistPayload } from "../lib/feeds/types";
+import { SafetyBadge } from "./SafetyBadge";
 
 type Transport = McpTransport;
 type Row = McpRow;
@@ -37,6 +42,37 @@ export function McpEditor({ onToast }: Props) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [blocklist, setBlocklist] = useState<McpBlocklistPayload | null>(null);
+  const [lintCtx, setLintCtx] = useState<LintContext>({});
+
+  useEffect(() => {
+    // Fetch the blocklist lazily; lint runs against null until it arrives,
+    // which is fine — heuristic checks still fire without the feed.
+    void getTauriFeedClient()
+      .load("mcp-blocklist")
+      .then(setBlocklist)
+      .catch(() => undefined);
+    // Capture the host platform once so the macOS-sandbox heuristic fires
+    // accurately. Skip if the OS probe rejects (web preview / mock).
+    void Promise.resolve(osType())
+      .then((kind) => {
+        const platform =
+          kind === "macos" ? "darwin" : kind === "linux" ? "linux" : kind === "windows" ? "windows" : null;
+        setLintCtx({ platform });
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const findings = useMemo<McpFinding[]>(() => {
+    try {
+      return lintMcp(rowsToServers(rows), blocklist, lintCtx);
+    } catch {
+      // rowsToServers throws on malformed transport-specific fields (e.g.
+      // empty URL on url transport); a typing-in-progress row shouldn't
+      // crash the lint pass.
+      return [];
+    }
+  }, [rows, blocklist, lintCtx]);
 
   const dirty = useMemo(() => {
     if (!doc) return false;
@@ -165,6 +201,7 @@ export function McpEditor({ onToast }: Props) {
               <McpServerCard
                 key={idx}
                 row={row}
+                topFinding={topSeverity(findings, row.name)}
                 onChange={(patch) => onUpdate(idx, patch)}
                 onRemove={() => onRemove(idx)}
                 t={t}
@@ -184,11 +221,13 @@ export function McpEditor({ onToast }: Props) {
 
 function McpServerCard({
   row,
+  topFinding,
   onChange,
   onRemove,
   t,
 }: {
   row: Row;
+  topFinding: McpFinding | null;
   onChange: (patch: Partial<Row>) => void;
   onRemove: () => void;
   t: TFunction;
@@ -205,6 +244,13 @@ function McpServerCard({
           aria-label={t("mcp.nameAria")}
         />
         <span className="mcp-transport">{row.transport}</span>
+        {topFinding && (
+          <SafetyBadge
+            variant={topFinding.severity}
+            label={topFinding.rule_id}
+            title={topFinding.message}
+          />
+        )}
         <button type="button" className="link-btn" onClick={onRemove} aria-label={t("mcp.removeServerAria")}>×</button>
       </div>
       {row.transport === "stdio" ? (

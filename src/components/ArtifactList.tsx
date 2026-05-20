@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { type as osType } from "@tauri-apps/plugin-os";
 import { useApp } from "../lib/store";
 import { AttachmentTree } from "./AttachmentTree";
 import { ScanReportPanel } from "./ScanReportPanel";
+import { SafetyBadge } from "./SafetyBadge";
+import { SecretsPanel } from "./SecretsPanel";
 import { ArchiveIcon, ShieldCheckIcon, TargetIcon, TrashIcon, UploadCloudIcon } from "./icons";
 import type { MarkdownArtifact } from "../lib/artifacts/types";
 import { scanArtifact } from "../lib/scan/artifact";
 import { tauriFs } from "../lib/tauriAdapters";
 import type { LocalScanReport } from "../lib/scan/types";
+import { getStatusBlock, isQuarantined, isRewritten } from "../lib/artifacts/status";
+import type { RewriteOs } from "../lib/secrets/keychainTemplate";
 
 interface Props {
   onReload: () => void;
@@ -42,6 +47,18 @@ export function ArtifactList({
   } = useApp();
   const [query, setQuery] = useState("");
   const [scanningAll, setScanningAll] = useState(false);
+  // Host OS — used by SecretsPanel to render the right keychain command.
+  // Defaults to darwin so initial render doesn't flicker.
+  const [hostOs, setHostOs] = useState<RewriteOs>("darwin");
+  useEffect(() => {
+    void Promise.resolve(osType())
+      .then((kind) => {
+        if (kind === "macos") setHostOs("darwin");
+        else if (kind === "windows") setHostOs("windows");
+        else setHostOs("linux");
+      })
+      .catch(() => undefined);
+  }, []);
 
   const runScan = useCallback(
     async (artifact: MarkdownArtifact) => {
@@ -180,6 +197,20 @@ export function ArtifactList({
                 <div className="artifact-name">
                   {a.name}
                   {drift && <span className="badge drift">{t("artifactList.driftBadge")}</span>}
+                  {isQuarantined(a) && (
+                    <SafetyBadge
+                      variant="quarantined"
+                      label={t("artifactList.quarantinedBadge")}
+                      title={getStatusBlock(a)?.reason ?? t("artifactList.quarantinedBadge")}
+                    />
+                  )}
+                  {isRewritten(a) && (
+                    <SafetyBadge
+                      variant="rewritten"
+                      label={t("artifactList.rewrittenBadge")}
+                      title={getStatusBlock(a)?.reason ?? t("artifactList.rewrittenBadge")}
+                    />
+                  )}
                   {badge && (
                     <span
                       className={`badge scan-badge scan-badge-${badge.tone}`}
@@ -265,6 +296,14 @@ export function ArtifactList({
                     report={scanState}
                     onRescan={() => runScan(a)}
                   />
+                  {scanState && scanState !== "scanning" && (
+                    <SecretsPanel
+                      artifact={a}
+                      report={scanState}
+                      os={hostOs}
+                      onApplied={() => runScan(a)}
+                    />
+                  )}
                 </div>
               )}
             </div>

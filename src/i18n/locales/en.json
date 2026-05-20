@@ -326,6 +326,7 @@
     "missingMeta": "Skill is missing namespace or version.",
     "installedToast": "Installed {ns}/{name} → {path}",
     "installFailedToast": "Install failed: {message}",
+    "quarantinedToast": "Installed {ns}/{name} with quarantine: {reason}. Review before activating.",
     "starredToast": "Starred {ns}/{name}.",
     "unstarredToast": "Unstarred {ns}/{name}.",
     "starFailedToast": "Star failed: {message}",
@@ -745,6 +746,8 @@
     "noArtifacts": "No artifacts in this scope yet.",
     "noMatches": "No matches.",
     "driftBadge": "drift",
+    "quarantinedBadge": "quarantined",
+    "rewrittenBadge": "rewritten",
     "backupAria": "Back up {name}",
     "backupTitleReady": "Back up this skill to the backup folder",
     "backupTitleNeedsSetup": "Set a backup folder in Settings → Local Backup first",
@@ -793,7 +796,51 @@
     "importFailed": "Import failed: {message}",
     "importedFiles": "Imported {count} {count, plural, one {file} other {files}}",
     "importedReplaced": "({count} replaced)",
-    "importedManifest": "· {count} manifest entries merged"
+    "importedManifest": "· {count} manifest entries merged",
+    "importLockfile": "Import lockfile…",
+    "importLockfileHint": "Detect and import foreign skills-lock formats (vercel, pcomans, skillpm)"
+  },
+  "quarantine": {
+    "blockedBadge": "blocked",
+    "blockedTitle": "Install blocked: {name}",
+    "blockedHint": "The ToxicSkills shield rejected this install. No files were written.",
+    "matchedRules": "Matched rules",
+    "reason": "Reason",
+    "acknowledge": "Understood"
+  },
+  "memoryLinter": {
+    "loading": "Walking parent directories…",
+    "sourcesTab": "Sources ({count})",
+    "mergedTab": "Merged",
+    "conflictsTab": "Conflicts",
+    "noConflicts": "No conflicts detected across these memory sources.",
+    "noSources": "No memory files found in the walked range."
+  },
+  "secretsPanel": {
+    "detectedBadge": "secrets",
+    "title": "{count} {count, plural, one {secret reference} other {secret references}} can be moved to keychain",
+    "hint": "Rewrites inline KEY=value lines to look up the value from the {os} keychain at run time. After applying, populate the keychain entries before activating the skill.",
+    "willRewrite": "Will rewrite",
+    "apply": "Apply rewrite",
+    "applying": "Applying…",
+    "appliedToast": "Rewrote {count} {count, plural, one {entry} other {entries}}. Don't forget to populate the keychain.",
+    "noAutoFix": "Secret-bearing paths referenced — no auto-rewrite available."
+  },
+  "lockfileImport": {
+    "title": "Import lockfile",
+    "hint": "Pick a foreign lockfile to convert to skillsafe-v1. Unknown fields are preserved on round-trip.",
+    "pickFile": "Pick file…",
+    "needsProject": "Open a project folder first — skills-lock.json is written there.",
+    "detectedAs": "Detected as",
+    "skillCount": "{count} {count, plural, one {skill} other {skills}}",
+    "added": "added",
+    "removed": "removed",
+    "changed": "changed",
+    "noChanges": "No changes — already in sync.",
+    "apply": "Apply",
+    "applying": "Applying…",
+    "applied": "Imported {count} {count, plural, one {skill} other {skills}}",
+    "unrecognized": "Lockfile format not recognized."
   },
   "updateBanner": {
     "restartToUpdate": "Restart to update to v{version}",

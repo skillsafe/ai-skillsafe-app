@@ -13,6 +13,7 @@ import { ensureDir } from "../lib/fs";
 import { resolveMasterRoot } from "../lib/master/store";
 import { importMasterZip, packMasterZip } from "../lib/master/export";
 import { BulkRestoreDialog } from "./BulkRestoreDialog";
+import { LockfileImportDialog } from "./LockfileImportDialog";
 import { MergeMcpDialog } from "./MergeMcpDialog";
 
 export function WorkbenchToolbar() {
@@ -25,6 +26,7 @@ export function WorkbenchToolbar() {
 
   const [bulkOpen, setBulkOpen] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
+  const [lockfileImportOpen, setLockfileImportOpen] = useState(false);
   const [busyExport, setBusyExport] = useState(false);
   const [busyImport, setBusyImport] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -135,6 +137,12 @@ export function WorkbenchToolbar() {
             disabled: busyImport,
             hint: t("workbenchToolbar.importZipHint"),
           },
+          { kind: "separator" },
+          {
+            label: t("workbenchToolbar.importLockfile"),
+            onClick: () => setLockfileImportOpen(true),
+            hint: t("workbenchToolbar.importLockfileHint"),
+          },
         ]}
       />
       {toast && <div className="workbench-list-toast">{toast}</div>}
@@ -157,6 +165,12 @@ export function WorkbenchToolbar() {
           onError={flashToast}
         />
       )}
+      <LockfileImportDialog
+        open={lockfileImportOpen}
+        onClose={() => setLockfileImportOpen(false)}
+        onImported={() => bumpScan()}
+        onToast={(_kind, text) => flashToast(text)}
+      />
     </>
   );
 }

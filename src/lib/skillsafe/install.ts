@@ -10,6 +10,7 @@ import {
   downloadSkillManifest,
 } from "./client";
 import type { DownloadManifest } from "./types";
+import { runShield, type ShieldDeps, type ShieldVerdict } from "./shield";
 
 /**
  * The live API splits download into two steps:
@@ -57,6 +58,17 @@ export interface InstallOpts {
   tool: Tool;
   scope: Scope;
   projectRoot?: string;
+  /** When set, run the ToxicSkills shield over the freshly written files.
+   * Block verdicts throw InstallBlockedError + clean up the partial install;
+   * quarantine verdicts write the frontmatter sentinel into SKILL.md. Omit
+   * for callers that don't need gating (git install, master restore, tests). */
+  shield?: ShieldDeps;
+}
+
+export interface InstallResult {
+  targetDir: string;
+  entries: string[];
+  shieldVerdict?: ShieldVerdict;
 }
 
 export async function installSkill(
@@ -64,7 +76,7 @@ export async function installSkill(
   deps: PathResolverDeps,
   pj: PathJoiner,
   opts: InstallOpts,
-): Promise<{ targetDir: string; entries: string[] }> {
+): Promise<InstallResult> {
   let manifest: DownloadManifest;
   if (opts.shareId) {
     manifest = (await downloadShareManifest(opts.shareId)).data;
@@ -90,6 +102,10 @@ export async function installSkill(
   );
   await ensureDir(fs, targetDir);
   const entries: string[] = [];
+  // Track decoded text for the shield's scanner. Binary files (images etc.)
+  // have no useful text representation for regex passes, so we keep them out
+  // of the scan input; the scanner already skips non-text content anyway.
+  const scanInput: Array<{ path: string; content: string; size: number }> = [];
 
   for (const f of manifest.files) {
     if (f.path.startsWith("/") || f.path.split(/[\\/]/).includes("..")) {
@@ -103,12 +119,22 @@ export async function installSkill(
       await ensureDir(fs, cur);
     }
     const fullPath = await pj.join(cur, segments[segments.length - 1]);
+    const decoded = new TextDecoder().decode(bytes);
     if (fs.writeFile) {
       await fs.writeFile(fullPath, bytes);
     } else {
-      await fs.writeTextFile(fullPath, new TextDecoder().decode(bytes));
+      await fs.writeTextFile(fullPath, decoded);
     }
     entries.push(f.path);
+    scanInput.push({ path: f.path, content: decoded, size: bytes.length });
+  }
+
+  if (opts.shield) {
+    const { verdict } = await runShield(opts.shield, {
+      files: scanInput,
+      targetDir,
+    });
+    return { targetDir, entries, shieldVerdict: verdict };
   }
 
   return { targetDir, entries };

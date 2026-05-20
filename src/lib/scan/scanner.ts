@@ -169,6 +169,21 @@ const SECRET_PATTERNS: PatternDef[] = [
   [String.raw`['"]?[a-zA-Z_]*(?:api[_\-]?key|secret[_\-]?key|access[_\-]?token|auth[_\-]?token|password)['"]?\s*[:=]\s*['"][a-zA-Z0-9+/=_\-]{16,}['"]`, "generic_secret", "high", "Possible hardcoded secret or API key"],
 ];
 
+// Secret-bearing-file references. Distinct from SECRET_PATTERNS (which finds
+// the actual secret value): these match when an artifact's code/text refers
+// to a *path* known to hold credentials. Rule_id prefix `secret_path_*` so
+// the feed and the keychain rewriter can govern them independently.
+const SECRET_PATH_PATTERNS: PatternDef[] = [
+  [String.raw`(?:[~./\w-]+/)?\.env(?:\.\w+)?\b`, "secret_path_dotenv", "medium", "Reference to a .env file"],
+  [String.raw`~?/?\.aws/(?:credentials|config)\b`, "secret_path_aws", "high", "Reference to ~/.aws credentials/config"],
+  [String.raw`~?/?\.ssh/id_(?:rsa|ed25519|dsa|ecdsa)\b`, "secret_path_ssh_key", "high", "Reference to an SSH private key"],
+  [String.raw`~?/?\.docker/config\.json\b`, "secret_path_docker", "medium", "Reference to Docker credentials"],
+  [String.raw`~?/?\.kube/config\b`, "secret_path_kube", "high", "Reference to kube config (cluster credentials)"],
+  [String.raw`~?/?\.netrc\b`, "secret_path_netrc", "high", "Reference to ~/.netrc (HTTP credentials)"],
+  [String.raw`(?:[~./\w-]+/)?credentials\.json\b`, "secret_path_credentials_json", "medium", "Reference to a credentials.json file"],
+  [String.raw`(?:[~./\w-]+/)?service[-_]account(?:[-_.]\w+)*\.json\b`, "secret_path_gcp", "high", "Reference to a GCP service-account key"],
+];
+
 // Pass 4: Prompt injection + inducement
 const INJECTION_PATTERNS: PatternDef[] = [
   [String.raw`ignore\s+(?:all\s+)?(?:(?:previous|prior|above)\s+)?instructions`, "prompt_ignore_instructions", "high", "Prompt injection: ignore instructions"],
@@ -238,6 +253,7 @@ interface CompiledPatterns {
   py: Array<[RegExp, string, RawFinding["severity"], string]>;
   js: Array<[RegExp, string, RawFinding["severity"], string]>;
   secrets: Array<[RegExp, string, RawFinding["severity"], string]>;
+  secretPaths: Array<[RegExp, string, RawFinding["severity"], string]>;
   injection: Array<[RegExp, string, RawFinding["severity"], string]>;
   shellThreats: Array<[RegExp, string, RawFinding["severity"], string]>;
   obfuscation: Array<[RegExp, string, RawFinding["severity"], string]>;
@@ -282,6 +298,7 @@ function getPatterns(): CompiledPatterns {
     py: compile(PY_PATTERNS),
     js: compile(JS_PATTERNS),
     secrets: compile(SECRET_PATTERNS),
+    secretPaths: compile(SECRET_PATH_PATTERNS),
     injection: compile(INJECTION_PATTERNS, "i"),
     shellThreats: compile(SHELL_THREAT_PATTERNS, "i"),
     obfuscation: compile(OBFUSCATION_PATTERNS, "u"),
@@ -801,6 +818,11 @@ export function scanFiles(files: FileEntry[]): ScanResult {
 
   // Pass 3: Secret detection (all text files)
   allFindings.push(...scanRegexPass(files, p.secrets, isTextFile));
+
+  // Pass 3b: Secret-bearing-path references (.env, ~/.aws, ~/.ssh, etc.)
+  // — distinct from Pass 3 which finds actual key values. Lets the keychain
+  // rewriter target paths separately from secret literals.
+  allFindings.push(...scanRegexPass(files, p.secretPaths, isTextFile));
 
   // Pass 4: Prompt injection (text-like files only)
   allFindings.push(...scanRegexPass(files, p.injection, path => INJECTION_EXTENSIONS.has(ext(path))));
