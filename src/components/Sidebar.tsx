@@ -7,6 +7,8 @@ import { dataTypesFor } from "../lib/backup/dataTypes";
 import { useApp } from "../lib/store";
 import { ArchiveIcon, GearIcon, GlobeIcon, ShieldIcon } from "./icons";
 import { MASTER_TOOL_SENTINEL } from "./InventoryList";
+import { PillCount } from "./PillCount";
+import { useFilterCounts } from "../lib/hooks/useFilterCounts";
 
 // Data-type ids already represented by the main TYPES row (skill/agent/
 // command via the artifact pipeline) — surfacing them as a second pill
@@ -69,6 +71,7 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
     setView, setWorkbenchCategory,
     setSettingsScrollTarget,
   } = useApp();
+  const counts = useFilterCounts();
   // Eligible categories for the current tool: enabled in backup settings AND
   // not already covered by the TYPES row. When no tool is enabled for backup
   // at all (toolBackupOn === false), we still show the row only if a category
@@ -242,6 +245,7 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
               }}
             >
               {t(`scopes.${s}`)}
+              <PillCount count={s === "all" ? counts.byScope.all : s === "global" ? counts.byScope.global : s === "project" ? counts.byScope.project : null} />
             </button>
           );
         })}
@@ -347,6 +351,7 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
                     }}
                   >
                     {t(`masterCategories.${mc}`)}
+                    <PillCount count={counts.byCategory ? counts.byCategory[mc] ?? 0 : null} />
                   </button>
                 );
               })
@@ -365,6 +370,7 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
                   }}
                 >
                   {t(`types.${tt}`)}
+                  <PillCount count={counts.byType ? (counts.byType as any)[tt] : null} />
                 </button>
               );
             })}
@@ -389,6 +395,7 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
               }}
             >
               {label}
+              <PillCount count={counts.byCategory ? counts.byCategory[dt.id] ?? 0 : null} />
             </button>
           );
         })}
