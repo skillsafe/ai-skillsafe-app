@@ -769,6 +769,10 @@ export function BackupPanel({ onToast }: Props) {
       onToast("error", t("backupPanel.errors.pickDestination"));
       return;
     }
+    // Minimum-on duration: keep backupBusy=true for at least 250ms even on
+    // tiny diffs, so the "Backing up…" label is observable. Tracked from
+    // the moment we flip the flag, not from picking destination.
+    const busyStart = Date.now();
     setBackupBusy(true);
     setBackupProgress({
       phase: t("backupPanel.phase.starting"),
@@ -852,6 +856,8 @@ export function BackupPanel({ onToast }: Props) {
       const raw = e instanceof Error ? e.message : String(e);
       onToast("error", t("backupPanel.errors.backupFailed", { message: friendlyBackupError(raw, t) }));
     } finally {
+      const remaining = 250 - (Date.now() - busyStart);
+      if (remaining > 0) await new Promise((r) => setTimeout(r, remaining));
       setBackupBusy(false);
       setBackupProgress(null);
     }
