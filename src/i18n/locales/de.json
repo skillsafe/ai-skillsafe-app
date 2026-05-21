@@ -744,6 +744,33 @@
     "focusBar": "{count} {count, plural, one {Pfad fokussiert} other {Pfade fokussiert}} aus dem Trigger-Debugger",
     "clearFocus": "Fokus aufheben"
   },
+  "navHeader": {
+    "separator": "›",
+    "itemsCount": "{count, plural, one {# item} other {# items}}",
+    "tool": "{tool}",
+    "scope": "{scope}",
+    "type": "{type}",
+    "master": "Master",
+    "category": "{category}"
+  },
+  "pillCounts": {
+    "label": "{count, number}"
+  },
+  "emptyGuidance": {
+    "headlineFiltered": "No {type} match {tool} × {scope}.",
+    "headlineFilteredMaster": "No items in {category} for {tool}.",
+    "headlineGloballyEmpty": "No {type} exist in any tool.",
+    "headlineConfigsEmpty": "No configs for {tool} × {scope}.",
+    "broadenScopeAll": "Show all scopes (+{delta})",
+    "broadenTypeAll": "Clear Type filter (+{delta})",
+    "broadenSwitchTool": "Switch to {tool} (+{delta})",
+    "broadenCategoryAll": "Show all categories (+{delta})",
+    "broadenScopeAllNoCount": "Show all scopes",
+    "broadenTypeAllNoCount": "Clear Type filter",
+    "broadenCategoryAllNoCount": "Show all categories",
+    "createNew": "Create new",
+    "browseCloud": "Browse cloud"
+  },
   "inventoryList": {
     "filterPlaceholder": "Filter…",
     "rescanAria": "Inventar neu scannen",
