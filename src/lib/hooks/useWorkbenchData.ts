@@ -25,6 +25,7 @@ export function useWorkbenchData() {
   const setMasterManifest = useApp((s) => s.setMasterManifest);
   const setMasterRootResolved = useApp((s) => s.setMasterRootResolved);
   const setMasterItems = useApp((s) => s.setMasterItems);
+  const haveInventory = useApp((s) => s.workbenchInventory !== null);
 
   const projectRoots = useMemo(() => {
     if (projectFilter && recentProjects.includes(projectFilter)) return [projectFilter];
@@ -34,7 +35,9 @@ export function useWorkbenchData() {
   const genRef = useRef(0);
 
   useEffect(() => {
-    if (view !== "workbench") return;
+    // Run on workbench view, OR once as a warm-up so Tool counts populate
+    // on the sidebar pills before the user opens Workbench.
+    if (view !== "workbench" && haveInventory) return;
     let cancelled = false;
     const myGen = ++genRef.current;
     setLoading(true);
