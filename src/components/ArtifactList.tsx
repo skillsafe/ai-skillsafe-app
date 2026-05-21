@@ -6,6 +6,8 @@ import { AttachmentTree } from "./AttachmentTree";
 import { ScanReportPanel } from "./ScanReportPanel";
 import { SafetyBadge } from "./SafetyBadge";
 import { SecretsPanel } from "./SecretsPanel";
+import { EmptyStateGuidance } from "./EmptyStateGuidance";
+import { useFilterCounts } from "../lib/hooks/useFilterCounts";
 import { ArchiveIcon, ShieldCheckIcon, TargetIcon, TrashIcon, UploadCloudIcon } from "./icons";
 import type { MarkdownArtifact } from "../lib/artifacts/types";
 import { scanArtifact } from "../lib/scan/artifact";
@@ -37,7 +39,9 @@ export function ArtifactList({
     driftByName,
     error,
     recentProjects,
+    tool,
     scope,
+    type,
     backupDestination,
     cloudApiKey,
     localScans,
@@ -45,6 +49,7 @@ export function ArtifactList({
     focusedArtifactPaths,
     setFocusedArtifactPaths,
   } = useApp();
+  const counts = useFilterCounts();
   const [query, setQuery] = useState("");
   const [scanningAll, setScanningAll] = useState(false);
   // Host OS — used by SecretsPanel to render the right keychain command.
@@ -171,10 +176,17 @@ export function ArtifactList({
         </div>
       )}
       {filtered.length === 0 ? (
-        <div className="empty">
-          {artifacts.length === 0 ? t("artifactList.noArtifacts") : t("artifactList.noMatches")}
-          {error && <div className="empty-error">{error}</div>}
-        </div>
+        <>
+          <EmptyStateGuidance
+            view="artifacts"
+            tool={tool}
+            scope={scope}
+            type={type}
+            totalAcrossAll={counts.byScope.all}
+            broadenings={counts.broadenings}
+          />
+          {error && <div className="empty empty-error">{error}</div>}
+        </>
       ) : (
         filtered.map((a) => {
           const drift = driftByName[a.name] === true;

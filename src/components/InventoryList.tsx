@@ -12,6 +12,8 @@ import { displayNameOf } from "../lib/agents/registry";
 import { masterStateFor } from "../lib/master/store";
 import type { Manifest } from "../lib/master/types";
 import type { InventoryItem } from "../lib/inventory/types";
+import { EmptyStateGuidance } from "./EmptyStateGuidance";
+import { useFilterCounts } from "../lib/hooks/useFilterCounts";
 
 export const MASTER_TOOL_SENTINEL = "__master__";
 
@@ -29,6 +31,7 @@ export function InventoryList() {
   const masterItems = useApp((s) => s.masterItems);
   const setSelected = useApp((s) => s.setWorkbenchSelectedId);
   const bumpWorkbenchScan = useApp((s) => s.bumpWorkbenchScan);
+  const counts = useFilterCounts();
   const [query, setQuery] = useState("");
 
   // Live items + master-only items with no matching live source,
@@ -98,12 +101,15 @@ export function InventoryList() {
       </div>
       {error && <div className="empty empty-error">{t("inventoryList.scanFailed", { error })}</div>}
 
-      {!loading && inventory && filtered.length === 0 && (
-        <div className="empty">
-          {(inventory?.items.length ?? 0) === 0 && masterItems.length === 0
-            ? t("inventoryList.emptyOnDisk")
-            : t("inventoryList.noMatches")}
-        </div>
+      {!loading && inventory && filtered.length === 0 && !error && (
+        <EmptyStateGuidance
+          view="workbench"
+          tool={tool}
+          scope={scope}
+          category={workbenchCategory}
+          totalAcrossAll={inventory.items.filter((it) => it.tool === tool).length}
+          broadenings={counts.broadenings}
+        />
       )}
 
       {filtered.map((it) => (
