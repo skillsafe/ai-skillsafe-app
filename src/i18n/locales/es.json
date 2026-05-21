@@ -78,8 +78,8 @@
     "backupPanelAria": "Panel de respaldo local",
     "backupPanelHide": "Ocultar panel de respaldo local",
     "backupPanelShow": "Mostrar panel de respaldo local",
-    "preferencesAria": "Abrir preferencias",
-    "preferencesTitle": "Preferencias",
+    "settingsAria": "Abrir ajustes",
+    "settingsTitle": "Ajustes",
     "tool": "Herramienta",
     "recent": "Recientes",
     "scope": "Ámbito",
@@ -100,7 +100,7 @@
   },
   "settings": {
     "title": "Ajustes",
-    "closeAria": "Cerrar preferencias",
+    "closeAria": "Cerrar ajustes",
     "account": {
       "title": "Cuenta",
       "notSignedIn": "No has iniciado sesión",

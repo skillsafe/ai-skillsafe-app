@@ -184,8 +184,8 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
         {onOpenSettings && (
           <button
             className="theme-toggle icon-btn"
-            aria-label={t("sidebar.preferencesAria")}
-            title={t("sidebar.preferencesTitle")}
+            aria-label={t("sidebar.settingsAria")}
+            title={t("sidebar.settingsTitle")}
             onClick={onOpenSettings}
           >
             <GearIcon size={16} />

@@ -78,8 +78,8 @@
     "backupPanelAria": "本地备份面板",
     "backupPanelHide": "隐藏本地备份面板",
     "backupPanelShow": "显示本地备份面板",
-    "preferencesAria": "打开偏好设置",
-    "preferencesTitle": "偏好设置",
+    "settingsAria": "打开设置",
+    "settingsTitle": "设置",
     "tool": "工具",
     "recent": "最近",
     "scope": "范围",
@@ -100,7 +100,7 @@
   },
   "settings": {
     "title": "设置",
-    "closeAria": "关闭偏好设置",
+    "closeAria": "关闭设置",
     "account": {
       "title": "账户",
       "notSignedIn": "未登录",

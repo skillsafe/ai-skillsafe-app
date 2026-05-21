@@ -78,8 +78,8 @@
     "backupPanelAria": "ローカルバックアップパネル",
     "backupPanelHide": "ローカルバックアップパネルを隠す",
     "backupPanelShow": "ローカルバックアップパネルを表示",
-    "preferencesAria": "環境設定を開く",
-    "preferencesTitle": "環境設定",
+    "settingsAria": "設定を開く",
+    "settingsTitle": "設定",
     "tool": "ツール",
     "recent": "最近使った項目",
     "scope": "スコープ",
@@ -100,7 +100,7 @@
   },
   "settings": {
     "title": "設定",
-    "closeAria": "環境設定を閉じる",
+    "closeAria": "設定を閉じる",
     "account": {
       "title": "アカウント",
       "notSignedIn": "サインインしていません",

@@ -78,8 +78,8 @@
     "backupPanelAria": "Panneau de sauvegarde locale",
     "backupPanelHide": "Masquer le panneau de sauvegarde locale",
     "backupPanelShow": "Afficher le panneau de sauvegarde locale",
-    "preferencesAria": "Ouvrir les préférences",
-    "preferencesTitle": "Préférences",
+    "settingsAria": "Ouvrir les paramètres",
+    "settingsTitle": "Paramètres",
     "tool": "Outil",
     "recent": "Récents",
     "scope": "Portée",
@@ -100,7 +100,7 @@
   },
   "settings": {
     "title": "Paramètres",
-    "closeAria": "Fermer les préférences",
+    "closeAria": "Fermer les paramètres",
     "account": {
       "title": "Compte",
       "notSignedIn": "Non connecté",

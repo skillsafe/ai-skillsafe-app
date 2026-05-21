@@ -78,8 +78,8 @@
     "backupPanelAria": "Local backup panel",
     "backupPanelHide": "Hide local backup panel",
     "backupPanelShow": "Show local backup panel",
-    "preferencesAria": "Open preferences",
-    "preferencesTitle": "Preferences",
+    "settingsAria": "Open settings",
+    "settingsTitle": "Settings",
     "triggerDebuggerAria": "Open trigger debugger",
     "triggerDebuggerTitle": "Debug skill triggers and find conflicts",
     "tool": "Tool",
@@ -100,7 +100,7 @@
   },
   "settings": {
     "title": "Settings",
-    "closeAria": "Close preferences",
+    "closeAria": "Close settings",
     "account": {
       "title": "Account",
       "notSignedIn": "Not signed in",
