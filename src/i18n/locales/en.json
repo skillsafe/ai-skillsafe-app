@@ -77,7 +77,7 @@
     "cloudPanelShow": "Show cloud panel",
     "backupPanelAria": "Local backup panel",
     "backupPanelHide": "Hide local backup panel",
-    "backupPanelShow": "Local Backup",
+    "backupPanelShow": "Show local backup panel",
     "preferencesAria": "Open preferences",
     "preferencesTitle": "Preferences",
     "triggerDebuggerAria": "Open trigger debugger",

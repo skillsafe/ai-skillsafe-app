@@ -162,7 +162,7 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
         {onToggleCloud && (
           <button
             className={`theme-toggle icon-btn ${cloudActive ? "active" : ""}`}
-            aria-label={t("sidebar.cloudPanelAria")}
+            aria-label={cloudActive ? t("sidebar.cloudPanelHide") : t("sidebar.cloudPanelShow")}
             aria-pressed={cloudActive}
             title={cloudActive ? t("sidebar.cloudPanelHide") : t("sidebar.cloudPanelShow")}
             onClick={onToggleCloud}
@@ -173,7 +173,7 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
         {onToggleBackup && (
           <button
             className={`theme-toggle icon-btn ${backupActive ? "active" : ""}`}
-            aria-label={t("sidebar.backupPanelAria")}
+            aria-label={backupActive ? t("sidebar.backupPanelHide") : t("sidebar.backupPanelShow")}
             aria-pressed={backupActive}
             title={backupActive ? t("sidebar.backupPanelHide") : t("sidebar.backupPanelShow")}
             onClick={onToggleBackup}
