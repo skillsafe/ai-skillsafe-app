@@ -1963,3 +1963,39 @@ button.pill { font-family: inherit; line-height: inherit; }
 .empty-guidance-actions .link-btn:hover {
   background: rgba(255, 255, 255, 0.12);
 }
+.location-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: var(--header-bg, rgba(20, 20, 20, 0.85));
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.9em;
+}
+.loc-segment {
+  background: transparent;
+  border: 0;
+  padding: 4px 8px;
+  border-radius: 6px;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+.loc-segment:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.loc-segment--master {
+  font-weight: 600;
+}
+.loc-sep {
+  opacity: 0.5;
+}
+.loc-count {
+  margin-left: auto;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
