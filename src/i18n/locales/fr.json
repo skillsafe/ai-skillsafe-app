@@ -100,7 +100,7 @@
   },
   "settings": {
     "title": "Paramètres",
-    "closeAria": "Fermer les paramètres",
+    "closeAria": "Fermer les préférences",
     "account": {
       "title": "Compte",
       "notSignedIn": "Non connecté",

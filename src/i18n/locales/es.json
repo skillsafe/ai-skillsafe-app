@@ -100,7 +100,7 @@
   },
   "settings": {
     "title": "Ajustes",
-    "closeAria": "Cerrar ajustes",
+    "closeAria": "Cerrar preferencias",
     "account": {
       "title": "Cuenta",
       "notSignedIn": "No has iniciado sesión",

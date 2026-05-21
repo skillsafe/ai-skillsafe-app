@@ -100,7 +100,7 @@
   },
   "settings": {
     "title": "设置",
-    "closeAria": "关闭设置",
+    "closeAria": "关闭偏好设置",
     "account": {
       "title": "账户",
       "notSignedIn": "未登录",

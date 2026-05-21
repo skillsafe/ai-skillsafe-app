@@ -100,7 +100,7 @@
   },
   "settings": {
     "title": "Settings",
-    "closeAria": "Close settings",
+    "closeAria": "Close preferences",
     "account": {
       "title": "Account",
       "notSignedIn": "Not signed in",

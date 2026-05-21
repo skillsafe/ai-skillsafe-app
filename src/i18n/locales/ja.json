@@ -100,7 +100,7 @@
   },
   "settings": {
     "title": "設定",
-    "closeAria": "設定を閉じる",
+    "closeAria": "環境設定を閉じる",
     "account": {
       "title": "アカウント",
       "notSignedIn": "サインインしていません",
