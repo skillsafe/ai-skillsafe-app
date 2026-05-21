@@ -1919,3 +1919,22 @@ button.pill { font-family: inherit; line-height: inherit; }
 .workbench-actions-menu-label { font-size: 12px; font-weight: 500; }
 .workbench-actions-menu-hint { font-size: 11px; color: var(--muted); }
 .workbench-actions-menu-sep { height: 1px; background: var(--border); margin: 4px 2px; }
+.pill-count {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 0.78em;
+  font-variant-numeric: tabular-nums;
+  background: var(--pill-count-bg, rgba(255, 255, 255, 0.08));
+  color: var(--pill-count-fg, currentColor);
+  line-height: 1.4;
+  min-width: 1.4em;
+  text-align: center;
+}
+.pill-count--empty {
+  opacity: 0.45;
+}
+.pill.active .pill-count {
+  background: rgba(255, 255, 255, 0.18);
+}
