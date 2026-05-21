@@ -767,6 +767,18 @@ export function BackupBrowser({ onToast }: Props) {
           </button>
         </div>
 
+        <div className="backup-last-run">
+          {backupLastRun && backupStats
+            ? t("backupBrowser.lastBackupLine", {
+                relative: formatRelative(backupLastRun, t),
+                added: backupStats.counts.added,
+                changed: backupStats.counts.changed,
+                removed: backupStats.counts.removed,
+                bytes: formatBytes(backupStats.totalBytes, t),
+              })
+            : t("backupBrowser.neverBackedUp")}
+        </div>
+
         <div className="section-label">{t("backupBrowser.tools")}</div>
         <div className="pill-row" style={{ flexWrap: "wrap" }}>
           {visibleTools.length === 0 ? (
@@ -843,18 +855,6 @@ export function BackupBrowser({ onToast }: Props) {
             </div>
           </div>
         )}
-
-        <div className="backup-last-run">
-          {backupLastRun && backupStats
-            ? t("backupBrowser.lastBackupLine", {
-                relative: formatRelative(backupLastRun, t),
-                added: backupStats.counts.added,
-                changed: backupStats.counts.changed,
-                removed: backupStats.counts.removed,
-                bytes: formatBytes(backupStats.totalBytes, t),
-              })
-            : t("backupBrowser.neverBackedUp")}
-        </div>
 
         <div className="section-label">{t("backupBrowser.group")}</div>
         <div className="pill-row" style={{ flexWrap: "wrap" }}>
