@@ -7,6 +7,7 @@ import { ScanReportPanel } from "./ScanReportPanel";
 import { SafetyBadge } from "./SafetyBadge";
 import { SecretsPanel } from "./SecretsPanel";
 import { EmptyStateGuidance } from "./EmptyStateGuidance";
+import { LocationHeader } from "./LocationHeader";
 import { useFilterCounts } from "../lib/hooks/useFilterCounts";
 import { ArchiveIcon, ShieldCheckIcon, TargetIcon, TrashIcon, UploadCloudIcon } from "./icons";
 import type { MarkdownArtifact } from "../lib/artifacts/types";
@@ -139,6 +140,7 @@ export function ArtifactList({
 
   return (
     <section className="list-pane">
+      <LocationHeader />
       <div className="list-toolbar">
         <input
           className="search"

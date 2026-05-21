@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { useApp } from "../lib/store";
+import { LocationHeader } from "./LocationHeader";
 import type { ConfigKind } from "../lib/configs/types";
 
 const KINDS: ConfigKind[] = ["permissions", "hooks", "mcp", "keybindings"];
@@ -27,6 +28,7 @@ export function ConfigsList() {
   const effectiveScope: "global" | "project" = scope === "project" ? "project" : "global";
   return (
     <section className="list-pane configs-list">
+      <LocationHeader />
       {KINDS.map((k) => {
         const isActive = configKind === k;
         return (

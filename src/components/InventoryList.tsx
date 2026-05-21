@@ -13,6 +13,7 @@ import { masterStateFor } from "../lib/master/store";
 import type { Manifest } from "../lib/master/types";
 import type { InventoryItem } from "../lib/inventory/types";
 import { EmptyStateGuidance } from "./EmptyStateGuidance";
+import { LocationHeader } from "./LocationHeader";
 import { useFilterCounts } from "../lib/hooks/useFilterCounts";
 
 export const MASTER_TOOL_SENTINEL = "__master__";
@@ -83,6 +84,7 @@ export function InventoryList() {
 
   return (
     <section className="list-pane">
+      <LocationHeader />
       <div className="list-toolbar">
         <input
           className="search"
