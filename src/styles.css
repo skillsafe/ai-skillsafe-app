@@ -4,6 +4,7 @@
   --panel-2: #1d2030;
   --border: #2a2e3d;
   --text: #e6e9f2;
+  --fg: var(--text);
   --muted: #8b91a6;
   --accent: #6aa6ff;
   --accent-soft: #2b3b5b;

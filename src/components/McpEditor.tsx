@@ -54,13 +54,21 @@ export function McpEditor({ onToast }: Props) {
       .catch(() => undefined);
     // Capture the host platform once so the macOS-sandbox heuristic fires
     // accurately. Skip if the OS probe rejects (web preview / mock).
-    void Promise.resolve(osType())
-      .then((kind) => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const kind = await osType();
+        if (cancelled) return;
         const platform =
           kind === "macos" ? "darwin" : kind === "linux" ? "linux" : kind === "windows" ? "windows" : null;
         setLintCtx({ platform });
-      })
-      .catch(() => undefined);
+      } catch {
+        // Browser preview / tests do not have the Tauri OS plugin.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const findings = useMemo<McpFinding[]>(() => {

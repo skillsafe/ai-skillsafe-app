@@ -26,7 +26,7 @@ export function EmptyStateGuidance(props: EmptyStateGuidanceProps) {
   const { setScope, setType, setTool, setWorkbenchCategory } = useApp.getState();
   const { view, tool, scope, type, category, totalAcrossAll, broadenings, onCreateNew, onBrowseCloud } = props;
 
-  const typeLabel = type && type !== "all" ? t(`types.${type}`) : t("common.all").toLowerCase();
+  const typeLabel = type && type !== "all" ? t(`types.${type}`) : t("emptyGuidance.allArtifacts");
   const scopeLabel = t(`scopes.${scope}`);
   const toolLabel = displayNameOf(tool);
 

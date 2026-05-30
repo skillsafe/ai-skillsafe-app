@@ -86,20 +86,39 @@ export async function atomicWrite(fs: FsAdapter, path: string, contents: string)
 
 export async function sha256Hex(input: string): Promise<string> {
   const enc = new TextEncoder().encode(input);
-  const digest = await globalThis.crypto.subtle.digest("SHA-256", enc);
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  return toHex(await sha256Digest(enc));
 }
 
 export async function sha256Bytes(bytes: Uint8Array): Promise<string> {
-  // crypto.subtle expects BufferSource; newer TS libs type Uint8Array as
-  // Uint8Array<ArrayBufferLike>, which includes SharedArrayBuffer and is
-  // rejected by digest()'s signature. Cast through unknown for the call.
-  const digest = await globalThis.crypto.subtle.digest(
-    "SHA-256",
-    bytes as unknown as ArrayBuffer,
-  );
+  return toHex(await sha256Digest(bytes));
+}
+
+async function sha256Digest(bytes: Uint8Array): Promise<ArrayBuffer> {
+  const data = toArrayBuffer(bytes);
+  const subtle = (globalThis as {
+    crypto?: { subtle?: { digest: (algorithm: string, data: ArrayBuffer) => Promise<ArrayBuffer> } };
+  }).crypto?.subtle;
+  if (subtle) return subtle.digest("SHA-256", data);
+
+  const spec = "node:crypto";
+  const nodeCrypto = (await import(/* @vite-ignore */ spec)) as {
+    webcrypto?: { subtle?: { digest: (algorithm: string, data: ArrayBuffer) => Promise<ArrayBuffer> } };
+    createHash?: (algorithm: string) => {
+      update: (data: Uint8Array) => { digest: () => Uint8Array };
+    };
+  };
+  if (nodeCrypto.webcrypto?.subtle) return nodeCrypto.webcrypto.subtle.digest("SHA-256", data);
+  if (nodeCrypto.createHash) return toArrayBuffer(nodeCrypto.createHash("sha256").update(bytes).digest());
+  throw new Error("SHA-256 is unavailable in this runtime.");
+}
+
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}
+
+function toHex(digest: ArrayBuffer): string {
   return Array.from(new Uint8Array(digest))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");

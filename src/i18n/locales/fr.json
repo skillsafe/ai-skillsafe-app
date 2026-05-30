@@ -721,7 +721,8 @@
     "toastInstallFailed": "Échec de l'installation : {message}",
     "toastInstalled": "{ns}/{name}@{version} installé → {targetDir}",
     "toastLoadMoreFailed": "Impossible de charger plus de skills : {message}",
-    "errorNoPublishedVersion": "Le skill {ns}/{name} n'a pas encore de version publiée."
+    "errorNoPublishedVersion": "Le skill {ns}/{name} n'a pas encore de version publiée.",
+    "desktopRuntimeUnavailable": "Le runtime desktop n'est pas disponible. Ouvrez l'app desktop Tauri pour analyser et modifier les fichiers locaux."
   },
   "artifactList": {
     "filterPlaceholder": "Filtrer…",
@@ -757,6 +758,7 @@
     "label": "{count, number}"
   },
   "emptyGuidance": {
+    "allArtifacts": "artefacts",
     "headlineFiltered": "No {type} match {tool} × {scope}.",
     "headlineFilteredMaster": "No items in {category} for {tool}.",
     "headlineGloballyEmpty": "No {type} exist in any tool.",

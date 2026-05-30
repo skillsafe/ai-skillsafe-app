@@ -721,7 +721,8 @@
     "toastInstallFailed": "安装失败：{message}",
     "toastInstalled": "已安装 {ns}/{name}@{version} → {targetDir}",
     "toastLoadMoreFailed": "无法加载更多 skill：{message}",
-    "errorNoPublishedVersion": "Skill {ns}/{name} 尚未发布版本。"
+    "errorNoPublishedVersion": "Skill {ns}/{name} 尚未发布版本。",
+    "desktopRuntimeUnavailable": "桌面运行时不可用。请打开 Tauri 桌面应用来扫描和编辑本地文件。"
   },
   "artifactList": {
     "filterPlaceholder": "筛选…",
@@ -757,6 +758,7 @@
     "label": "{count, number}"
   },
   "emptyGuidance": {
+    "allArtifacts": "资产",
     "headlineFiltered": "No {type} match {tool} × {scope}.",
     "headlineFilteredMaster": "No items in {category} for {tool}.",
     "headlineGloballyEmpty": "No {type} exist in any tool.",

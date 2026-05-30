@@ -412,6 +412,10 @@ interface AppState {
   selectedId: string | null;
   loading: boolean;
   error: string | null;
+  // True when `error` holds the non-Tauri runtime notice, which is shown
+  // inline only (no error toast). Tracked as a flag rather than comparing the
+  // translated string so it survives a locale switch.
+  runtimeNotice: boolean;
   driftByName: Record<string, boolean>;
   viewedFile: ViewedFile | null;
   theme: Theme;
@@ -549,6 +553,7 @@ interface AppState {
   setSelectedId: (id: string | null) => void;
   setLoading: (b: boolean) => void;
   setError: (e: string | null) => void;
+  setRuntimeNotice: (msg: string) => void;
   setDrift: (d: Record<string, boolean>) => void;
   patchArtifact: (a: MarkdownArtifact) => void;
   removeArtifact: (id: string) => void;
@@ -650,6 +655,7 @@ export const useApp = create<AppState>((set) => ({
   selectedId: null,
   loading: false,
   error: null,
+  runtimeNotice: false,
   driftByName: {},
   viewedFile: null,
   theme: initialTheme(),
@@ -799,7 +805,8 @@ export const useApp = create<AppState>((set) => ({
   setArtifacts: (artifacts) => set({ artifacts }),
   setSelectedId: (selectedId) => set({ selectedId, viewedFile: null }),
   setLoading: (loading) => set({ loading }),
-  setError: (error) => set({ error }),
+  setError: (error) => set({ error, runtimeNotice: false }),
+  setRuntimeNotice: (msg) => set({ error: msg, runtimeNotice: true }),
   setDrift: (driftByName) => set({ driftByName }),
   patchArtifact: (next) =>
     set((state) => ({

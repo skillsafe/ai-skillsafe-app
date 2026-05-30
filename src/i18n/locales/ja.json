@@ -721,7 +721,8 @@
     "toastInstallFailed": "インストールに失敗しました：{message}",
     "toastInstalled": "{ns}/{name}@{version} をインストールしました → {targetDir}",
     "toastLoadMoreFailed": "これ以上の skill を読み込めませんでした：{message}",
-    "errorNoPublishedVersion": "Skill {ns}/{name} はまだ公開バージョンがありません。"
+    "errorNoPublishedVersion": "Skill {ns}/{name} はまだ公開バージョンがありません。",
+    "desktopRuntimeUnavailable": "デスクトップランタイムを利用できません。ローカルファイルをスキャン・編集するには Tauri デスクトップアプリを開いてください。"
   },
   "artifactList": {
     "filterPlaceholder": "絞り込み…",
@@ -757,6 +758,7 @@
     "label": "{count, number}"
   },
   "emptyGuidance": {
+    "allArtifacts": "アーティファクト",
     "headlineFiltered": "No {type} match {tool} × {scope}.",
     "headlineFilteredMaster": "No items in {category} for {tool}.",
     "headlineGloballyEmpty": "No {type} exist in any tool.",

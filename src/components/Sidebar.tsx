@@ -5,6 +5,7 @@ import type { ArtifactType, Scope, Tool } from "../lib/artifacts/types";
 import { ALL_AGENTS, displayNameOf } from "../lib/agents/registry";
 import { dataTypesFor } from "../lib/backup/dataTypes";
 import { useApp } from "../lib/store";
+import { isTauriRuntime } from "../lib/runtime";
 import { ArchiveIcon, GearIcon, GlobeIcon, ShieldIcon } from "./icons";
 import { MASTER_TOOL_SENTINEL } from "./InventoryList";
 
@@ -68,6 +69,8 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
     setTool, setScope, setType, setCategory, setProjectRoot, setProjectFilter,
     setView, setWorkbenchCategory,
     setSettingsScrollTarget,
+    setError,
+    setRuntimeNotice,
   } = useApp();
   // Eligible categories for the current tool: enabled in backup settings AND
   // not already covered by the TYPES row. When no tool is enabled for backup
@@ -142,8 +145,16 @@ export function Sidebar({ onToggleCloud, onToggleBackup, onOpenSettings }: Sideb
   const toolLabel = (id: Tool) => TOOLS.find((tt) => tt.id === id)?.label ?? id;
 
   async function pickProject() {
-    const picked = await openDialog({ directory: true, multiple: false });
-    if (typeof picked === "string") setProjectRoot(picked);
+    if (!isTauriRuntime()) {
+      setRuntimeNotice(t("app.desktopRuntimeUnavailable"));
+      return;
+    }
+    try {
+      const picked = await openDialog({ directory: true, multiple: false });
+      if (typeof picked === "string") setProjectRoot(picked);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
   }
 
   function projectName(path: string): string {

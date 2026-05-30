@@ -1,14 +1,23 @@
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useTranslation } from "react-i18next";
 import { useApp } from "../lib/store";
+import { isTauriRuntime } from "../lib/runtime";
 
 export function ProjectRootPicker() {
   const { t } = useTranslation();
-  const { projectRoot, setProjectRoot } = useApp();
+  const { projectRoot, setProjectRoot, setError, setRuntimeNotice } = useApp();
 
   async function pickProject() {
-    const picked = await openDialog({ directory: true, multiple: false });
-    if (typeof picked === "string") setProjectRoot(picked);
+    if (!isTauriRuntime()) {
+      setRuntimeNotice(t("app.desktopRuntimeUnavailable"));
+      return;
+    }
+    try {
+      const picked = await openDialog({ directory: true, multiple: false });
+      if (typeof picked === "string") setProjectRoot(picked);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
   }
 
   return (

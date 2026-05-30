@@ -57,13 +57,21 @@ export function ArtifactList({
   // Defaults to darwin so initial render doesn't flicker.
   const [hostOs, setHostOs] = useState<RewriteOs>("darwin");
   useEffect(() => {
-    void Promise.resolve(osType())
-      .then((kind) => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const kind = await osType();
+        if (cancelled) return;
         if (kind === "macos") setHostOs("darwin");
         else if (kind === "windows") setHostOs("windows");
         else setHostOs("linux");
-      })
-      .catch(() => undefined);
+      } catch {
+        // Browser preview / tests do not have the Tauri OS plugin.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const runScan = useCallback(

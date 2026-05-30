@@ -721,7 +721,8 @@
     "toastInstallFailed": "Installation fehlgeschlagen: {message}",
     "toastInstalled": "{ns}/{name}@{version} installiert → {targetDir}",
     "toastLoadMoreFailed": "Konnte keine weiteren Skills laden: {message}",
-    "errorNoPublishedVersion": "Skill {ns}/{name} hat noch keine veröffentlichte Version."
+    "errorNoPublishedVersion": "Skill {ns}/{name} hat noch keine veröffentlichte Version.",
+    "desktopRuntimeUnavailable": "Desktop-Laufzeit nicht verfügbar. Öffne die Tauri-Desktop-App, um lokale Dateien zu scannen und zu bearbeiten."
   },
   "artifactList": {
     "filterPlaceholder": "Filter…",
@@ -757,6 +758,7 @@
     "label": "{count, number}"
   },
   "emptyGuidance": {
+    "allArtifacts": "Artefakte",
     "headlineFiltered": "No {type} match {tool} × {scope}.",
     "headlineFilteredMaster": "No items in {category} for {tool}.",
     "headlineGloballyEmpty": "No {type} exist in any tool.",

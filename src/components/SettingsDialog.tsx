@@ -9,6 +9,7 @@ import { CloseIcon, FolderIcon, MonitorIcon, MoonIcon, SunIcon, TrashIcon } from
 import { BackupPanel } from "./BackupPanel";
 import { checkForUpdate, installAndRelaunch, isManualUpdate } from "../lib/update/runner";
 import { NATIVE_NAME, SUPPORTED, type Locale } from "../i18n";
+import { isTauriRuntime } from "../lib/runtime";
 
 interface Props {
   onClose: () => void;
@@ -58,6 +59,10 @@ export function SettingsDialog({ onClose, onToast }: Props) {
   }, [settingsScrollTarget, setSettingsScrollTarget]);
 
   async function handleCheckForUpdates() {
+    if (!isTauriRuntime()) {
+      onToast("error", t("app.desktopRuntimeUnavailable"));
+      return;
+    }
     setCheckingUpdate(true);
     try {
       const update = await checkForUpdate();
@@ -93,6 +98,10 @@ export function SettingsDialog({ onClose, onToast }: Props) {
   }
 
   async function handleRestartAndInstall() {
+    if (!isTauriRuntime()) {
+      onToast("error", t("app.desktopRuntimeUnavailable"));
+      return;
+    }
     setRestarting(true);
     try {
       // `check()` returns a fresh Update handle each call; install() can't be
@@ -143,8 +152,16 @@ export function SettingsDialog({ onClose, onToast }: Props) {
   }
 
   async function pickFolder() {
-    const picked = await openDialog({ directory: true, multiple: false });
-    if (typeof picked === "string") setProjectRoot(picked);
+    if (!isTauriRuntime()) {
+      onToast("error", t("app.desktopRuntimeUnavailable"));
+      return;
+    }
+    try {
+      const picked = await openDialog({ directory: true, multiple: false });
+      if (typeof picked === "string") setProjectRoot(picked);
+    } catch (e) {
+      onToast("error", e instanceof Error ? e.message : String(e));
+    }
   }
 
   function displayName(path: string): string {

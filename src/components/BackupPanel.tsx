@@ -55,6 +55,7 @@ import {
 import type { ScheduleSpec } from "../lib/backup/generateScripts";
 import type { Tool } from "../lib/artifacts/types";
 import { ALL_AGENTS, displayNameOf } from "../lib/agents/registry";
+import { isTauriRuntime } from "../lib/runtime";
 import { FolderIcon } from "./icons";
 import { ConfirmDialog } from "./ConfirmDialog";
 
@@ -760,8 +761,16 @@ export function BackupPanel({ onToast }: Props) {
   }
 
   async function pickDestination() {
-    const picked = await openDialog({ directory: true, multiple: false });
-    if (typeof picked === "string") setBackupDestination(picked);
+    if (!isTauriRuntime()) {
+      onToast("error", t("app.desktopRuntimeUnavailable"));
+      return;
+    }
+    try {
+      const picked = await openDialog({ directory: true, multiple: false });
+      if (typeof picked === "string") setBackupDestination(picked);
+    } catch (e) {
+      onToast("error", e instanceof Error ? e.message : String(e));
+    }
   }
 
   async function handleBackup() {

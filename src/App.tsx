@@ -48,6 +48,7 @@ import { createOrchestrator } from "./lib/update/orchestrator";
 import { InstallScopeDialog, type InstallScopeChoice } from "./components/InstallScopeDialog";
 import { parseDeepLink, type DeepLinkInstall } from "./lib/deepLink";
 import { getCurrent as getCurrentDeepLinks, onOpenUrl } from "@tauri-apps/plugin-deep-link";
+import { isTauriRuntime } from "./lib/runtime";
 
 export default function App() {
   const { t } = useTranslation();
@@ -65,8 +66,10 @@ export default function App() {
     setSelectedId,
     setLoading,
     setError,
+    setRuntimeNotice,
     setDrift,
     error,
+    runtimeNotice,
     theme,
     resolvedTheme,
     setResolvedTheme,
@@ -170,6 +173,7 @@ export default function App() {
   // attaches its own install-on-quit hook only after a download completes,
   // so the window's normal close button keeps working when nothing's pending.
   useEffect(() => {
+    if (!isTauriRuntime()) return;
     const startTimer = setTimeout(() => {
       orchestrator.runUpdateCycle().catch((e) => console.error("update cycle:", e));
     }, 5000);
@@ -191,6 +195,7 @@ export default function App() {
   // instance's `deep-link` feature reentered Tauri's event dispatch and stack-
   // overflowed on every URL delivery — see crash report 263178F1 (v0.2.1).
   useEffect(() => {
+    if (!isTauriRuntime()) return;
     let cancelled = false;
     const handleUrl = (raw: string) => {
       if (cancelled) return;
@@ -268,6 +273,13 @@ export default function App() {
   }, []);
 
   const reload = useCallback(async () => {
+    if (!isTauriRuntime()) {
+      setArtifacts([]);
+      setLoading(false);
+      setRuntimeNotice(t("app.desktopRuntimeUnavailable"));
+      setDrift({});
+      return;
+    }
     // Category mode browses on-disk backup-data-type paths directly via
     // CategoryBrowser; the artifact-pipeline reload is a no-op there.
     if (category !== null) {
@@ -341,7 +353,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [tool, scope, type, category, projectRoot, recentProjects, projectFilter, setArtifacts, setLoading, setError, setDrift]);
+  }, [tool, scope, type, category, projectRoot, recentProjects, projectFilter, setArtifacts, setLoading, setError, setRuntimeNotice, setDrift, t]);
 
   async function refreshDrift(list: MarkdownArtifact[], root: string) {
     const lockPath = await tauriJoiner.join(root, "skills-lock.json");
@@ -581,9 +593,11 @@ export default function App() {
 
   useEffect(() => {
     if (!error) return;
+    // The runtime notice is shown inline by ArtifactList; don't also toast it.
+    if (runtimeNotice) return;
     // Errors persist until dismissed so they can be read/copied for debugging.
     setToast({ kind: "error", text: error });
-  }, [error]);
+  }, [error, runtimeNotice]);
 
   // Resolve the delete-preview (cascade paths + symlink-vs-real) for the
   // pending artifact. Runs once each time the user opens the modal so the

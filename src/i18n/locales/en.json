@@ -733,7 +733,8 @@
     "toastInstallFailed": "Install failed: {message}",
     "toastInstalled": "Installed {ns}/{name}@{version} → {targetDir}",
     "toastLoadMoreFailed": "Couldn't load more skills: {message}",
-    "errorNoPublishedVersion": "Skill {ns}/{name} has no published version yet."
+    "errorNoPublishedVersion": "Skill {ns}/{name} has no published version yet.",
+    "desktopRuntimeUnavailable": "Desktop runtime unavailable. Open the Tauri desktop app to scan and edit local files."
   },
   "artifactList": {
     "filterPlaceholder": "Filter…",
@@ -771,6 +772,7 @@
     "label": "{count, number}"
   },
   "emptyGuidance": {
+    "allArtifacts": "artifacts",
     "headlineFiltered": "No {type} match {tool} × {scope}.",
     "headlineFilteredMaster": "No items in {category} for {tool}.",
     "headlineGloballyEmpty": "No {type} exist in any tool.",
