@@ -745,34 +745,6 @@
     "focusBar": "已从触发调试器聚焦 {count} 个路径",
     "clearFocus": "清除聚焦"
   },
-  "navHeader": {
-    "separator": "›",
-    "itemsCount": "{count, plural, one {# item} other {# items}}",
-    "tool": "{tool}",
-    "scope": "{scope}",
-    "type": "{type}",
-    "master": "Master",
-    "category": "{category}"
-  },
-  "pillCounts": {
-    "label": "{count, number}"
-  },
-  "emptyGuidance": {
-    "allArtifacts": "资产",
-    "headlineFiltered": "No {type} match {tool} × {scope}.",
-    "headlineFilteredMaster": "No items in {category} for {tool}.",
-    "headlineGloballyEmpty": "No {type} exist in any tool.",
-    "headlineConfigsEmpty": "No configs for {tool} × {scope}.",
-    "broadenScopeAll": "Show all scopes (+{delta})",
-    "broadenTypeAll": "Clear Type filter (+{delta})",
-    "broadenSwitchTool": "Switch to {tool} (+{delta})",
-    "broadenCategoryAll": "Show all categories (+{delta})",
-    "broadenScopeAllNoCount": "Show all scopes",
-    "broadenTypeAllNoCount": "Clear Type filter",
-    "broadenCategoryAllNoCount": "Show all categories",
-    "createNew": "Create new",
-    "browseCloud": "Browse cloud"
-  },
   "inventoryList": {
     "filterPlaceholder": "筛选…",
     "rescanAria": "重新扫描清单",

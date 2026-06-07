@@ -23,7 +23,10 @@ interface EmptyStateGuidanceProps {
 
 export function EmptyStateGuidance(props: EmptyStateGuidanceProps) {
   const { t } = useTranslation();
-  const { setScope, setType, setTool, setWorkbenchCategory } = useApp.getState();
+  const setScope = useApp((s) => s.setScope);
+  const setType = useApp((s) => s.setType);
+  const setTool = useApp((s) => s.setTool);
+  const setWorkbenchCategory = useApp((s) => s.setWorkbenchCategory);
   const { view, tool, scope, type, category, totalAcrossAll, broadenings, onCreateNew, onBrowseCloud } = props;
 
   const typeLabel = type && type !== "all" ? t(`types.${type}`) : t("emptyGuidance.allArtifacts");

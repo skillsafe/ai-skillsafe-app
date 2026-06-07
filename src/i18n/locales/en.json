@@ -766,10 +766,8 @@
     "scope": "{scope}",
     "type": "{type}",
     "master": "Master",
-    "category": "{category}"
-  },
-  "pillCounts": {
-    "label": "{count, number}"
+    "category": "{category}",
+    "youAreHere": "You are here:"
   },
   "emptyGuidance": {
     "allArtifacts": "artifacts",

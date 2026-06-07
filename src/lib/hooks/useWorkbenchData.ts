@@ -88,6 +88,7 @@ export function useWorkbenchData() {
     };
   }, [
     view,
+    haveInventory,
     projectRoots,
     masterRoot,
     backupDestination,

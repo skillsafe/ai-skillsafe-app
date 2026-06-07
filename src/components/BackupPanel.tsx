@@ -130,6 +130,10 @@ export function BackupPanel({ onToast }: Props) {
   // refresh while `backupBusy` is true; once the run ends the user can
   // scroll freely without us yanking it back.
   const logPreRef = useRef<HTMLPreElement>(null);
+  // Guards the 250ms minimum-on delay in handleBackup's finally — without it,
+  // a panel unmount mid-delay would trigger a setState-on-unmounted warning.
+  const isMountedRef = useRef(true);
+  useEffect(() => () => { isMountedRef.current = false; }, []);
   const [showFixSteps, setShowFixSteps] = useState(false);
   const logIssues: BackupLogIssue[] = useMemo(
     () => (logTail?.text ? detectLogIssues(logTail.text) : []),
@@ -867,8 +871,10 @@ export function BackupPanel({ onToast }: Props) {
     } finally {
       const remaining = 250 - (Date.now() - busyStart);
       if (remaining > 0) await new Promise((r) => setTimeout(r, remaining));
-      setBackupBusy(false);
-      setBackupProgress(null);
+      if (isMountedRef.current) {
+        setBackupBusy(false);
+        setBackupProgress(null);
+      }
     }
   }
 

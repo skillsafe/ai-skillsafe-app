@@ -1966,10 +1966,12 @@ button.pill { font-family: inherit; line-height: inherit; }
   padding: 4px 8px;
   border-radius: 6px;
   color: inherit;
-  cursor: pointer;
   font: inherit;
 }
-.loc-segment:hover {
+.loc-segment--interactive {
+  cursor: pointer;
+}
+.loc-segment--interactive:hover {
   background: var(--panel-2);
 }
 .loc-segment--master {

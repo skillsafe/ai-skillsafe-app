@@ -5,6 +5,7 @@ import { useFilterCounts } from "../lib/hooks/useFilterCounts";
 import type { ArtifactType, Scope } from "../lib/artifacts/types";
 
 const SCOPES_CYCLE: Scope[] = ["all", "global", "project"];
+const CONFIG_SCOPES_CYCLE: Scope[] = ["global", "project"];
 const TYPES_CYCLE: ArtifactType[] = ["all", "skill", "agent", "command"];
 
 function next<T>(cycle: T[], current: T): T {
@@ -23,33 +24,34 @@ export function LocationHeader() {
   const setType = useApp((s) => s.setType);
   const setWorkbenchCategory = useApp((s) => s.setWorkbenchCategory);
   const counts = useFilterCounts();
+  const sep = <span className="loc-sep" aria-hidden="true">{t("navHeader.separator")}</span>;
 
   if (view === "configs") {
+    const effectiveScope: Scope = scope === "all" ? "global" : scope;
     return (
-      <header className="location-header">
-        <button className="loc-segment" type="button">{displayNameOf(tool)}</button>
-        <span className="loc-sep">{t("navHeader.separator")}</span>
+      <header className="location-header" role="navigation" aria-label={t("navHeader.youAreHere")}>
+        <span className="loc-segment">{displayNameOf(tool)}</span>
+        {sep}
         <button
-          className="loc-segment"
+          className="loc-segment loc-segment--interactive"
           type="button"
-          onClick={() => setScope(next(["global", "project"] as Scope[], scope === "global" ? "global" : "project"))}
+          onClick={() => setScope(next(CONFIG_SCOPES_CYCLE, effectiveScope))}
         >
-          {t(`scopes.${scope === "global" ? "global" : "project"}`)}
+          {t(`scopes.${effectiveScope}`)}
         </button>
-        <span className="loc-count">· {t("navHeader.itemsCount", { count: counts.total })}</span>
       </header>
     );
   }
 
   if (view === "workbench") {
     return (
-      <header className="location-header">
-        <button className="loc-segment loc-segment--master" type="button">{t("navHeader.master")}</button>
-        <span className="loc-sep">{t("navHeader.separator")}</span>
-        <button className="loc-segment" type="button">{displayNameOf(tool)}</button>
-        <span className="loc-sep">{t("navHeader.separator")}</span>
+      <header className="location-header" role="navigation" aria-label={t("navHeader.youAreHere")}>
+        <span className="loc-segment loc-segment--master">{t("navHeader.master")}</span>
+        {sep}
+        <span className="loc-segment">{displayNameOf(tool)}</span>
+        {sep}
         <button
-          className="loc-segment"
+          className="loc-segment loc-segment--interactive"
           type="button"
           onClick={() => setWorkbenchCategory(null)}
           title={workbenchCategory ? t("emptyGuidance.broadenCategoryAllNoCount") : ""}
@@ -63,19 +65,19 @@ export function LocationHeader() {
 
   // artifacts view
   return (
-    <header className="location-header">
-      <button className="loc-segment" type="button">{displayNameOf(tool)}</button>
-      <span className="loc-sep">{t("navHeader.separator")}</span>
+    <header className="location-header" role="navigation" aria-label={t("navHeader.youAreHere")}>
+      <span className="loc-segment">{displayNameOf(tool)}</span>
+      {sep}
       <button
-        className="loc-segment"
+        className="loc-segment loc-segment--interactive"
         type="button"
         onClick={() => setScope(next(SCOPES_CYCLE, scope))}
       >
         {t(`scopes.${scope}`)}
       </button>
-      <span className="loc-sep">{t("navHeader.separator")}</span>
+      {sep}
       <button
-        className="loc-segment"
+        className="loc-segment loc-segment--interactive"
         type="button"
         onClick={() => setType(next(TYPES_CYCLE, type))}
       >

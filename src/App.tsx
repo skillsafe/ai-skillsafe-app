@@ -593,7 +593,8 @@ export default function App() {
 
   useEffect(() => {
     if (!error) return;
-    // The runtime notice is shown inline by ArtifactList; don't also toast it.
+    // setRuntimeNotice() routes its message through the same `error` state
+    // ArtifactList already renders inline — this guard prevents a duplicate toast.
     if (runtimeNotice) return;
     // Errors persist until dismissed so they can be read/copied for debugging.
     setToast({ kind: "error", text: error });

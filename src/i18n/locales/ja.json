@@ -745,34 +745,6 @@
     "focusBar": "トリガーデバッガから {count} 件のパスをフォーカス中",
     "clearFocus": "フォーカスを解除"
   },
-  "navHeader": {
-    "separator": "›",
-    "itemsCount": "{count, plural, one {# item} other {# items}}",
-    "tool": "{tool}",
-    "scope": "{scope}",
-    "type": "{type}",
-    "master": "Master",
-    "category": "{category}"
-  },
-  "pillCounts": {
-    "label": "{count, number}"
-  },
-  "emptyGuidance": {
-    "allArtifacts": "アーティファクト",
-    "headlineFiltered": "No {type} match {tool} × {scope}.",
-    "headlineFilteredMaster": "No items in {category} for {tool}.",
-    "headlineGloballyEmpty": "No {type} exist in any tool.",
-    "headlineConfigsEmpty": "No configs for {tool} × {scope}.",
-    "broadenScopeAll": "Show all scopes (+{delta})",
-    "broadenTypeAll": "Clear Type filter (+{delta})",
-    "broadenSwitchTool": "Switch to {tool} (+{delta})",
-    "broadenCategoryAll": "Show all categories (+{delta})",
-    "broadenScopeAllNoCount": "Show all scopes",
-    "broadenTypeAllNoCount": "Clear Type filter",
-    "broadenCategoryAllNoCount": "Show all categories",
-    "createNew": "Create new",
-    "browseCloud": "Browse cloud"
-  },
   "inventoryList": {
     "filterPlaceholder": "絞り込み…",
     "rescanAria": "インベントリを再スキャン",
