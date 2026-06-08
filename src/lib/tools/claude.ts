@@ -3,7 +3,6 @@ import { safeReadDir } from "../fs";
 import type { PathJoiner } from "../artifacts/skill";
 import type { ListOptions, MarkdownArtifact } from "../artifacts/types";
 import { listMarkdownFiles, loadMarkdownFile } from "../artifacts/markdownFile";
-import { listSkillBundles } from "../artifacts/skill";
 import { resolveArtifactDir, type PathResolverDeps } from "../paths";
 import { listGenericSkills } from "./generic";
 
@@ -13,20 +12,18 @@ export async function listClaudeArtifacts(
   paths: PathResolverDeps,
   opts: ListOptions,
 ): Promise<MarkdownArtifact[]> {
-  // Skill discovery follows vercel-labs/skills' rules via the registry:
-  //   project → <projectRoot>/.claude/skills
-  //   global  → ~/.claude/skills
-  // In project scope we additionally scan <projectRoot>/.agents/skills to
-  // pick up skills installed via `npx skills add` for tools that share the
-  // universal `.agents/skills` location alongside Claude.
+  // Skill discovery is registry-driven. The Claude entry declares
+  // `.agents/skills` as an extra project scan path so skills installed via
+  // `npx skills add` (which writes to the cross-tool location) surface in
+  // the Claude view too.
   if (opts.type === "skill") {
     let out = await listGenericSkills(fs, pj, paths, opts);
     if (opts.scope === "project" && opts.projectRoot) {
       // Drop bridge symlinks under .claude/skills/<n>. They point into
-      // .agents/skills/<n>, which the alt scan below adds as the canonical
-      // entry — without this filter the same skill shows up twice in the UI
-      // and clicking delete on the symlink row would recursive-rm through
-      // the link and wipe the real bundle.
+      // .agents/skills/<n>, which the generic lister now picks up as the
+      // canonical entry — without this filter the same skill would show up
+      // twice in the UI, and clicking delete on the symlink row would
+      // recursive-rm through the link and wipe the real bundle.
       const claudeSkillsDir = await pj.join(opts.projectRoot, ".claude", "skills");
       const linkPaths = new Set<string>();
       for (const e of await safeReadDir(fs, claudeSkillsDir)) {
@@ -34,14 +31,6 @@ export async function listClaudeArtifacts(
       }
       if (linkPaths.size > 0) {
         out = out.filter((a) => !a.bundleDir || !linkPaths.has(a.bundleDir));
-      }
-
-      const altDir = await pj.join(opts.projectRoot, ".agents", "skills");
-      const seen = new Set(out.map((a) => a.bundleDir).filter(Boolean) as string[]);
-      for (const b of await listSkillBundles(fs, pj, altDir, "claude", opts.scope)) {
-        if (b.bundleDir && seen.has(b.bundleDir)) continue;
-        if (b.bundleDir) seen.add(b.bundleDir);
-        out.push(b);
       }
     }
     return out;

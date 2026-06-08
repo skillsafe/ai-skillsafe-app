@@ -76,6 +76,42 @@ export async function resolveArtifactDir(
   return "";
 }
 
+// Resolves the full list of directories the lister should scan for an
+// agent's skills at the given scope — the primary (`globalSkillsDir` /
+// `skillsDir`) plus any `extraGlobalSkillsDirs` / `extraSkillsDirs` declared
+// in the registry. Duplicates and empty paths are dropped.
+//
+// Listing-only: `resolveArtifactDir` remains the source of truth for the
+// canonical install/save/backup target.
+export async function resolveSkillScanDirs(
+  deps: PathResolverDeps,
+  tool: Tool,
+  scope: Scope,
+  projectRoot?: string,
+): Promise<string[]> {
+  const cfg = getAgentConfig(tool);
+  if (!cfg) return [];
+  const dirs: string[] = [];
+  if (scope === "global") {
+    dirs.push(await cfg.globalSkillsDir(deps));
+    for (const fn of cfg.extraGlobalSkillsDirs ?? []) dirs.push(await fn(deps));
+  } else {
+    if (!projectRoot) return [];
+    dirs.push(await deps.join(projectRoot, cfg.skillsDir));
+    for (const sub of cfg.extraSkillsDirs ?? []) {
+      dirs.push(await deps.join(projectRoot, sub));
+    }
+  }
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const d of dirs) {
+    if (!d || seen.has(d)) continue;
+    seen.add(d);
+    out.push(d);
+  }
+  return out;
+}
+
 function subdir(type: ArtifactType): string {
   switch (type) {
     case "skill":

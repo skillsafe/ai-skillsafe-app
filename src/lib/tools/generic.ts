@@ -3,12 +3,15 @@ import { safeExists, safeReadDir } from "../fs";
 import type { PathJoiner } from "../artifacts/skill";
 import { listSkillBundles } from "../artifacts/skill";
 import type { ListOptions, MarkdownArtifact, Tool } from "../artifacts/types";
-import { getAgentConfig } from "../agents/registry";
-import { resolveArtifactDir, type PathResolverDeps } from "../paths";
+import { resolveSkillScanDirs, type PathResolverDeps } from "../paths";
 
-// Generic skill discovery for any registry-known agent. Mirrors vercel-labs/
-// skills' install layout: `<projectRoot>/<skillsDir>` for project scope and
-// `<globalSkillsDir>` for global. Skills are SKILL.md bundles.
+// Generic skill discovery for any registry-known agent. Scans every
+// directory the agent reads — the primary tool-specific path plus any
+// `extraSkillsDirs` / `extraGlobalSkillsDirs` declared in the registry
+// (e.g. the cross-tool `.agents/skills` convention, XDG
+// `~/.config/agents/skills`). Bundles are deduped by canonical path so a
+// skill installed once doesn't appear twice when its dir is listed by more
+// than one alias.
 export async function listGenericSkills(
   fs: FsAdapter,
   pj: PathJoiner,
@@ -18,19 +21,20 @@ export async function listGenericSkills(
   // The registry only describes skill discovery — agent/command types are
   // not a concept for these tools.
   if (opts.type !== "skill") return [];
-  const cfg = getAgentConfig(opts.tool);
-  if (!cfg) return [];
 
-  const root = await resolveArtifactDir(
-    paths,
-    opts.tool,
-    opts.scope,
-    "skill",
-    opts.projectRoot,
-  );
-  if (!root) return [];
+  const dirs = await resolveSkillScanDirs(paths, opts.tool, opts.scope, opts.projectRoot);
+  if (dirs.length === 0) return [];
 
-  return scanSkillBundles(fs, pj, root, opts.tool, opts.scope);
+  const out: MarkdownArtifact[] = [];
+  const seen = new Set<string>();
+  for (const root of dirs) {
+    for (const b of await scanSkillBundles(fs, pj, root, opts.tool, opts.scope)) {
+      if (b.bundleDir && seen.has(b.bundleDir)) continue;
+      if (b.bundleDir) seen.add(b.bundleDir);
+      out.push(b);
+    }
+  }
+  return out;
 }
 
 // vercel-labs/skills uses leading-dot directories like `.system`, `.curated`,
